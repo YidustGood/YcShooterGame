@@ -72,3 +72,17 @@ Plugins/*/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+# IDE Files
+.vs/*
+.idea/*
+**/.vscode/
+*.code-workspace
+.vsconfig
+
+# AngelScript Cache
+Script/Binds.Cache
+Script/Binds.Cache.Headers
+
+# Plugins
+Plugins/Developer/RiderLink

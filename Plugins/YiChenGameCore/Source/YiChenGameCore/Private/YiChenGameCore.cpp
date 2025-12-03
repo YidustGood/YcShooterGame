@@ -1,0 +1,20 @@
+// Copyright (c) 2025 YiChen. All Rights Reserved.
+
+#include "YiChenGameCore.h"
+
+#define LOCTEXT_NAMESPACE "FYiChenGameCoreModule"
+
+void FYiChenGameCoreModule::StartupModule()
+{
+	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
+}
+
+void FYiChenGameCoreModule::ShutdownModule()
+{
+	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
+	// we call this function before unloading the module.
+}
+
+#undef LOCTEXT_NAMESPACE
+	
+IMPLEMENT_MODULE(FYiChenGameCoreModule, YiChenGameCore)

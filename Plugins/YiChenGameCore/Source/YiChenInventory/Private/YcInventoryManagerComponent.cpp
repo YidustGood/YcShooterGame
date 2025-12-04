@@ -108,8 +108,11 @@ UYcInventoryItemInstance* FYcInventoryItemList::AddItem(const FYcInventoryItemDe
 	// 从ItemDef中获取所有的Fragment,遍历调用Fragment->OnInstanceCreated(ItemInstance)函数通知ItemInstance创建 
 	for (const auto& Fragment : ItemDef.Fragments)
 	{
-		auto ItemFragment = Fragment.Get<FYcInventoryItemFragment>();
-		ItemFragment.OnInstanceCreated(NewItemEntry.Instance);
+		// 这里一定要使用GetPtr<>(),如果直接使用Get<>()会把存储的派生结构体"按基类类型值拷贝"出来，发生对象切片，丢失派生类型的 vtable,导致无法多态
+		if (const FYcInventoryItemFragment* FragPtr = Fragment.GetPtr<FYcInventoryItemFragment>())
+		{
+			FragPtr->OnInstanceCreated(NewItemEntry.Instance);
+		}
 	}
 	NewItemEntry.StackCount = StackCount;
 	AddItemToMap_Internal(NewItemEntry);
@@ -295,13 +298,9 @@ TArray<UYcInventoryItemInstance*> UYcInventoryManagerComponent::GetAllItemInstan
 
 UYcInventoryItemInstance* UYcInventoryManagerComponent::FindFirstItemInstByDefinition(const FYcInventoryItemDefinition& ItemDef) const
 {
-	const FYcInventoryItemEntry* ItemEntry = *ItemList.ItemsMap.Find(ItemDef.ItemId);
-	if (ItemEntry)
-	{
-		return ItemEntry->Instance;
-	}
-
-	return nullptr;
+	const FYcInventoryItemEntry* const* ItemEntry = ItemList.ItemsMap.Find(ItemDef.ItemId);
+	if (ItemEntry == nullptr) return nullptr;
+	return (*ItemEntry)->Instance;
 }
 
 int32 UYcInventoryManagerComponent::GetTotalItemCountByDefinition(const FYcInventoryItemDefinition& ItemDef) const

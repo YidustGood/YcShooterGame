@@ -13,7 +13,7 @@ class UYcInventoryItemInstance;
 struct FYcInventoryItemList;
 
 USTRUCT(BlueprintType)
-struct FYcInventoryItemChangeMessage
+struct YICHENINVENTORY_API FYcInventoryItemChangeMessage
 {
 	GENERATED_BODY()
 
@@ -37,7 +37,7 @@ struct FYcInventoryItemChangeMessage
 
 /** 库存中的单个ItemInstance的包装结构体，FastArray的用法*/
 USTRUCT(BlueprintType)
-struct FYcInventoryItemEntry : public FFastArraySerializerItem
+struct YICHENINVENTORY_API FYcInventoryItemEntry : public FFastArraySerializerItem
 {
 	GENERATED_BODY()
 
@@ -67,7 +67,7 @@ private:
 
 /** 库存Item列表结构体 */
 USTRUCT(BlueprintType)
-struct FYcInventoryItemList : public FFastArraySerializer
+struct YICHENINVENTORY_API FYcInventoryItemList : public FFastArraySerializer
 {
 	GENERATED_BODY()
 

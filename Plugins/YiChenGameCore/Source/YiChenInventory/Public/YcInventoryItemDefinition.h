@@ -12,7 +12,7 @@ class UYcInventoryItemInstance;
  * 会在FYcInventoryItemDefinition中定义一个数组进行存放，并且全局只存在一份实例
  */
 USTRUCT(BlueprintType)
-struct FYcInventoryItemFragment
+struct YICHENINVENTORY_API FYcInventoryItemFragment
 {
 	GENERATED_BODY()
 	
@@ -24,7 +24,7 @@ struct FYcInventoryItemFragment
 
 //@TODO 后续看是否考虑优化这个基本物品定义,例如不要额外的物品名称描述等,单独做成一个Fragment,这样不是所有的Item都需要为此付出内存代价
 USTRUCT(BlueprintType)
-struct FYcInventoryItemDefinition : public FTableRowBase
+struct YICHENINVENTORY_API FYcInventoryItemDefinition : public FTableRowBase
 {
 	GENERATED_BODY()
 	

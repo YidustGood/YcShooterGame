@@ -38,3 +38,8 @@ void UYcInventoryItemInstance::SetItemDef(const FYcInventoryItemDefinition& InIt
 {
 	ItemDef = InItemDef;
 }
+
+void UYcInventoryItemInstance::SetItemInstId(const FName NewId)
+{
+	ItemInstId = NewId;
+}

@@ -28,10 +28,22 @@ public:
 	TInstancedStruct<FYcInventoryItemFragment> FindItemFragment(const UScriptStruct* FragmentStructType) const;
 	
 private:
+	friend struct FYcInventoryItemFragment;
+	friend struct FYcInventoryItemList;
 	/* 设置Instance所属的ItemDef, 通常是在通过ItemDef创建出Instance后立刻进行设置 **/
 	void SetItemDef(const FYcInventoryItemDefinition& InItemDef);
+	
+	void SetItemInstId(const FName NewId);
 
 	/* 这个ItemInstance所属的物品定义类型 **/
-	UPROPERTY(Replicated, BlueprintReadWrite, VisibleInstanceOnly, meta = (ExcludeBaseStruct, AllowPrivateAccess = "true"))
+	UPROPERTY(Replicated, BlueprintReadOnly, VisibleInstanceOnly, meta = (ExcludeBaseStruct, AllowPrivateAccess = "true"))
 	FYcInventoryItemDefinition ItemDef;
+	
+	/* 这个ItemInstance专属的Id, 因为同一个物品存在多个不同实例,只有第一份实例能直接使用ItemDef.ItemId **/
+	UPROPERTY(Replicated, BlueprintReadOnly, VisibleInstanceOnly, meta = (ExcludeBaseStruct, AllowPrivateAccess = "true"))
+	FName ItemInstId;
+
+public:
+	FORCEINLINE const FYcInventoryItemDefinition& GetItemDef() const { return ItemDef; }
+	FORCEINLINE const FName& GetItemInstId() const { return ItemInstId; }
 };

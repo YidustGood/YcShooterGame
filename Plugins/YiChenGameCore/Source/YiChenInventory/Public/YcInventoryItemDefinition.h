@@ -32,6 +32,10 @@ struct YICHENINVENTORY_API FYcInventoryItemDefinition : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category= "Item")
 	FName ItemId;
 	
+	/** 用于控制物品是否启用,禁用后游戏业务逻辑将忽略这个物品,例如发现某个物品存在BUG希望先禁止掉就可以直接通过这个进行控制*/
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category= "Item")
+	bool bEnableItem = true;
+	
 	/** 物品显示名称 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category= "Item")
 	FText DisplayName;

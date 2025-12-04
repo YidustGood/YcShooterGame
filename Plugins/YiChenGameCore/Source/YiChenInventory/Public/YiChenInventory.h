@@ -4,6 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
+#include "Logging/LogMacros.h"
+
+YICHENINVENTORY_API DECLARE_LOG_CATEGORY_EXTERN(LogYcInventory, Log, All);
 
 class FYiChenInventoryModule : public IModuleInterface
 {

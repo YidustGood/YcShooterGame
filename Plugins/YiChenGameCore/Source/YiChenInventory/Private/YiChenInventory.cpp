@@ -3,6 +3,7 @@
 #include "YiChenInventory.h"
 
 #define LOCTEXT_NAMESPACE "FYiChenInventoryModule"
+DEFINE_LOG_CATEGORY(LogYcInventory);
 
 void FYiChenInventoryModule::StartupModule()
 {

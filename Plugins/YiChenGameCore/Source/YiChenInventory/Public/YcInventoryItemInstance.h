@@ -4,6 +4,7 @@
 
 #include "YcInventoryItemDefinition.h"
 #include "YiChenGameCore/Public/YcReplicableObject.h"
+#include "YcGameplayTagStack.h"
 #include "YcInventoryItemInstance.generated.h"
 
 /**
@@ -27,6 +28,22 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure=false)
 	TInstancedStruct<FYcInventoryItemFragment> FindItemFragment(const UScriptStruct* FragmentStructType) const;
 	
+	// 向指定Tag添加堆叠数量(如果StackCount<0，将不执行任何操作)
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory")
+	void AddStatTagStack(FGameplayTag Tag, int32 StackCount);
+
+	// 向指定Tag移除堆叠数量(如果StackCount<0，将不执行任何操作)
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory")
+	void RemoveStatTagStack(FGameplayTag Tag, int32 StackCount);
+
+	// 获得指定Tag的堆叠数量 (Tag不存在返回0)
+	UFUNCTION(BlueprintCallable, Category=Inventory)
+	int32 GetStatTagStackCount(FGameplayTag Tag) const;
+
+	// 如果指定Tag StackCount>0,则返回true
+	UFUNCTION(BlueprintCallable, Category=Inventory)
+	bool HasStatTag(FGameplayTag Tag) const;
+	
 private:
 	friend struct FYcInventoryItemFragment;
 	friend struct FYcInventoryItemList;
@@ -42,6 +59,10 @@ private:
 	/* 这个ItemInstance专属的Id, 因为同一个物品存在多个不同实例,只有第一份实例能直接使用ItemDef.ItemId **/
 	UPROPERTY(Replicated, BlueprintReadOnly, VisibleInstanceOnly, meta = (ExcludeBaseStruct, AllowPrivateAccess = "true"))
 	FName ItemInstId;
+	
+	// 标签堆叠容器对象-基于FastArray进行网络同步
+	UPROPERTY(Replicated, BlueprintReadOnly, VisibleInstanceOnly, meta=(AllowPrivateAccess = "true"))
+	FYcGameplayTagStackContainer TagsStack;
 
 public:
 	FORCEINLINE const FYcInventoryItemDefinition& GetItemDef() const { return ItemDef; }

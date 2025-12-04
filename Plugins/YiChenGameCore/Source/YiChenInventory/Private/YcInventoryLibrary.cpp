@@ -2,6 +2,7 @@
 
 #include "YcInventoryLibrary.h"
 #include "YcInventoryItemInstance.h"
+#include "YcInventoryManagerComponent.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcInventoryLibrary)
 
@@ -17,4 +18,16 @@ TInstancedStruct<FYcInventoryItemFragment> UYcInventoryLibrary::FindItemFragment
 		}
 	}
 	return NullStruct;
+}
+
+UYcInventoryManagerComponent* UYcInventoryLibrary::GetInventoryManagerComponent(const AActor* Actor)
+{
+	if(Actor == nullptr) return nullptr;
+	
+	if(UYcInventoryManagerComponent* InventoryManagerComponent = Actor->FindComponentByClass<UYcInventoryManagerComponent>())
+	{
+		return InventoryManagerComponent;
+	}
+	
+	return nullptr;
 }

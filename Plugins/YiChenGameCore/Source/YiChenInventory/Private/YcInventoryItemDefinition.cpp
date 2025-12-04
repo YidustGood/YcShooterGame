@@ -2,7 +2,9 @@
 
 #include "YcInventoryItemDefinition.h"
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(YcInventoryItemFragment)
+#include "YcInventoryItemInstance.h"
+
+#include UE_INLINE_GENERATED_CPP_BY_NAME(YcInventoryItemDefinition)
 
 void FYcInventoryItemFragment::OnInstanceCreated(UYcInventoryItemInstance* Instance) const
 {

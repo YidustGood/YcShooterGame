@@ -32,10 +32,6 @@ struct FYcInventoryItemDefinition : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category= "Item")
 	FName ItemId;
 	
-	/** 物品在库存中是否可堆叠(例如背包中一个类型物品就使用一个对象表示，用对象中的堆叠数量来表示拥有多少个该类型物品)*/
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category= "Item")
-	uint8 Stackable : 1;
-	
 	/** 物品显示名称 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category= "Item")
 	FText DisplayName;

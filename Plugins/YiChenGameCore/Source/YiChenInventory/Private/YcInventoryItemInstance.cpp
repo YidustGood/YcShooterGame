@@ -27,7 +27,7 @@ TInstancedStruct<FYcInventoryItemFragment> UYcInventoryItemInstance::FindItemFra
 	TInstancedStruct<FYcInventoryItemFragment> NullStruct;
 	if (!GetItemDef()) return NullStruct;
 	
-	for (auto Frag : ItemDef->Fragments)
+	for (auto& Frag : ItemDef->Fragments)
 	{	
 		if (FragmentStructType == Frag.GetScriptStruct())
 		{

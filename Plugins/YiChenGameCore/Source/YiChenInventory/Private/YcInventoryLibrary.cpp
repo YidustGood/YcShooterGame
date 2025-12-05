@@ -10,7 +10,7 @@ TInstancedStruct<FYcInventoryItemFragment> UYcInventoryLibrary::FindItemFragment
                                                                                  const UScriptStruct* FragmentStructType)
 {
 	TInstancedStruct<FYcInventoryItemFragment> NullStruct;
-	for (auto Frag : ItemDef.Fragments)
+	for (auto& Frag : ItemDef.Fragments)
 	{	
 		if (FragmentStructType == Frag.GetScriptStruct())
 		{

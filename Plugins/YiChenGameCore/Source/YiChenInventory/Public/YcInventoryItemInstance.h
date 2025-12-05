@@ -26,7 +26,7 @@ public:
 	 * @return 查找到的Fragment结构体数据
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure=false)
-	TInstancedStruct<FYcInventoryItemFragment> FindItemFragment(const UScriptStruct* FragmentStructType) const;
+	TInstancedStruct<FYcInventoryItemFragment> FindItemFragment(const UScriptStruct* FragmentStructType);
 	
 	// 向指定Tag添加堆叠数量(如果StackCount<0，将不执行任何操作)
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory")
@@ -44,17 +44,30 @@ public:
 	UFUNCTION(BlueprintCallable, Category=Inventory)
 	bool HasStatTag(FGameplayTag Tag) const;
 	
+	// 从内部ItemDef指针获取ItemDef数据
+	UFUNCTION(BlueprintCallable, Category=Inventory, DisplayName="GetItemDef")
+	bool K2_GetItemDef(FYcInventoryItemDefinition& OutItemDef);
+
+protected:
+	/** 当ItemDefRowHandle值到达客户端后会解析并缓存ItemDef指针 */
+	UFUNCTION()
+	void OnRep_ItemDefRowHandle(FDataTableRowHandle LastItemDefRowHandle);
+	
 private:
 	friend struct FYcInventoryItemFragment;
 	friend struct FYcInventoryItemList;
-	/* 设置Instance所属的ItemDef, 通常是在通过ItemDef创建出Instance后立刻进行设置 **/
-	void SetItemDef(const FYcInventoryItemDefinition& InItemDef);
+	
+	/* 设置Instance所属的ItemDef, 通常是在通过ItemDef创建出Instance后立刻进行设置, 设置后会立刻解析并缓存ItemDef指针 **/
+	void SetItemDefRowHandle(const FDataTableRowHandle& InItemDefRowHandle);
 	
 	void SetItemInstId(const FName NewId);
 
 	/* 这个ItemInstance所属的物品定义类型 **/
-	UPROPERTY(Replicated, BlueprintReadOnly, VisibleInstanceOnly, meta = (ExcludeBaseStruct, AllowPrivateAccess = "true"))
-	FYcInventoryItemDefinition ItemDef;
+	UPROPERTY(ReplicatedUsing=OnRep_ItemDefRowHandle, BlueprintReadOnly, VisibleInstanceOnly, meta = (AllowPrivateAccess = "true", RowType=FYcInventoryItemDefinition))
+	FDataTableRowHandle ItemDefRowHandle;
+	
+	/** 物品定义指针, 在SetItemDefRowHandle函数调用时自动通过ItemDefRowHandle进行设置, 该指针指向的就是DataTable中的ItemDef */
+	FYcInventoryItemDefinition* ItemDef;
 	
 	/* 这个ItemInstance专属的Id, 因为同一个物品存在多个不同实例,只有第一份实例能直接使用ItemDef.ItemId **/
 	UPROPERTY(Replicated, BlueprintReadOnly, VisibleInstanceOnly, meta = (ExcludeBaseStruct, AllowPrivateAccess = "true"))
@@ -65,6 +78,6 @@ private:
 	FYcGameplayTagStackContainer TagsStack;
 
 public:
-	FORCEINLINE const FYcInventoryItemDefinition& GetItemDef() const { return ItemDef; }
+	const FYcInventoryItemDefinition* GetItemDef();
 	FORCEINLINE const FName& GetItemInstId() const { return ItemInstId; }
 };

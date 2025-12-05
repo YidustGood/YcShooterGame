@@ -51,4 +51,16 @@ struct YICHENINVENTORY_API FYcInventoryItemDefinition : public FTableRowBase
 	/** 物品片段,可以通过添加自定义片段实现扩展物品信息/功能 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ExcludeBaseStruct))
 	TArray<TInstancedStruct<FYcInventoryItemFragment>> Fragments;
+	
+	/** 获取特定类型的Fragment, 只能在c++使用, 同时c++都应该使用这个方式效率最高*/
+	template <typename FragmentType>
+	const FragmentType* GetTypedFragment() const
+	{
+		for (const auto& Fragment : Fragments)
+		{
+			const FragmentType* TypedFragment = Fragment.GetPtr<FragmentType>();
+			if (TypedFragment != nullptr) return TypedFragment;
+		}
+		return nullptr;
+	}
 };

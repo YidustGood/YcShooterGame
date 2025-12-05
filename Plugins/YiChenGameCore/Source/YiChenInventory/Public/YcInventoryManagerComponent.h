@@ -20,11 +20,11 @@ struct YICHENINVENTORY_API FYcInventoryItemChangeMessage
 	// @TODO: 考虑基于标签的名称和拥有者角色来管理库存，而非直接暴露组件？
 	// 发生变化的ItemInstance所属的库存组件对象
 	UPROPERTY(BlueprintReadOnly, Category=Inventory)
-	TObjectPtr<UActorComponent> InventoryOwner = nullptr;
+	TObjectPtr<UActorComponent> InventoryOwner;
 
 	// 发生变化的ItemInstance对象
 	UPROPERTY(BlueprintReadOnly, Category = Inventory)
-	TObjectPtr<UYcInventoryItemInstance> ItemInstance = nullptr;
+	TObjectPtr<UYcInventoryItemInstance> ItemInstance;
 
 	// 新的数量
 	UPROPERTY(BlueprintReadOnly, Category=Inventory)
@@ -101,11 +101,11 @@ public:
 
 	/**
 	 * 通过ItemDef添加物品, 内部会判断创建ItemInst
-	 * @param ItemDef Item的定义类型
+	 * @param ItemDefRowHandle ItemDefinition所在的DataTableRowHandle
 	 * @param StackCount 堆叠数量
 	 * @return 新增加的ItemInstance对象
-	 */
-	UYcInventoryItemInstance* AddItem(const FYcInventoryItemDefinition& ItemDef, const int32 StackCount);
+	 */ 
+	UYcInventoryItemInstance* AddItem(const FDataTableRowHandle& ItemDefRowHandle, const int32 StackCount);
 
 	/**
 	 * 通过ItemInst实例对象添加物品
@@ -181,12 +181,12 @@ public:
 	
 	/**
 	 * 根据ItemDef向InventoryItemList中添加物品
-	 * @param ItemDef ItemDefinition
+	 * @param ItemDefRowHandle ItemDefinition所在的DataTableRowHandle
 	 * @param StackCount 要添加的数量
 	 * @return 
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category=Inventory)
-	UYcInventoryItemInstance* AddItemByDefinition(const FYcInventoryItemDefinition& ItemDef, int32 StackCount = 1);
+	UYcInventoryItemInstance* AddItem(const FDataTableRowHandle& ItemDefRowHandle, int32 StackCount = 1);
 	
 	/**
 	 * 通过物品实例对象添加物品
@@ -225,7 +225,7 @@ public:
 	 * @return 与这个ItemDef关联的对象数量, 注意这不是所有的StackCount
 	 */
 	UFUNCTION(BlueprintCallable, Category=Inventory, BlueprintPure)
-	int32 GetTotalItemCountByDefinition(const FYcInventoryItemDefinition& ItemDef) const;
+	int32 GetTotalItemCountByDefinition(const FYcInventoryItemDefinition& ItemDef);
 	
 	/**
 	 * 消费库存物品(按照内存中的先后顺序挨个从库存中移除, 目前并非小号物品的StackCount数量)

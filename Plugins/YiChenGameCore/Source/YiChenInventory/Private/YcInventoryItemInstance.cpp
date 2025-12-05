@@ -3,6 +3,8 @@
 #include "YcInventoryItemInstance.h"
 #include "Net/UnrealNetwork.h"
 #include "GameplayTagContainer.h"
+#include "YcInventoryManagerComponent.h"
+#include "YiChenInventory.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcInventoryItemInstance)
 
@@ -80,6 +82,24 @@ bool UYcInventoryItemInstance::K2_GetItemDef(FYcInventoryItemDefinition& OutItem
 	if (ItemDef == nullptr) return false;
 	OutItemDef = *ItemDef;
 	return true;
+}
+
+UYcInventoryManagerComponent* UYcInventoryItemInstance::GetInventoryManager() const
+{
+	const AActor* OwnerActor = GetActorOuter();
+	if (OwnerActor == nullptr)
+	{
+		UE_LOG(LogYcInventory, Error, TEXT("Inventory item owner actor is nullptr."));
+		return nullptr;
+	}
+	
+	UYcInventoryManagerComponent* InventoryManager = OwnerActor->FindComponentByClass<UYcInventoryManagerComponent>();
+	if (InventoryManager == nullptr)
+	{
+		UE_LOG(LogYcInventory, Error, TEXT("Inventory item owner manager component is nullptr."));
+		return nullptr;
+	}
+	return InventoryManager;
 }
 
 void UYcInventoryItemInstance::OnRep_ItemDefRowHandle(FDataTableRowHandle LastItemDefRowHandle)

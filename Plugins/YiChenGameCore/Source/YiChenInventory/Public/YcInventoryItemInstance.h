@@ -7,6 +7,8 @@
 #include "YcGameplayTagStack.h"
 #include "YcInventoryItemInstance.generated.h"
 
+class UYcInventoryManagerComponent;
+
 /**
  * 根据ItemDefinition创建的Item的实例对象,支持网络复制,由InventoryManagerComponent持有(InventoryItemList,使用FastArray进行网络同步)
  * 基于FastArray提供了高效的网络同步TagsStack,可以自由的以GameplayTag为单位存储StackCount
@@ -47,6 +49,10 @@ public:
 	// 从内部ItemDef指针获取ItemDef数据
 	UFUNCTION(BlueprintCallable, Category=Inventory, DisplayName="GetItemDef")
 	bool K2_GetItemDef(FYcInventoryItemDefinition& OutItemDef);
+	
+	// 获取该物品实例所属的InventoryManagerComponent
+	UFUNCTION(BlueprintPure, Category = "Inventory")
+	UYcInventoryManagerComponent* GetInventoryManager() const;
 
 protected:
 	/** 当ItemDefRowHandle值到达客户端后会解析并缓存ItemDef指针 */
@@ -80,4 +86,17 @@ private:
 public:
 	const FYcInventoryItemDefinition* GetItemDef();
 	FORCEINLINE const FName& GetItemInstId() const { return ItemInstId; }
+	
+	/** 获取特定类型的Fragment, 只能在c++使用, 同时c++都应该使用这个方式效率最高*/
+	template <typename FragmentType>
+	const FragmentType* GetTypedFragment()
+	{
+		if (!GetItemDef()) return nullptr;
+		for (const auto& Fragment : ItemDef->Fragments)
+		{
+			const FragmentType* TypedFragment = Fragment.GetPtr<FragmentType>();
+			if (TypedFragment != nullptr) return TypedFragment;
+		}
+		return nullptr;
+	}
 };

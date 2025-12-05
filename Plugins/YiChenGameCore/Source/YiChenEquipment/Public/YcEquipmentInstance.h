@@ -7,6 +7,7 @@
 #include "YcEquipmentInstance.generated.h"
 
 class UYcInventoryItemInstance;
+class UYcEquipmentManagerComponent;
 
 /**
  * 装备实例基类
@@ -21,13 +22,59 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual bool IsSupportedForNetworking() const override { return true; };
 	
+	// 获取装备实例对应的的库存物品实例对象
+	UFUNCTION(BlueprintPure, Category=Equipment)
+	UYcInventoryItemInstance* GetAssociatedItem() const;
+	
+	UFUNCTION(BlueprintPure, Category=Equipment)
+	APawn* GetPawn() const;
+	
+	UFUNCTION(BlueprintPure, Category=Equipment, meta=(DeterminesOutputType=PawnType))
+	APawn* GetTypedPawn(TSubclassOf<APawn> PawnType) const;
+	
+	UFUNCTION(BlueprintPure, Category=Equipment)
+	TArray<AActor*> GetSpawnedActors() const { return SpawnedActors; }
+	
+	/** 生成装备所需的Actors, 分为开启网络复制和未开启两种, 会有不同的生成策略 */
+	UFUNCTION(BlueprintCallable)
+	virtual void SpawnEquipmentActors(const TArray<FYcEquipmentActorToSpawn>& ActorsToSpawn);
+
+	/** 销毁这个装备所生成的Actors */
+	UFUNCTION(BlueprintCallable)
+	virtual void DestroyEquipmentActors();
+	
+	/**
+	 * 根据Tag查找生成的Actor对象
+	 * @param Tag 要查找的Tag
+	 * @param bReplicateActor 是否查找为网络复制的Actor
+	 * @return 查找倒的Actor
+	 */
+	UFUNCTION(BlueprintCallable)
+	AActor* FindSpawnedActorByTag(FName Tag, bool bReplicateActor);
+	
+	/** 蓝图版本获取装备定义, 内部实际上是通过装备所属的ItemInst获取到FInventoryFragment_Equippable->EquipmentDef */
+	UFUNCTION(BlueprintCallable, DisplayName="GetEquipmentDef")
+	bool K2_GetEquipmentDef(FYcEquipmentDefinition& OutEquipmentDef);
+	
+	/** 客户端和服务器同时触发：可以在这里处理武器实例装备和卸载装备后所需要做的事情 ，例如FPS游戏装备只存在于本地控制端的第一人称武器模型*/
+	virtual void OnEquipped();
+	virtual void OnUnequipped();
+	
 protected:
-	UFUNCTION()
-	void OnRep_Instigator(const UYcInventoryItemInstance* LastInstigator);
+	UFUNCTION(BlueprintImplementableEvent, Category=Equipment, meta=(DisplayName="OnEquipped"))
+	void K2_OnEquipped();
+
+	UFUNCTION(BlueprintImplementableEvent, Category=Equipment, meta=(DisplayName="OnUnequipped"))
+	void K2_OnUnequipped();
+
+	UFUNCTION(Client, reliable)
+	void DestroyEquipmentActorsOnOwnerClient();
 	
 private:
+	friend struct FYcEquipmentList;
+	
 	// 该装备对应的库存物品实例对象(UYcInventoryItemInstance)
-	UPROPERTY(ReplicatedUsing=OnRep_Instigator, VisibleAnywhere)
+	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly, meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UYcInventoryItemInstance> Instigator;
 	
 	// 该装备对象已经生成的Actors对象列表
@@ -37,10 +84,17 @@ private:
 	// 该装备生成的仅存于本地的Actors(例如多人联机射击游戏中的第一人称武器Actor)
 	UPROPERTY(BlueprintReadOnly, meta=(AllowPrivateAccess = "true"))
 	TArray<TObjectPtr<AActor>> OwnerClientSpawnedActors;
-
-	UPROPERTY(BlueprintReadOnly, meta=(AllowPrivateAccess = "true"))
-	FYcEquipmentDefinition EquipmentDef;
+	
+	/** 装备定义指针, 在SetEquipmentDefRowHandle函数调用时自动通过EquipmentDefRowHandle进行设置, 该指针指向的就是DataTable中的EquipmentDef */
+	const FYcEquipmentDefinition* EquipmentDef;
+	
+private:
+	AActor* SpawnEquipActorInternal(const TSubclassOf<AActor>& ActorToSpawnClass,const FYcEquipmentActorToSpawn& SpawnInfo, USceneComponent* AttachTarget) const;
+	
+	// [Server Only] 设置装备实例对应的库存物品实例对象
+	void SetInstigator(UYcInventoryItemInstance* InInstigator);
 	
 public:
-	FORCEINLINE const FYcEquipmentDefinition& GetEquipmentDef() const { return EquipmentDef; }
+	/** 获取装备定义, 内部实际上是通过装备所属的ItemInst获取到FInventoryFragment_Equippable->EquipmentDef */
+	const FYcEquipmentDefinition* GetEquipmentDef();
 };

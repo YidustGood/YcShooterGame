@@ -12,8 +12,13 @@ public class YiChenEquipment : ModuleRules
             new string[]
             {
                 "Core",
+                "NetCore", 
+                "StructUtils", 
                 "YiChenGameCore",
-                "YiChenInventory"
+                "YiChenInventory",
+                "YiChenAbility", 
+                "GameplayAbilities",
+                "ModularGameplay"
             }
         );
 
@@ -23,7 +28,9 @@ public class YiChenEquipment : ModuleRules
                 "CoreUObject",
                 "Engine",
                 "Slate",
-                "SlateCore"
+                "SlateCore", 
+                "GameplayMessageRuntime",
+                "GameplayTags",
             }
         );
     }

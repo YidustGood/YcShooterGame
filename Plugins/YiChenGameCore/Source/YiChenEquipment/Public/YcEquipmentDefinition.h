@@ -7,6 +7,8 @@
 #include "YcEquipmentDefinition.generated.h"
 
 class UYcEquipmentInstance;
+class UYcAbilitySet;
+class UYcAbilitySystemComponent;
 
 /** 用于生成并附加到玩家角色身上的Actor信息结构体，包含了要生成的Actor类和附加的Socket以及附加的Transform等信息 */
 USTRUCT(Blueprintable)
@@ -63,4 +65,8 @@ struct YICHENEQUIPMENT_API FYcEquipmentDefinition : public FTableRowBase
 	// 当装备被装备时,需要生成并附加到玩家角色身上的Actor列表, 例如: 装备了一把武器, 会在生成武器并附加到角色手上
 	UPROPERTY(EditDefaultsOnly, Category=Equipment, BlueprintReadOnly, meta=(TitleProperty="{ActorToSpawn} -> {ParentComponentTag}::{AttachSocket}"))
 	TArray<FYcEquipmentActorToSpawn> ActorsToSpawn;
+	
+	// 当这个装备被装备时所需要授予相关玩家角色的技能集合,包含GA GE AS
+	UPROPERTY(EditDefaultsOnly, Category=Equipment, BlueprintReadOnly)
+	TArray<TObjectPtr<const UYcAbilitySet>> AbilitySetsToGrant;
 };

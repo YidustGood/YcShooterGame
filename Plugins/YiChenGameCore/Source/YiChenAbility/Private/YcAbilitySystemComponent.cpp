@@ -6,8 +6,12 @@
 #include "GameplayCueManager.h"
 #include "YiChenAbility.h"
 #include "Abilities/YcGameplayAbility.h"
+#include "NativeGameplayTags.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcAbilitySystemComponent)
+
+UE_DEFINE_GAMEPLAY_TAG(TAG_Gameplay_AbilityInputBlocked, "Gameplay.AbilityInputBlocked");
 
 UYcAbilitySystemComponent::UYcAbilitySystemComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -71,6 +75,180 @@ void UYcAbilitySystemComponent::TryActivateAbilitiesOnSpawn()
 		const UYcGameplayAbility* AbilityCDO = CastChecked<UYcGameplayAbility>(AbilitySpec.Ability);
 		AbilityCDO->TryActivateAbilityOnSpawn(AbilityActorInfo.Get(), AbilitySpec);
 	}
+}
+
+void UYcAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag& InputTag)
+{
+	if (!InputTag.IsValid()) return;
+	
+	// 遍历当前可激活的技能列表, 如果技能标签列表中有与输入标签匹配的就将其句柄添加到被按下列表中, 以便后续触发能力
+	for (const FGameplayAbilitySpec& AbilitySpec : ActivatableAbilities.Items)
+	{
+		if (AbilitySpec.Ability && (AbilitySpec.GetDynamicSpecSourceTags().HasTagExact(InputTag)))
+		{
+			InputHeldSpecHandles.AddUnique(AbilitySpec.Handle);
+			if (!InputPressedToReleasedSpecHandles.Contains(AbilitySpec.Handle))
+			{
+				InputPressedSpecHandles.Add(AbilitySpec.Handle);
+			}
+		}
+	}
+}
+
+void UYcAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTag& InputTag)
+{
+	if (!InputTag.IsValid()) return;
+	
+	// 检查可激活技能列表, 如果有与当前已取消输入的标签匹配的, 就从列表中移除
+	for (const FGameplayAbilitySpec& AbilitySpec : ActivatableAbilities.Items)
+	{
+		if (AbilitySpec.Ability && (AbilitySpec.GetDynamicSpecSourceTags().HasTagExact(InputTag)))
+		{
+			InputPressedToReleasedSpecHandles.Remove(AbilitySpec.Handle);
+			InputReleasedSpecHandles.AddUnique(AbilitySpec.Handle);
+			InputHeldSpecHandles.Remove(AbilitySpec.Handle);
+		}
+	}
+}
+
+void UYcAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGamePaused)
+{
+	// 如果当前GAS拥有TAG_Gameplay_AbilityInputBlocked标签,那么将停止处理AbilityInput并清理所有AbilityInput状态
+	if (HasMatchingGameplayTag(TAG_Gameplay_AbilityInputBlocked))
+	{
+		ClearAbilityInput();
+		return;
+	}
+	
+	// 本帧收集到的要激活的ability列表, 使用局部静态变量是为了避免每次调用都去申请空间, 因为该函数是tick调用所以可以优化性能
+	static TArray<FGameplayAbilitySpecHandle> AbilitiesToActivate;
+	AbilitiesToActivate.Reset();
+	
+	//@TODO: See if we can use FScopedServerAbilityRPCBatcher ScopedRPCBatcher in some of these loops
+	
+	//
+	// Process all abilities that activate when the input is held./ 处理持续输入的技能
+	//
+	for (const FGameplayAbilitySpecHandle& SpecHandle : InputHeldSpecHandles)
+	{
+		FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle);
+		if (!AbilitySpec) continue;
+		if (!AbilitySpec->Ability || AbilitySpec->IsActive()) continue;
+		// 未激活就加入本帧待激活列表
+		const UYcGameplayAbility* AbilityCDO = CastChecked<UYcGameplayAbility>(AbilitySpec->Ability);
+		if (AbilityCDO->GetActivationPolicy() == EYcAbilityActivationPolicy::WhileInputActive)
+		{
+			AbilitiesToActivate.AddUnique(AbilitySpec->Handle);
+		}
+	}
+	
+	//
+	// Process all abilities that had their input pressed this frame./ 处理单次按下触发的技能
+	//
+	for (const FGameplayAbilitySpecHandle& SpecHandle : InputPressedSpecHandles)
+	{
+		FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle);
+		if (!AbilitySpec) continue;
+		if (!AbilitySpec->Ability) continue;
+		
+		InputPressedToReleasedSpecHandles.Add(AbilitySpec->Handle);	// 标记这个触发输入已经被处理了,进入等待释放状态,避免反复处理
+		AbilitySpec->InputPressed = true;
+		// 点击按钮后激活能力,在能力没有结束前再次被点击就会通知WaitInputPress,以供能力响应激活期间的InputPress事件
+		if (AbilitySpec->IsActive())
+		{
+			// Ability is active so pass along the input event.
+			AbilitySpecInputPressed(*AbilitySpec);
+			continue;
+		}
+		// 未激活就加入本帧待激活列表
+		const UYcGameplayAbility* AbilityCDO = CastChecked<UYcGameplayAbility>(AbilitySpec->Ability);
+		if (AbilityCDO->GetActivationPolicy() == EYcAbilityActivationPolicy::OnInputTriggered)
+		{
+			AbilitiesToActivate.AddUnique(AbilitySpec->Handle);
+		}
+	}
+	
+	//
+	// Try to activate all the abilities that are from presses and holds.
+	// We do it all at once so that held inputs don't activate the ability
+	// and then also send a input event to the ability because of the press.
+	//
+	for (const FGameplayAbilitySpecHandle& AbilitySpecHandle : AbilitiesToActivate) // 遍历激活所有待激活的技能
+	{
+#if WITH_EDITOR // 编辑器下调试用
+		const FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(AbilitySpecHandle);
+		if(AbilitySpec && AbilitySpec->Ability)
+		{
+			const FString AbilitySpecDebugMsg = FString::Printf(TEXT("尝试激活技能:%s"), *AbilitySpec->Ability->GetName());
+			UKismetSystemLibrary::PrintString(this, AbilitySpecDebugMsg, false, true, FLinearColor::Green, 0.5f);
+		}
+#endif
+		TryActivateAbility(AbilitySpecHandle);
+	}
+	
+	// Process all abilities that had their input released this frame. / 处理所有释放了的Ability
+	for (const FGameplayAbilitySpecHandle& SpecHandle : InputReleasedSpecHandles) // 处理技能按钮释放
+	{
+		FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle);
+		if (!AbilitySpec || !AbilitySpec->Ability || !AbilitySpec->IsActive()) continue;
+		// Ability is active so pass along the input event.
+		AbilitySpecInputReleased(*AbilitySpec);
+	}
+	
+	// Clear the cached ability handles.
+	InputPressedSpecHandles.Reset();
+	InputReleasedSpecHandles.Reset();
+}
+
+void UYcAbilitySystemComponent::ClearAbilityInput()
+{
+	InputPressedSpecHandles.Reset();
+	InputReleasedSpecHandles.Reset();
+	InputHeldSpecHandles.Reset();
+}
+
+void UYcAbilitySystemComponent::AbilitySpecInputPressed(FGameplayAbilitySpec& Spec)
+{
+	Super::AbilitySpecInputPressed(Spec);
+	// 不支持UGameplayAbility::bReplicateInputDirectly
+	// 使用复制事件代替，以确保WaitInputPress任务能正常工作
+	if (!Spec.IsActive()) return;
+	
+	Spec.InputPressed = true;
+	// 如果技能已激活则发送复制事件
+	TArray<UGameplayAbility*> Instances = Spec.GetAbilityInstances();
+	// @TODO 这里直接获取last对吗？
+	const FGameplayAbilityActivationInfo& ActivationInfo = Instances.Last() -> GetCurrentActivationInfoRef();
+	// 触发InputPressed事件。此处不复制，监听者可以选择将InputPressed事件复制到服务器
+	InvokeReplicatedEvent(EAbilityGenericReplicatedEvent::InputPressed, Spec.Handle, ActivationInfo.GetActivationPredictionKey());
+}
+
+void UYcAbilitySystemComponent::AbilitySpecInputReleased(FGameplayAbilitySpec& Spec)
+{
+	Super::AbilitySpecInputReleased(Spec);
+
+	// 不支持UGameplayAbility::bReplicateInputDirectly
+	// 使用复制事件代替，以确保WaitInputRelease任务能正常工作
+	if (!Spec.IsActive()) return;
+	Spec.InputPressed = false;
+	// 如果技能已激活则发送复制事件
+	TArray<UGameplayAbility*> Instances = Spec.GetAbilityInstances();
+	// @TODO 这里直接获取last对吗？
+	const FGameplayAbilityActivationInfo& ActivationInfo = Instances.Last() -> GetCurrentActivationInfoRef();
+	// 触发InputReleased事件。此处不复制，监听者可以选择将InputReleased事件复制到服务器
+	InvokeReplicatedEvent(EAbilityGenericReplicatedEvent::InputReleased, Spec.Handle, ActivationInfo.GetActivationPredictionKey());
+}
+
+void UYcAbilitySystemComponent::CancelInputActivatedAbilities(const bool bReplicateCancelAbility)
+{
+	auto ShouldCancelFunc = [this](const UYcGameplayAbility* Ability, FGameplayAbilitySpecHandle Handle)
+	{
+		// 获取技能激活策略，如果属于输入激活类型就满足取消激活条件
+		const EYcAbilityActivationPolicy ActivationPolicy = Ability->GetActivationPolicy();
+		return ((ActivationPolicy == EYcAbilityActivationPolicy::OnInputTriggered) || (ActivationPolicy == EYcAbilityActivationPolicy::WhileInputActive));
+	};
+
+	CancelAbilitiesByFunc(ShouldCancelFunc, bReplicateCancelAbility);
 }
 
 FGameplayAbilitySpecHandle UYcAbilitySystemComponent::FindAbilitySpecHandleForClass(
@@ -241,7 +419,7 @@ void UYcAbilitySystemComponent::CancelAbilitiesByFunc(const TShouldCancelAbility
 
 		if (AbilityCDO->GetInstancingPolicy() != EGameplayAbilityInstancingPolicy::NonInstanced)
 		{
-			// Cancel all the spawned instances, not the CDO.
+			// 取消所有生成的实例，而不是CDO
 			TArray<UGameplayAbility*> Instances = AbilitySpec.GetAbilityInstances();
 			for (UGameplayAbility* AbilityInstance : Instances)
 			{
@@ -262,10 +440,10 @@ void UYcAbilitySystemComponent::CancelAbilitiesByFunc(const TShouldCancelAbility
 		}
 		else
 		{
-			// Cancel the non-instanced ability CDO.
+			// 取消NonInstanced类型的技能CDO
 			if (ShouldCancelFunc(AbilityCDO, AbilitySpec.Handle))
 			{
-				// Non-instanced abilities can always be canceled.
+				// NonInstanced类型的技能总是可以被取消的
 				check(AbilityCDO->CanBeCanceled());
 				AbilityCDO->CancelAbility(AbilitySpec.Handle, AbilityActorInfo.Get(), FGameplayAbilityActivationInfo(), bReplicateCancelAbility);
 			}

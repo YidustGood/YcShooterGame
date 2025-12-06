@@ -4,6 +4,8 @@
 
 #include "Modules/ModuleManager.h"
 
+YICHENGAMECORE_API DECLARE_LOG_CATEGORY_EXTERN(LogYcGameCore, Log, All);
+
 class FYiChenGameCoreModule : public IModuleInterface
 {
 public:

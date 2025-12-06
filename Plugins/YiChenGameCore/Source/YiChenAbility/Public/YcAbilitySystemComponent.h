@@ -13,12 +13,173 @@ class YICHENABILITY_API UYcAbilitySystemComponent : public UAbilitySystemCompone
 {
 	GENERATED_BODY()
 public:
+	/**
+	 * 构造函数
+	 * @param ObjectInitializer 对象初始化器
+	 */
 	UYcAbilitySystemComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 	
-	/* 获取该类型ASC组件的静态函数 **/
+	/**
+	 * 从Actor中获取UYcAbilitySystemComponent组件
+	 * @param Actor 要查询的Actor
+	 * @param LookForComponent 是否主动查找组件。如果为false，则只查找已缓存的组件；如果为true，则会遍历所有组件
+	 * @return 找到的技能系统组件，如果不存在则返回nullptr
+	 */
 	static UYcAbilitySystemComponent* GetAbilitySystemComponentFromActor(const AActor* Actor, bool LookForComponent = false);
 	
-	/* 尝试通过技能类型取消技能 **/
+	/**
+	 * 是否启用服务器RPC批处理
+	 * 启用RPC批处理可以将多个技能相关的RPC合并为一个，减少网络流量
+	 * @return 返回true表示启用RPC批处理
+	 */
+	virtual bool ShouldDoServerAbilityRPCBatch() const override { return true; }
+	
+protected:
+	
+public:
+	/////////// 增强蓝图使用的函数 ////////////
+	
+	/**
+	 * 根据技能类查找技能规格句柄
+	 * 遍历已激活的技能列表，找到指定类型的技能规格
+	 * @param AbilityClass 要查找的技能类
+	 * @param OptionalSourceObject 可选的源对象。如果指定，则只返回来自该源对象的技能规格
+	 * @return 找到的技能规格句柄，如果未找到则返回无效句柄
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Abilities")
+	FGameplayAbilitySpecHandle FindAbilitySpecHandleForClass(TSubclassOf<UGameplayAbility> AbilityClass, UObject* OptionalSourceObject=nullptr);
+	
+	/**
+	 * 尝试取消指定类型的技能
+	 * 查找并取消所有正在激活的指定类型的技能
+	 * @param InAbilityToCancel 要取消的技能类
+	 * @return 如果成功取消至少一个技能则返回true，否则返回false
+	 */
 	UFUNCTION(BlueprintCallable, Category="AbilitySystem")
 	bool TryCancelAbilityByClass(TSubclassOf<UGameplayAbility> InAbilityToCancel);
+	
+	/**
+	 * 获取指定GameplayTag的计数（蓝图接口）
+	 * 返回该标签在ASC中的堆叠计数
+	 * @param TagToCheck 要查询的GameplayTag
+	 * @return 该标签的计数，如果标签不存在则返回0
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Abilities", Meta = (DisplayName = "GetTagCount", ScriptName = "GetTagCount"))
+	int32 K2_GetTagCount(FGameplayTag TagToCheck) const;
+	
+	/**
+	 * 添加一个Loose GameplayTag（蓝图接口）
+	 * Loose Tag不会被网络复制，仅在本地存在
+	 * @param GameplayTag 要添加的GameplayTag
+	 * @param Count 添加的数量，默认为1。如果Count > 1，则该标签会被堆叠
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Abilities", Meta = (DisplayName = "AddLooseGameplayTag"))
+	void K2_AddLooseGameplayTag(const FGameplayTag& GameplayTag, int32 Count = 1);
+
+	/**
+	 * 批量添加Loose GameplayTags（蓝图接口）
+	 * Loose Tags不会被网络复制，仅在本地存在
+	 * @param GameplayTags 要添加的GameplayTag容器
+	 * @param Count 每个标签添加的数量，默认为1
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Abilities", Meta = (DisplayName = "AddLooseGameplayTags"))
+	void K2_AddLooseGameplayTags(const FGameplayTagContainer& GameplayTags, int32 Count = 1);
+
+	/**
+	 * 移除一个Loose GameplayTag（蓝图接口）
+	 * Loose Tag不会被网络复制，仅在本地存在
+	 * @param GameplayTag 要移除的GameplayTag
+	 * @param Count 移除的数量，默认为1。如果该标签的计数大于Count，则只减少计数；否则完全移除该标签
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Abilities", Meta = (DisplayName = "RemoveLooseGameplayTag"))
+	void K2_RemoveLooseGameplayTag(const FGameplayTag& GameplayTag, int32 Count = 1);
+
+	/**
+	 * 批量移除Loose GameplayTags（蓝图接口）
+	 * Loose Tags不会被网络复制，仅在本地存在
+	 * @param GameplayTags 要移除的GameplayTag容器
+	 * @param Count 每个标签移除的数量，默认为1
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Abilities", Meta = (DisplayName = "RemoveLooseGameplayTags"))
+	void K2_RemoveLooseGameplayTags(const FGameplayTagContainer& GameplayTags, int32 Count = 1);
+	
+	/**
+	 * 在本地执行一次性的GameplayCue效果
+	 * 该效果仅在本地客户端执行，不会被网络复制
+	 * @param GameplayCueTag 要执行的GameplayCue标签
+	 * @param GameplayCueParameters GameplayCue的参数，包含位置、方向、强度等信息
+	 */
+	UFUNCTION(BlueprintCallable, Category = "GameplayCue", Meta = (AutoCreateRefTerm = "GameplayCueParameters", GameplayTagFilter = "GameplayCue"))
+	void ExecuteGameplayCueLocal(const FGameplayTag GameplayCueTag, const FGameplayCueParameters& GameplayCueParameters);
+
+	/**
+	 * 在本地添加一个持续的GameplayCue效果
+	 * 该效果会触发OnActive和WhileActive事件，仅在本地客户端执行
+	 * @param GameplayCueTag 要添加的GameplayCue标签
+	 * @param GameplayCueParameters GameplayCue的参数，包含位置、方向、强度等信息
+	 */
+	UFUNCTION(BlueprintCallable, Category = "GameplayCue", Meta = (AutoCreateRefTerm = "GameplayCueParameters", GameplayTagFilter = "GameplayCue"))
+	void AddGameplayCueLocal(const FGameplayTag GameplayCueTag, const FGameplayCueParameters& GameplayCueParameters);
+
+	/**
+	 * 在本地移除一个GameplayCue效果
+	 * 该效果会触发Removed事件，仅在本地客户端执行
+	 * @param GameplayCueTag 要移除的GameplayCue标签
+	 * @param GameplayCueParameters GameplayCue的参数，包含位置、方向、强度等信息
+	 */
+	UFUNCTION(BlueprintCallable, Category = "GameplayCue", Meta = (AutoCreateRefTerm = "GameplayCueParameters", GameplayTagFilter = "GameplayCue"))
+	void RemoveGameplayCueLocal(const FGameplayTag GameplayCueTag, const FGameplayCueParameters& GameplayCueParameters);
+	
+	/**
+	 * 尝试激活技能并批处理所有RPC
+	 * 将同一帧内的多个技能相关RPC合并为一个，以减少网络流量
+	 * 最优情况：ActivateAbility、SendTargetData和EndAbility合并为一个RPC（而不是三个）
+	 * 次优情况：ActivateAbility和SendTargetData合并为一个RPC，EndAbility单独发送
+	 * 如果技能包含延迟任务（如等待输入），则无法完全批处理
+	 * 示例：
+	 *   - 单发射击：ActivateAbility + SendTargetData + EndAbility 合并为1个RPC
+	 *   - 连射：首发合并ActivateAbility + SendTargetData，后续每发1个RPC，最后1个RPC结束技能
+	 * @param InAbilityHandle 要激活的技能规格句柄
+	 * @param EndAbilityImmediately 是否立即结束技能。如果为true，激活后会立即调用ExternalEndAbility()
+	 * @return 如果技能成功激活则返回true，否则返回false
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Abilities")
+	virtual bool BatchRPCTryActivateAbility(FGameplayAbilitySpecHandle InAbilityHandle, bool EndAbilityImmediately);
+	
+	/**
+	 * 对自身应用GameplayEffect，支持预测
+	 * 如果ASC拥有有效的预测键，则使用预测模式应用效果，以实现客户端预测
+	 * 如果预测键无效，则以普通模式应用效果
+	 * 常用于交互系统的Pre/PostInteract()中
+	 * @param GameplayEffectClass 要应用的GameplayEffect类
+	 * @param Level 效果等级，影响效果的强度
+	 * @param EffectContext 效果上下文，包含源对象、目标对象等信息。如果无效则会自动创建
+	 * @return 应用的GameplayEffect句柄，用于后续移除或修改效果
+	 */
+	UFUNCTION(BlueprintCallable, Category = "GameplayEffects", Meta = (DisplayName = "ApplyGameplayEffectToSelfWithPrediction"))
+	FActiveGameplayEffectHandle K2_ApplyGameplayEffectToSelfWithPrediction(TSubclassOf<UGameplayEffect> GameplayEffectClass, float Level, FGameplayEffectContextHandle EffectContext);
+
+	/**
+	 * 对目标应用GameplayEffect，支持预测
+	 * 如果ASC拥有有效的预测键，则使用预测模式应用效果，以实现客户端预测
+	 * 如果预测键无效，则以普通模式应用效果
+	 * 常用于交互系统的Pre/PostInteract()中
+	 * @param GameplayEffectClass 要应用的GameplayEffect类
+	 * @param Target 目标ASC。如果为nullptr则返回无效句柄
+	 * @param Level 效果等级，影响效果的强度
+	 * @param Context 效果上下文，包含源对象、目标对象等信息
+	 * @return 应用的GameplayEffect句柄，用于后续移除或修改效果
+	 */
+	UFUNCTION(BlueprintCallable, Category = "GameplayEffects", Meta = (DisplayName = "ApplyGameplayEffectToTargetWithPrediction"))
+	FActiveGameplayEffectHandle K2_ApplyGameplayEffectToTargetWithPrediction(TSubclassOf<UGameplayEffect> GameplayEffectClass, UAbilitySystemComponent* Target, float Level, FGameplayEffectContextHandle Context);
+	
+	/**
+	 * 获取当前预测键的状态信息
+	 * 返回预测键的字符串表示和是否有效的状态
+	 * @return 包含预测键信息和有效性的字符串
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Ability")
+	virtual FString GetCurrentPredictionKeyStatus();
+	
+	/////////// ~增强蓝图使用的函数 ////////////
 };

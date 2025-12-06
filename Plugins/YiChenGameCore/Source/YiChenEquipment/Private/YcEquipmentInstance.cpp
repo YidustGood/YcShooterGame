@@ -167,24 +167,41 @@ AActor* UYcEquipmentInstance::FindSpawnedActorByTag(const FName Tag, const bool 
 
 const FYcEquipmentDefinition* UYcEquipmentInstance::GetEquipmentDef()
 {
+	if (EquipmentDef) return EquipmentDef;
 	if (!Instigator || !Instigator->GetItemDef()) return nullptr;
 	
-	if (!EquipmentDef)
-	{
-		const FInventoryFragment_Equippable* Equippable = Instigator->GetItemDef()->GetTypedFragment<FInventoryFragment_Equippable>();
-		if (!Equippable) return nullptr;
-		EquipmentDef = &Equippable->EquipmentDef;
-	}
+	const FInventoryFragment_Equippable* Equippable = Instigator->GetItemDef()->GetTypedFragment<FInventoryFragment_Equippable>();
+	if (!Equippable) return nullptr;
+	EquipmentDef = &Equippable->EquipmentDef;
 	return EquipmentDef;
 }
 
 bool UYcEquipmentInstance::K2_GetEquipmentDef(FYcEquipmentDefinition& OutEquipmentDef)
 {
-	EquipmentDef = EquipmentDef ?  EquipmentDef : GetEquipmentDef();
-	if (!EquipmentDef) return false;
-	
+	if (!GetEquipmentDef()) return false;
 	OutEquipmentDef = *EquipmentDef;
 	return true;
+}
+
+TInstancedStruct<FYcEquipmentFragment> UYcEquipmentInstance::FindEquipmentFragment(const UScriptStruct* FragmentStructType)
+{
+	if (!GetEquipmentDef() || !FragmentStructType)
+	{
+		UE_LOG(LogYcEquipment, Warning, TEXT("UYcEquipmentInstance::FindEquipmentFragment - EquipmentDef or FragmentStructType is null"));
+		return TInstancedStruct<FYcEquipmentFragment>();
+	}
+	
+	// 在装备定义的 Fragments 数组中查找指定类型的 Fragment
+	for (const auto& Fragment : EquipmentDef->Fragments)
+	{
+		if (Fragment.GetScriptStruct() == FragmentStructType)
+		{
+			return Fragment;
+		}
+	}
+	
+	// 如果没有找到，返回空结构体
+	return TInstancedStruct<FYcEquipmentFragment>();
 }
 
 void UYcEquipmentInstance::OnEquipped()

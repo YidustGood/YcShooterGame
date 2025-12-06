@@ -60,6 +60,40 @@ public:
 	virtual void OnEquipped();
 	virtual void OnUnequipped();
 	
+	/**
+	 * 查询装备定义中的 Fragment
+	 * 只能在 C++ 中使用，效率最高
+	 * 
+	 * @return 找到的 Fragment 指针，如果不存在则返回 nullptr
+	 * 
+	 * 使用示例：
+	 * const FEquipmentFragment_WeaponStats* WeaponStats = 
+	 *     Equipment->GetTypedFragment<FEquipmentFragment_WeaponStats>();
+	 */
+	template <typename FragmentType>
+	const FragmentType* GetTypedFragment() const
+	{
+		if (!EquipmentDef) return nullptr;
+		return EquipmentDef->GetTypedFragment<FragmentType>();
+	}
+	
+	/**
+	 * 蓝图版本：查询装备定义中的 Fragment
+	 * 从装备定义的 Fragments 数组中查找指定类型的 Fragment
+	 * 
+	 * @param FragmentStructType 目标 Fragment 结构类型（必须是 FYcEquipmentFragment 或其子类）
+	 * @return 查找到的 Fragment 结构体数据，如果不存在则返回空结构体
+	 * 
+	 * 注意：此函数会产生一次 Fragment 的深拷贝。如果频繁调用，建议缓存结果。
+	 * 
+	 * 使用示例（蓝图）：
+	 * 1. 调用 Find Equipment Fragment
+	 * 2. 输入 Fragment Struct Type: FEquipmentFragment_WeaponStats
+	 * 3. 获取返回的 Fragment 数据
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure=false, Category = "Equipment")
+	TInstancedStruct<FYcEquipmentFragment> FindEquipmentFragment(const UScriptStruct* FragmentStructType);
+	
 protected:
 	UFUNCTION(BlueprintImplementableEvent, Category=Equipment, meta=(DisplayName="OnEquipped"))
 	void K2_OnEquipped();

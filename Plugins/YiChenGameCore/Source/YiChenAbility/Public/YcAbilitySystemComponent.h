@@ -105,13 +105,15 @@ public:
 	 */
 	void ProcessAbilityInput(float DeltaTime, bool bGamePaused);
 	
-protected:
+	
 	/**
 	 * 清理所有输入缓存
 	 * 重置所有输入相关的列表，用于强制清空输入状态
 	 * 常用于游戏暂停、菜单打开等需要中断输入处理的场景
 	 */
 	void ClearAbilityInput();
+	
+protected:
 	
 	/**
 	 * 处理技能输入按下事件（覆盖父类）

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "YcAbilitySourceInterface.h"
 #include "Abilities/GameplayAbility.h"
 #include "YcGameplayAbility.generated.h"
 

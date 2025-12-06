@@ -65,7 +65,7 @@ struct FYcAbilityTagRelationship
  * 由UYcAbilitySystemComponent在技能激活时查询使用，以实现复杂的技能相互制约逻辑。
  */
 UCLASS()
-class YCGAMECORE_API UYcAbilityTagRelationshipMapping : public UDataAsset
+class YICHENABILITY_API UYcAbilityTagRelationshipMapping : public UDataAsset
 {
 	GENERATED_BODY()
 

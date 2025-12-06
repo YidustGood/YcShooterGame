@@ -5,6 +5,8 @@
 #include "AbilitySystemComponent.h"
 #include "YcAbilitySystemComponent.generated.h"
 
+class UYcGameplayAbility;
+
 /**
  * 插件提供的技能组件基类
  */
@@ -27,14 +29,13 @@ public:
 	 */
 	static UYcAbilitySystemComponent* GetAbilitySystemComponentFromActor(const AActor* Actor, bool LookForComponent = false);
 	
-	/**
-	 * 是否启用服务器RPC批处理
-	 * 启用RPC批处理可以将多个技能相关的RPC合并为一个，减少网络流量
-	 * @return 返回true表示启用RPC批处理
-	 */
-	virtual bool ShouldDoServerAbilityRPCBatch() const override { return true; }
-	
 protected:
+	/** 是否启用服务器RPC批处理, 启用RPC批处理可以将多个技能相关的RPC合并为一个，减少网络流量 */
+	virtual bool ShouldDoServerAbilityRPCBatch() const override { return true; }
+	virtual void InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor) override;
+	
+	/** 尝试生成时激活技能 */
+	void TryActivateAbilitiesOnSpawn();
 	
 public:
 	/////////// 增强蓝图使用的函数 ////////////
@@ -182,4 +183,7 @@ public:
 	virtual FString GetCurrentPredictionKeyStatus();
 	
 	/////////// ~增强蓝图使用的函数 ////////////
+public:
+	typedef TFunctionRef<bool(const UYcGameplayAbility* Ability, FGameplayAbilitySpecHandle Handle)> TShouldCancelAbilityFunc;
+	void CancelAbilitiesByFunc(const TShouldCancelAbilityFunc& ShouldCancelFunc, bool bReplicateCancelAbility);
 };

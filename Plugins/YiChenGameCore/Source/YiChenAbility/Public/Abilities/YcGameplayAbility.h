@@ -74,22 +74,17 @@ public:
 	
 protected:
 	//~UGameplayAbility interface
-	/**
-	 * 技能被授予时的回调
-	 * 在技能添加到ASC时调用，会触发K2_OnAbilityAdded蓝图事件和尝试在生成时激活技能
-	 * @param ActorInfo 技能所有者的Actor信息
-	 * @param Spec 技能规格
-	 */
+
+	/** 技能被授予时的回调，触发K2_OnAbilityAdded蓝图事件和尝试在生成时激活技能 */
 	virtual void OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
-	
-	/**
-	 * 技能被移除时的回调
-	 * 在技能从ASC中移除时调用，会触发K2_OnAbilityRemoved蓝图事件
-	 * @param ActorInfo 技能所有者的Actor信息
-	 * @param Spec 技能规格
-	 */
+	/** 技能被移除时的回调，触发K2_OnAbilityRemoved蓝图事件 */
 	virtual void OnRemoveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
+	/** 检查技能是否满足标签要求（无阻挡标签、有所有必需标签） */
+	virtual bool DoesAbilitySatisfyTagRequirements(const UAbilitySystemComponent& AbilitySystemComponent, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr, OUT FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
 	//~End of UGameplayAbility interface
+	
+	// 获取技能的源信息（等级、源对象、效果施加者）
+	virtual void GetAbilitySource(FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, float& OutSourceLevel, const IYcAbilitySourceInterface*& OutAbilitySource, AActor*& OutEffectCauser) const;
 	
 	/**
 	 * 当Pawn Avatar被设置时的回调

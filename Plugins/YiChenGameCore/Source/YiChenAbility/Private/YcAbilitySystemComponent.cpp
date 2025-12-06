@@ -7,6 +7,7 @@
 #include "YiChenAbility.h"
 #include "Abilities/YcGameplayAbility.h"
 #include "NativeGameplayTags.h"
+#include "YcAbilityTagRelationshipMapping.h"
 #include "Kismet/KismetSystemLibrary.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcAbilitySystemComponent)
@@ -37,7 +38,7 @@ void UYcAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AActo
 	
 	if (bHasNewPawnAvatar)
 	{
-		// Notify all abilities that a new pawn avatar has been set
+		// 通知所有可用技能新的Pawn Avatar已被设置
 		for (const FGameplayAbilitySpec& AbilitySpec : ActivatableAbilities.Items)
 		{
 			UYcGameplayAbility* AbilityCDO = CastChecked<UYcGameplayAbility>(AbilitySpec.Ability);
@@ -50,7 +51,7 @@ void UYcAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AActo
 					UYcGameplayAbility* YcAbilityInstance = Cast<UYcGameplayAbility>(AbilityInstance);
 					if (YcAbilityInstance)
 					{
-						// Ability instances may be missing for replays
+						// 对于回放，技能实例可能缺失
 						YcAbilityInstance->OnPawnAvatarSet();
 					}
 				}
@@ -63,7 +64,22 @@ void UYcAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AActo
 		
 		TryActivateAbilitiesOnSpawn();
 		
-		// @TODO Animations
+		// @TODO: 后续可添加Avatar变化时对于动画相关内容的处理
+	}
+}
+
+void UYcAbilitySystemComponent::SetTagRelationshipMapping(UYcAbilityTagRelationshipMapping* NewMapping)
+{
+	TagRelationshipMapping = NewMapping;
+}
+
+void UYcAbilitySystemComponent::GetAdditionalActivationTagRequirements(const FGameplayTagContainer& AbilityTags,
+	FGameplayTagContainer& OutActivationRequired, FGameplayTagContainer& OutActivationBlocked) const
+{
+	// 根据TagRelationshipMapping查询技能激活所需的额外标签
+	if (TagRelationshipMapping)
+	{
+		TagRelationshipMapping->GetRequiredAndBlockedActivationTags(AbilityTags, &OutActivationRequired, &OutActivationBlocked);
 	}
 }
 
@@ -75,6 +91,32 @@ void UYcAbilitySystemComponent::TryActivateAbilitiesOnSpawn()
 		const UYcGameplayAbility* AbilityCDO = CastChecked<UYcGameplayAbility>(AbilitySpec.Ability);
 		AbilityCDO->TryActivateAbilityOnSpawn(AbilityActorInfo.Get(), AbilitySpec);
 	}
+}
+
+void UYcAbilitySystemComponent::ApplyAbilityBlockAndCancelTags(const FGameplayTagContainer& AbilityTags,
+	UGameplayAbility* RequestingAbility, bool bEnableBlockTags, const FGameplayTagContainer& BlockTags,
+	bool bExecuteCancelTags, const FGameplayTagContainer& CancelTags)
+{
+	FGameplayTagContainer ModifiedBlockTags = BlockTags;
+	FGameplayTagContainer ModifiedCancelTags = CancelTags;
+
+	if (TagRelationshipMapping)
+	{
+		// 使用映射表扩展技能标签，获取应该阻止和取消的标签
+		TagRelationshipMapping->GetAbilityTagsToBlockAndCancel(AbilityTags, &ModifiedBlockTags, &ModifiedCancelTags);
+	}
+
+	Super::ApplyAbilityBlockAndCancelTags(AbilityTags, RequestingAbility, bEnableBlockTags, ModifiedBlockTags, bExecuteCancelTags, ModifiedCancelTags);
+
+	// @TODO: 后续可添加特殊逻辑，如阻止输入或禁用移动
+}
+
+void UYcAbilitySystemComponent::HandleChangeAbilityCanBeCanceled(const FGameplayTagContainer& AbilityTags,
+	UGameplayAbility* RequestingAbility, bool bCanBeCanceled)
+{
+	Super::HandleChangeAbilityCanBeCanceled(AbilityTags, RequestingAbility, bCanBeCanceled);
+
+	// @TODO: 后续可添加特殊逻辑，如阻止输入或禁用移动
 }
 
 void UYcAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag& InputTag)
@@ -124,7 +166,7 @@ void UYcAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGameP
 	static TArray<FGameplayAbilitySpecHandle> AbilitiesToActivate;
 	AbilitiesToActivate.Reset();
 	
-	//@TODO: See if we can use FScopedServerAbilityRPCBatcher ScopedRPCBatcher in some of these loops
+	// @TODO: 考虑在这些循环中使用FScopedServerAbilityRPCBatcher进行RPC批处理优化
 	
 	//
 	// Process all abilities that activate when the input is held./ 处理持续输入的技能
@@ -195,7 +237,7 @@ void UYcAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGameP
 		AbilitySpecInputReleased(*AbilitySpec);
 	}
 	
-	// Clear the cached ability handles.
+	// 清除本帧缓存的技能句柄
 	InputPressedSpecHandles.Reset();
 	InputReleasedSpecHandles.Reset();
 }
@@ -217,7 +259,7 @@ void UYcAbilitySystemComponent::AbilitySpecInputPressed(FGameplayAbilitySpec& Sp
 	Spec.InputPressed = true;
 	// 如果技能已激活则发送复制事件
 	TArray<UGameplayAbility*> Instances = Spec.GetAbilityInstances();
-	// @TODO 这里直接获取last对吗？
+	// @TODO: 需要验证直接获取Last()是否安全，考虑添加边界检查
 	const FGameplayAbilityActivationInfo& ActivationInfo = Instances.Last() -> GetCurrentActivationInfoRef();
 	// 触发InputPressed事件。此处不复制，监听者可以选择将InputPressed事件复制到服务器
 	InvokeReplicatedEvent(EAbilityGenericReplicatedEvent::InputPressed, Spec.Handle, ActivationInfo.GetActivationPredictionKey());
@@ -233,7 +275,7 @@ void UYcAbilitySystemComponent::AbilitySpecInputReleased(FGameplayAbilitySpec& S
 	Spec.InputPressed = false;
 	// 如果技能已激活则发送复制事件
 	TArray<UGameplayAbility*> Instances = Spec.GetAbilityInstances();
-	// @TODO 这里直接获取last对吗？
+	// @TODO: 需要验证直接获取Last()是否安全，考虑添加边界检查
 	const FGameplayAbilityActivationInfo& ActivationInfo = Instances.Last() -> GetCurrentActivationInfoRef();
 	// 触发InputReleased事件。此处不复制，监听者可以选择将InputReleased事件复制到服务器
 	InvokeReplicatedEvent(EAbilityGenericReplicatedEvent::InputReleased, Spec.Handle, ActivationInfo.GetActivationPredictionKey());

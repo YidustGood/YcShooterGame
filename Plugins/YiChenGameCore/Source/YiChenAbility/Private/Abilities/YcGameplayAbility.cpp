@@ -1,7 +1,12 @@
 ﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 #include "Abilities/YcGameplayAbility.h"
+
+#include "AbilitySystemGlobals.h"
+#include "YcAbilitySourceInterface.h"
 #include "YcAbilitySystemComponent.h"
+#include "YcGameplayEffectContext.h"
+#include "YcGameplayTags.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcGameplayAbility)
 
@@ -25,6 +30,134 @@ void UYcGameplayAbility::OnRemoveAbility(const FGameplayAbilityActorInfo* ActorI
 	K2_OnAbilityRemoved();// 转发调用蓝图实现的函数
 
 	Super::OnRemoveAbility(ActorInfo, Spec);
+}
+
+bool UYcGameplayAbility::DoesAbilitySatisfyTagRequirements(const UAbilitySystemComponent& AbilitySystemComponent,
+                                                           const FGameplayTagContainer* SourceTags, const FGameplayTagContainer* TargetTags,
+                                                           FGameplayTagContainer* OptionalRelevantTags) const
+{
+	// Specialized version to handle death exclusion and AbilityTags expansion via ASC
+	// 通过ASC处理死亡排除和能力标签扩展的专用版本
+
+	bool bBlocked = false;
+	bool bMissing = false;
+	
+	UAbilitySystemGlobals& AbilitySystemGlobals = UAbilitySystemGlobals::Get();
+	const FGameplayTag& BlockedTag = AbilitySystemGlobals.ActivateFailTagsBlockedTag;
+	const FGameplayTag& MissingTag = AbilitySystemGlobals.ActivateFailTagsMissingTag;
+	
+	// Check if any of this ability's tags are currently blocked
+	if (AbilitySystemComponent.AreAbilityTagsBlocked(GetAssetTags()))
+	{
+		bBlocked = true;
+	}
+	
+	const UYcAbilitySystemComponent* ASC = Cast<UYcAbilitySystemComponent>(&AbilitySystemComponent);
+	static FGameplayTagContainer AllRequiredTags;
+	static FGameplayTagContainer AllBlockedTags;
+	
+	AllRequiredTags = ActivationRequiredTags;
+	AllBlockedTags = ActivationBlockedTags;
+	
+	// Expand our ability tags to add additional required/blocked tags
+	if (ASC)
+	{
+		ASC->GetAdditionalActivationTagRequirements(AbilityTags, AllRequiredTags, AllBlockedTags);
+	}
+	
+	// Check to see the required/blocked tags for this ability
+	if (AllBlockedTags.Num() || AllRequiredTags.Num())
+	{
+		static FGameplayTagContainer AbilitySystemComponentTags;
+
+		AbilitySystemComponentTags.Reset();
+		AbilitySystemComponent.GetOwnedGameplayTags(AbilitySystemComponentTags);
+
+		if (AbilitySystemComponentTags.HasAny(AllBlockedTags))
+		{
+			if (OptionalRelevantTags && AbilitySystemComponentTags.HasTag(YcGameplayTags::Status_Death))
+			{
+				// If player is dead and was rejected due to blocking tags, give that feedback
+				//如果玩家已经死亡，并且由于阻塞标签而被拒绝，给出反馈
+				OptionalRelevantTags->AddTag(YcGameplayTags::Ability_ActivateFail_IsDead);
+			}
+
+			bBlocked = true;
+		}
+
+		if (!AbilitySystemComponentTags.HasAll(AllRequiredTags))
+		{
+			bMissing = true;
+		}
+	}
+
+	if (SourceTags != nullptr)
+	{
+		// 检查技能释放者(Owner)的SourceTags中是否存在阻挡Tag或是否拥有全部依赖的Tag，以此来设定状态
+		if (SourceBlockedTags.Num() || SourceRequiredTags.Num())
+		{
+			if (SourceTags->HasAny(SourceBlockedTags))
+			{
+				bBlocked = true;
+			}
+
+			if (!SourceTags->HasAll(SourceRequiredTags))
+			{
+				bMissing = true;
+			}
+		}
+	}
+
+	// 技能作用目标(Avatr?)
+	if (TargetTags != nullptr)
+	{
+		if (TargetBlockedTags.Num() || TargetRequiredTags.Num())
+		{
+			if (TargetTags->HasAny(TargetBlockedTags))
+			{
+				bBlocked = true;
+			}
+
+			if (!TargetTags->HasAll(TargetRequiredTags))
+			{
+				bMissing = true;
+			}
+		}
+	}
+
+	if (bBlocked)
+	{
+		if (OptionalRelevantTags && BlockedTag.IsValid())
+		{
+			OptionalRelevantTags->AddTag(BlockedTag);
+		}
+		return false;
+	}
+	if (bMissing)
+	{
+		if (OptionalRelevantTags && MissingTag.IsValid())
+		{
+			OptionalRelevantTags->AddTag(MissingTag);
+		}
+		return false;
+	}
+
+	return true;
+}
+
+void UYcGameplayAbility::GetAbilitySource(FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
+	float& OutSourceLevel, const IYcAbilitySourceInterface*& OutAbilitySource, AActor*& OutEffectCauser) const
+{
+	OutSourceLevel = 0.0f;
+	OutAbilitySource = nullptr;
+	OutEffectCauser = nullptr;
+
+	OutEffectCauser = ActorInfo->AvatarActor.Get();
+
+	// If we were added by something that's an ability info source, use it
+	UObject* SourceObject = GetSourceObject(Handle, ActorInfo);
+
+	OutAbilitySource = Cast<IYcAbilitySourceInterface>(SourceObject);
 }
 
 UYcAbilitySystemComponent* UYcGameplayAbility::GetYcAbilitySystemComponentFromActorInfo() const
@@ -63,6 +196,7 @@ AController* UYcGameplayAbility::GetControllerFromActorInfo() const
 
 void UYcGameplayAbility::OnPawnAvatarSet()
 {
+	// 触发蓝图事件
 	K2_OnPawnAvatarSet();
 }
 
@@ -71,14 +205,13 @@ void UYcGameplayAbility::TryActivateAbilityOnSpawn(const FGameplayAbilityActorIn
 {
 	const bool bIsPredicting = (Spec.ActivationInfo.ActivationMode == EGameplayAbilityActivationMode::Predicting);
 
-	// Try to activate if activation policy is on spawn.如果激活策略是OnSpawn尝试激活
+	// 如果激活策略不是OnSpawn则不激活
 	if (!ActorInfo || Spec.IsActive() || bIsPredicting || ActivationPolicy != EYcAbilityActivationPolicy::OnSpawn) return;
 	
 	UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
 	const AActor* AvatarActor = ActorInfo->AvatarActor.Get();
 
-	// If avatar actor is torn off or about to die, don't try to activate until we get the new one.
-	// //如果avatar actor被GC标记或即将死亡，在我们得到新的actor之前不要尝试激活。
+	// 如果Avatar被TearOff或即将销毁，则不激活
 	if (ASC && AvatarActor && !AvatarActor->GetTearOff() && (AvatarActor->GetLifeSpan() <= 0.0f))
 	{
 		const bool bIsLocalExecution = (NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalPredicted) || (NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalOnly);
@@ -98,6 +231,7 @@ void UYcGameplayAbility::ExternalEndAbility()
 {
 	check(CurrentActorInfo);
 
+	// 外部结束技能，确保网络同步
 	bool bReplicateEndAbility = true;
 	bool bWasCancelled = false;
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, bReplicateEndAbility, bWasCancelled);

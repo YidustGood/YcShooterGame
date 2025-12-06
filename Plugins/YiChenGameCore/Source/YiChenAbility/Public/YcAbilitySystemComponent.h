@@ -6,6 +6,7 @@
 #include "YcAbilitySystemComponent.generated.h"
 
 class UYcGameplayAbility;
+class UYcAbilityTagRelationshipMapping;
 
 /**
  * 插件提供的技能组件基类
@@ -40,11 +41,34 @@ public:
 	 */
 	virtual void InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor) override;
 	
+	/**
+	 * 设置标签关系映射
+	 * 用于配置技能激活时的标签依赖和阻挡关系。如果传入nullptr则清除当前映射。
+	 * @param NewMapping 新的标签关系映射对象
+	 */
+	void SetTagRelationshipMapping(UYcAbilityTagRelationshipMapping* NewMapping);
+	
+	/**
+	 * 获取技能激活所需的额外标签要求
+	 * 根据技能标签查询标签关系映射，获取激活时必需的标签和被阻挡的标签。
+	 * @param AbilityTags 技能的标签容器
+	 * @param OutActivationRequired 输出：激活时必需的标签列表
+	 * @param OutActivationBlocked 输出：激活时被阻挡的标签列表
+	 */
+	void GetAdditionalActivationTagRequirements(const FGameplayTagContainer& AbilityTags, FGameplayTagContainer& OutActivationRequired, FGameplayTagContainer& OutActivationBlocked) const;
+
+	
 protected:
-	/** 是否启用服务器RPC批处理, 启用RPC批处理可以将多个技能相关的RPC合并为一个，减少网络流量 */
+	/** 是否启用服务器RPC批处理，启用时可将多个技能相关的RPC合并为一个，减少网络流量 */
 	virtual bool ShouldDoServerAbilityRPCBatch() const override { return true; }
 	
-	/** 尝试生成时激活技能 */
+	// 应用TagRelationshipMapping中配置的Block和Cancel标签
+	virtual void ApplyAbilityBlockAndCancelTags(const FGameplayTagContainer& AbilityTags, UGameplayAbility* RequestingAbility, bool bEnableBlockTags, const FGameplayTagContainer& BlockTags,
+												bool bExecuteCancelTags, const FGameplayTagContainer& CancelTags) override;
+	// 处理技能可取消状态变化时的特殊逻辑
+	virtual void HandleChangeAbilityCanBeCanceled(const FGameplayTagContainer& AbilityTags, UGameplayAbility* RequestingAbility, bool bCanBeCanceled) override;
+	
+	// 尝试激活所有OnSpawn激活策略的技能
 	void TryActivateAbilitiesOnSpawn();
 	
 	///////////////// 基于玩家输入+GameplayTag驱动的技能激活/取消功能 /////////////////
@@ -313,4 +337,9 @@ public:
 	 * @param bReplicateCancelAbility 是否复制取消事件到网络
 	 */
 	void CancelAbilitiesByFunc(const TShouldCancelAbilityFunc& ShouldCancelFunc, bool bReplicateCancelAbility);
+	
+private:
+	// 标签关系映射表，用于查询技能激活时的标签依赖和阻挡关系
+	UPROPERTY()
+	TObjectPtr<UYcAbilityTagRelationshipMapping> TagRelationshipMapping;
 };

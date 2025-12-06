@@ -24,7 +24,8 @@ public class YiChenAbility : ModuleRules
                 "CoreUObject",
                 "Engine",
                 "Slate",
-                "SlateCore"
+                "SlateCore", 
+                "YiChenGameCore", 
             }
         );
     }

@@ -145,8 +145,34 @@ bool UYcGameplayAbility::DoesAbilitySatisfyTagRequirements(const UAbilitySystemC
 	return true;
 }
 
+FGameplayEffectContextHandle UYcGameplayAbility::MakeEffectContext(const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo) const
+{
+	FGameplayEffectContextHandle ContextHandle = Super::MakeEffectContext(Handle, ActorInfo);
+
+	FYcGameplayEffectContext* EffectContext = FYcGameplayEffectContext::ExtractEffectContext(ContextHandle);
+	check(EffectContext);
+
+	check(ActorInfo);
+
+	AActor* EffectCauser = nullptr;
+	const IYcAbilitySourceInterface* AbilitySource = nullptr;
+	float SourceLevel = 0.0f;
+	GetAbilitySource(Handle, ActorInfo, /*out*/ SourceLevel, /*out*/ AbilitySource, /*out*/ EffectCauser);
+
+	const UObject* SourceObject = GetSourceObject(Handle, ActorInfo);
+
+	AActor* Instigator = ActorInfo ? ActorInfo->OwnerActor.Get() : nullptr;
+
+	EffectContext->SetAbilitySource(AbilitySource, SourceLevel);
+	EffectContext->AddInstigator(Instigator, EffectCauser);
+	EffectContext->AddSourceObject(SourceObject);
+
+	return ContextHandle;
+}
+
 void UYcGameplayAbility::GetAbilitySource(FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
-	float& OutSourceLevel, const IYcAbilitySourceInterface*& OutAbilitySource, AActor*& OutEffectCauser) const
+                                          float& OutSourceLevel, const IYcAbilitySourceInterface*& OutAbilitySource, AActor*& OutEffectCauser) const
 {
 	OutSourceLevel = 0.0f;
 	OutAbilitySource = nullptr;

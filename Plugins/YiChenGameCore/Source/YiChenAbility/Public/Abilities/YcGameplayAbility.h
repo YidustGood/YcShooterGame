@@ -81,6 +81,8 @@ protected:
 	virtual void OnRemoveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
 	/** 检查技能是否满足标签要求（无阻挡标签、有所有必需标签） */
 	virtual bool DoesAbilitySatisfyTagRequirements(const UAbilitySystemComponent& AbilitySystemComponent, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr, OUT FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
+	/** 重写MakeEffectContext, 用我们自定义版本的, 扩展了SourceObject信息 */
+	virtual FGameplayEffectContextHandle MakeEffectContext(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo) const override;
 	//~End of UGameplayAbility interface
 	
 	// 获取技能的源信息（等级、源对象、效果施加者）

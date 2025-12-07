@@ -21,6 +21,7 @@ public class YiChenGameplay : ModuleRules
             {
                 "CoreUObject",
                 "Engine",
+                "NetCore",
                 "Slate",
                 "SlateCore",
                 "YiChenAbility",
@@ -29,7 +30,10 @@ public class YiChenGameplay : ModuleRules
                 "ModularGameplayActors",
                 "ModularGameplay",
                 "GameplayTags", 
-                "GameFeatures"
+                "GameFeatures",
+                "DeveloperSettings",
+                "CommonUser",
+                "EngineSettings",
             }
         );
     }

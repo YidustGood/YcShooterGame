@@ -20,4 +20,12 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "YcGameCore|PlayerController")
 	AYcPlayerState* GetYcPlayerState() const;
+	
+	UFUNCTION(BlueprintCallable, Category = "YcGameCore|PlayerController")
+	UYcAbilitySystemComponent* GetYcAbilitySystemComponent() const;
+	
+	//~APlayerController interface
+	virtual void PreProcessInput(const float DeltaTime, const bool bGamePaused) override;
+	virtual void PostProcessInput(const float DeltaTime, const bool bGamePaused) override;
+	//~End of APlayerController interface
 };

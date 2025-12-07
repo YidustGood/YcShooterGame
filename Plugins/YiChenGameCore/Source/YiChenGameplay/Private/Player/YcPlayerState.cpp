@@ -2,23 +2,29 @@
 
 
 #include "Player/YcPlayerState.h"
+
+#include "YcAbilitySet.h"
 #include "YcAbilitySystemComponent.h"
 #include "YiChenGameplay.h"
 #include "Player/YcPlayerController.h"
 #include "Character/YcPawnData.h"
+#include "Components/GameFrameworkComponentManager.h"
 #include "GameModes/YcExperienceManagerComponent.h"
 #include "GameModes/YcGameMode.h"
 #include "Net/UnrealNetwork.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcPlayerState)
 
-class UYcExperienceManagerComponent;
+const FName AYcPlayerState::NAME_YcAbilityReady("YcAbilitiesReady");
 
 AYcPlayerState::AYcPlayerState(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
+	AbilitySystemComponent = ObjectInitializer.CreateDefaultSubobject<UYcAbilitySystemComponent>(this, TEXT("AbilitySystemComponent"));
+	AbilitySystemComponent->SetIsReplicated(true);
+	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 	
-	// AbilitySystemComponent needs to be updated at a high frequency.
+	// ASC需要以较高的频率进行更新。
 	SetNetUpdateFrequency(100.0f);
 }
 
@@ -35,6 +41,12 @@ AYcPlayerController* AYcPlayerState::GetYcPlayerController() const
 {
 	return Cast<AYcPlayerController>(GetOwner());
 }
+
+UAbilitySystemComponent* AYcPlayerState::GetAbilitySystemComponent() const
+{
+	return GetYcAbilitySystemComponent();
+}
+
 void AYcPlayerState::SetPawnData(const UYcPawnData* InPawnData)
 {
 	check(InPawnData);
@@ -53,7 +65,17 @@ void AYcPlayerState::SetPawnData(const UYcPawnData* InPawnData)
 	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, PawnData, this);
 	PawnData = InPawnData;
 	
-	// @TODO 将PawnData中的AbilitySet授予PS的ASC
+	// 遍历PawnData->AbilitySets中的技能授予ASC组件
+	for (const UYcAbilitySet* AbilitySet : PawnData->AbilitySets)
+	{
+		if (AbilitySet)
+		{
+			AbilitySet->GiveToAbilitySystem(AbilitySystemComponent, nullptr);
+		}
+	}
+	
+	/** PawnData并且将其中的AbilitySet赋予了ASC组件, 发送一个可以被其他模块的游戏框架控制系统监听的事件 */
+	UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(this, NAME_YcAbilityReady);
 
 	ForceNetUpdate(); //强制更新到客户端(强制立刻同步)
 }

@@ -92,7 +92,7 @@ UYcEquipmentInstance* FYcEquipmentList::AddEntry(const FYcEquipmentDefinition& E
 	}
 	else
 	{
-		UE_LOG(LogYcEquipment, Warning, TEXT("装备尝试给玩家应用装备附带的AbilitySet失败，OwnerPawn的AbilitySystemComponent对象无效。"));
+		UE_LOG(LogYcEquipment, Error, TEXT("装备尝试给玩家应用装备附带的AbilitySet失败，OwnerPawn的AbilitySystemComponent对象无效。"));
 	}
 	
 	// 4. 生成装备附带的Actor并附加到玩家角色身

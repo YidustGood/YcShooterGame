@@ -28,4 +28,9 @@ public:
 	virtual void PreProcessInput(const float DeltaTime, const bool bGamePaused) override;
 	virtual void PostProcessInput(const float DeltaTime, const bool bGamePaused) override;
 	//~End of APlayerController interface
+	
+	//~AController interface
+	virtual void OnPossess(APawn* InPawn) override;
+	virtual void OnUnPossess() override;
+	//~End of AController interface
 };

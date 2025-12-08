@@ -8,6 +8,7 @@
 #include "YiChenGameplay.h"
 #include "Player/YcPlayerController.h"
 #include "Character/YcPawnData.h"
+#include "Character/YcPawnExtensionComponent.h"
 #include "Components/GameFrameworkComponentManager.h"
 #include "GameModes/YcExperienceManagerComponent.h"
 #include "GameModes/YcGameMode.h"
@@ -88,6 +89,10 @@ void AYcPlayerState::PreInitializeComponents()
 void AYcPlayerState::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
+	
+	check(AbilitySystemComponent);
+	// 需要主动设置AvatarActor为操作的Pawn, 否则默认Avatar就是PlayerState了
+	AbilitySystemComponent->InitAbilityActorInfo(this, GetPawn()); 
 
 	const UWorld* World = GetWorld();
 	if (World && World->IsGameWorld() && World->GetNetMode() != NM_Client)
@@ -98,6 +103,17 @@ void AYcPlayerState::PostInitializeComponents()
 		check(ExperienceComponent);
 		// 向ExperienceComponent注册OnExperienceLoaded的回调, 以响应游戏体验加载完成事件
 		ExperienceComponent->CallOrRegister_OnExperienceLoaded(FOnYcExperienceLoaded::FDelegate::CreateUObject(this, &ThisClass::OnExperienceLoaded));
+	}
+}
+
+void AYcPlayerState::ClientInitialize(AController* C)
+{
+	Super::ClientInitialize(C);
+	
+	if (UYcPawnExtensionComponent* PawnExtComp = UYcPawnExtensionComponent::FindPawnExtensionComponent(GetPawn()))
+	{
+		// PlayerState现在在客户端有效了, 推进PawnExtComp的初始化进度
+		PawnExtComp->CheckDefaultInitialization();
 	}
 }
 

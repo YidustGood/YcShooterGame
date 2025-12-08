@@ -46,6 +46,10 @@ protected:
 	virtual void PostInitializeComponents() override;
 	//~End of AActor interface
 	
+	//~APlayerState interface
+	/** PlayerState首次复制到达客户端时调用 */
+	virtual void ClientInitialize(AController* C) override;
+	//~End of APlayerState interface
 private:
 	// 当游戏体验加载完成时的回调
 	void OnExperienceLoaded(const UYcExperienceDefinition* CurrentExperience);

@@ -3,7 +3,8 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
-#define DEBUG_INIT_STATE 1
+#define DEBUG_INIT_STATE 0
+#define DEBUG_INPUT_STATE 1
 
 YICHENGAMEPLAY_API DECLARE_LOG_CATEGORY_EXTERN(LogYcGameplay, Log, All);
 YICHENGAMEPLAY_API DECLARE_LOG_CATEGORY_EXTERN(LogYcInput, Log, All);

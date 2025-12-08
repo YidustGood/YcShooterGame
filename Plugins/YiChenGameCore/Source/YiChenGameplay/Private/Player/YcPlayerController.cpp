@@ -3,6 +3,7 @@
 
 #include "Player/YcPlayerController.h"
 
+#include "AbilitySystemGlobals.h"
 #include "YcAbilitySystemComponent.h"
 #include "Player/YcPlayerState.h"
 
@@ -37,4 +38,29 @@ void AYcPlayerController::PostProcessInput(const float DeltaTime, const bool bGa
 	}
 
 	Super::PostProcessInput(DeltaTime, bGamePaused);
+}
+
+void AYcPlayerController::OnPossess(APawn* InPawn)
+{
+	Super::OnPossess(InPawn);
+}
+
+void AYcPlayerController::OnUnPossess()
+{
+	/**
+	 * 确保被解除控制的Pawn不会继续作为我们技能系统组件（ASC）的Avatar
+	 * ASC挂载在PlayerState上的生命周期比Pawn长, 所以必须处理, 否则会出现指向不受我们控制的Pawn
+	 * 例如我们解除了对某个Pawn的控制, 但还没控制新的Pawn, 如果此时不清除可能会错误的影响已经不受我们操控的Pawn
+	 */
+	if (const APawn* PawnBeingUnpossessed = GetPawn())
+	{
+		if (UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(PlayerState))
+		{
+			if (ASC->GetAvatarActor() == PawnBeingUnpossessed)
+			{
+				ASC->SetAvatarActor(nullptr);
+			}
+		}
+	}
+	Super::OnUnPossess();
 }

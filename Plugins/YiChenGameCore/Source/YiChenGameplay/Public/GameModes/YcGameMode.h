@@ -23,11 +23,19 @@ class YICHENGAMEPLAY_API AYcGameMode : public AModularGameModeBase
 public:
 	AYcGameMode(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 	
-	virtual void BeginPlay() override;
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	
 	//~AGameModeBase interface
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
+	virtual void InitGameState() override;
+	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
+	virtual UClass* GetDefaultPawnClassForController_Implementation(AController* InController) override;
+	/** 开始为玩家生成默认Pawn的一步,内部会转发调用SpawnDefaultPawnAtTransform,如果要拦截生成的Pawn对象可以在此进行,例如玩家重连后在这个函数中直接查找先前的Pawn返回给玩家继续操作 */
+	virtual APawn* SpawnDefaultPawnFor_Implementation(AController* NewPlayer, AActor* StartSpot) override;
+	/** 生成玩Pawn的地方, 我们重写了逻辑, 如果experience还未加载完成, 就不会在这里生成, 而是在OnOnExperienceLoaded中生成 */
+	virtual APawn* SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform) override;
+	virtual bool ShouldSpawnAtStartSpot(AController* Player) override;
+	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+	virtual void FinishRestartPlayer(AController* NewPlayer, const FRotator& StartRotation) override;
+	virtual bool PlayerCanRestart_Implementation(APlayerController* Player) override;
 	//~End of AGameModeBase interface
 	
 	/**

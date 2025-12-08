@@ -44,12 +44,12 @@ struct FYcGameplayEffectContext : public FGameplayEffectContext
 
 	/**
 	 * 获取技能效果的源接口
-	 * 仅在权限端有效
+	 * 仅在权威端有效
 	 * @return 源对象实现的IYcAbilitySourceInterface接口
 	 */
 	const IYcAbilitySourceInterface* GetAbilitySource() const;
 
-	/** 复制效果上下文，包括深拷贝碰撞结果 */
+	/** 复制FGameplayEffectContext，包括深拷贝HitResult */
 	virtual FGameplayEffectContext* Duplicate() const override
 	{
 		FYcGameplayEffectContext* NewContext = new FYcGameplayEffectContext();

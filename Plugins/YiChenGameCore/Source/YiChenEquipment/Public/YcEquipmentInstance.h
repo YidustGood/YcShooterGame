@@ -71,9 +71,9 @@ public:
 	 *     Equipment->GetTypedFragment<FEquipmentFragment_WeaponStats>();
 	 */
 	template <typename FragmentType>
-	const FragmentType* GetTypedFragment() const
+	const FragmentType* GetTypedFragment()
 	{
-		if (!EquipmentDef) return nullptr;
+		if (!GetEquipmentDef()) return nullptr;
 		return EquipmentDef->GetTypedFragment<FragmentType>();
 	}
 	

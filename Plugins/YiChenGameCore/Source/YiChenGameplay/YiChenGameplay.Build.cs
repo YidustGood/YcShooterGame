@@ -34,6 +34,7 @@ public class YiChenGameplay : ModuleRules
                 "DeveloperSettings",
                 "CommonUser",
                 "EngineSettings",
+                "UMG",
             }
         );
     }

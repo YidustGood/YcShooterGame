@@ -6,6 +6,9 @@
 #include "Components/PawnComponent.h"
 #include "YcPawnExtensionComponent.generated.h"
 
+/** 当UYcPawnExtensionComponent组件初始化状态进入GameReady时的委托, 表示Pawn功能已经准备就绪 */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FPawnExtensionReadyDelegate);
+
 class UYcAbilitySystemComponent;
 class UYcPawnData;
 
@@ -30,6 +33,17 @@ public:
     UYcPawnExtensionComponent(const FObjectInitializer& ObjectInitializer);
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     
+	/** 当UYcPawnExtensionComponent组件初始化状态进入GameReady时的委托, 表示Pawn功能已经准备就绪 */
+	UPROPERTY(BlueprintAssignable)
+	FPawnExtensionReadyDelegate OnExtensionReady;
+	
+	/**
+	 * 获取扩展功能是否准备好, 在准备好后我们访问Pawn的一系列功能才安全
+	 * 例如ASC组件是由PlayerState持有, 需要经过一些列初始化操作才能正常使用ASC组件
+	 */
+	UFUNCTION(BlueprintCallable, Category = "YcGameCore|Pawn")
+	bool IsExtensionReady() const {return bExtensionReady; };
+	
     /**
      * 在指定Actor上查找Pawn扩展组件。
      * @param Actor 要查找的Actor
@@ -174,4 +188,8 @@ private:
     /** 缓存的技能系统组件指针，便于快速访问 */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "YcGameCore|Pawn", meta=(AllowPrivateAccess = "true"))
     TObjectPtr<UYcAbilitySystemComponent> AbilitySystemComponent;
+	
+	/** 标记当前组件是否进入GameReady状态 */
+	bool bExtensionReady;
+
 };

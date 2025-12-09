@@ -175,6 +175,12 @@ void UYcPawnExtensionComponent::OnActorInitStateChanged(const FActorInitStateCha
 		UE_LOG(LogYcGameplay, Log, TEXT("YcPawnExtension: %s %s Feature Component is Ready. LocalRole= %s"),
 		       *GetNameSafe(GetOwner()), *Params.FeatureName.ToString(), *RoleName);
 	}
+	
+	// 当该组件状态进入GameReady后广播通知
+	if (Params.FeatureName == NAME_ActorFeatureName && Params.FeatureState == YcGameplayTags::InitState_GameplayReady)
+	{
+		OnExtensionReady.Broadcast();
+	}
 }
 
 void UYcPawnExtensionComponent::CheckDefaultInitialization()

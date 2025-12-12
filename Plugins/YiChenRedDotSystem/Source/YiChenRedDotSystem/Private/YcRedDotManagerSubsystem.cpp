@@ -10,6 +10,27 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcRedDotManagerSubsystem)
 
+// ==================== 性能追踪宏定义 ====================
+// 用于追踪关键函数的 CPU 耗时，可通过 Unreal Insights 或日志查看
+
+#define YC_REDDOT_SCOPE_CYCLE_COUNTER(CounterName) \
+	SCOPE_CYCLE_COUNTER(STAT_YcRedDot_##CounterName)
+
+// 条件编译：仅在 WITH_REDDOT_PROFILING 启用时进行详细追踪
+#if !defined(WITH_REDDOT_PROFILING)
+	#define WITH_REDDOT_PROFILING (UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT)
+#endif
+
+// ==================== 性能计数器声明 ====================
+DECLARE_STATS_GROUP(TEXT("YcRedDot"), STATGROUP_YcRedDot, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("AddRedDotCount"), STAT_YcRedDot_AddRedDotCount, STATGROUP_YcRedDot);
+DECLARE_CYCLE_STAT(TEXT("BroadcastRedDotChangedForward"), STAT_YcRedDot_BroadcastRedDotChangedForward, STATGROUP_YcRedDot);
+DECLARE_CYCLE_STAT(TEXT("FindAllChildTags"), STAT_YcRedDot_FindAllChildTags, STATGROUP_YcRedDot);
+DECLARE_CYCLE_STAT(TEXT("InvalidateTagHierarchyCache"), STAT_YcRedDot_InvalidateTagHierarchyCache, STATGROUP_YcRedDot);
+DECLARE_CYCLE_STAT(TEXT("ClearRedDotStateInBranch"), STAT_YcRedDot_ClearRedDotStateInBranch, STATGROUP_YcRedDot);
+DECLARE_CYCLE_STAT(TEXT("RegisterRedDotStateChangedListener"), STAT_YcRedDot_RegisterRedDotStateChangedListener, STATGROUP_YcRedDot);
+DECLARE_CYCLE_STAT(TEXT("BroadcastRedDotCleared"), STAT_YcRedDot_BroadcastRedDotCleared, STATGROUP_YcRedDot);
+
 void FYcRedDotStateChangedListenerHandle::Unregister()
 {
 	
@@ -85,9 +106,11 @@ void UYcRedDotManagerSubsystem::RegisterRedDotTag(FGameplayTag RedDotTag)
 
 void UYcRedDotManagerSubsystem::AddRedDotCount(FGameplayTag RedDotTag, int32 Count)
 {
+	YC_REDDOT_SCOPE_CYCLE_COUNTER(AddRedDotCount);
+	
 	if (!RedDotTag.IsValid())
 	{
-		UE_LOG(LogYcRedDot, Warning, TEXT("Invalid RedDotTag provided to SetRedDotState"));
+		UE_LOG(LogYcRedDot, Warning, TEXT("Invalid RedDotTag provided to RegisterRedDotTag"));
 		return;
 	}
 	
@@ -151,6 +174,8 @@ void UYcRedDotManagerSubsystem::GetAllRedDotInfos(TArray<FRedDotInfo>& InOutRedD
 
 void UYcRedDotManagerSubsystem::ClearRedDotStateInBranch(const FGameplayTag& ParentTag)
 {
+	YC_REDDOT_SCOPE_CYCLE_COUNTER(ClearRedDotStateInBranch);
+	
 	if (!ParentTag.IsValid()) return;
 	
 	// 父节点向上更新穿透数据
@@ -203,6 +228,8 @@ FYcRedDotStateChangedListenerHandle UYcRedDotManagerSubsystem::RegisterRedDotSta
 
 void UYcRedDotManagerSubsystem::BroadcastRedDotChangedForward(FGameplayTag RedDotTag, const FRedDotInfo* RedDotInfo)
 {
+	YC_REDDOT_SCOPE_CYCLE_COUNTER(BroadcastRedDotChangedForward);
+	
 	// 标记是否为初始标签, 因为我们会在循环中向前寻找父标签， 只有在第一次循环才是使用的初始标签
 	bool bOnInitialTag = true;
 	int Delta = RedDotInfo->Delta;
@@ -295,6 +322,8 @@ void UYcRedDotManagerSubsystem::UpdateRedDotState(const FGameplayTag& RedDotTag,
 
 TArray<FGameplayTag> UYcRedDotManagerSubsystem::FindAllChildTags(const FGameplayTag& ParentTag) const
 {
+	YC_REDDOT_SCOPE_CYCLE_COUNTER(FindAllChildTags);
+	
 	// 检查缓存，如果存在直接返回
 	if (const TArray<FGameplayTag>* CachedChildren = TagHierarchyCache.Find(ParentTag))
 	{
@@ -319,6 +348,8 @@ TArray<FGameplayTag> UYcRedDotManagerSubsystem::FindAllChildTags(const FGameplay
 
 void UYcRedDotManagerSubsystem::InvalidateTagHierarchyCache(const FGameplayTag& NewTag)
 {
+	YC_REDDOT_SCOPE_CYCLE_COUNTER(InvalidateTagHierarchyCache);
+	
 	if (!NewTag.IsValid())
 	{
 		return;

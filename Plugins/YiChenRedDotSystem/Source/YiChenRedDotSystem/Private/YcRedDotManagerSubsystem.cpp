@@ -43,11 +43,11 @@ void FYcRedDotStateChangedListenerHandle::Unregister()
 	}
 }
 
-void FYcRedRelierListenerHandle::Unregister()
+void FYcRedDotDataProviderHandle::Unregister()
 {
 	if (UYcRedDotManagerSubsystem* StrongSubsystem = Subsystem.Get())
 	{
-		StrongSubsystem->UnregisterRelierListener(*this);
+		StrongSubsystem->UnregisterRedDotDataProvider(*this);
 		Subsystem.Reset();
 		RedDotTag = FGameplayTag();
 		ID = 0;
@@ -278,7 +278,7 @@ void UYcRedDotManagerSubsystem::BroadcastRedDotCleared(FGameplayTag RedDotTag)
 {
 	const FYcRedDotListenerList* pList = ListenerMap.Find(RedDotTag);
 	if (pList == nullptr) return;
-	TArray<FYcRedRelierData> RedRelierArray(pList->Reliers);
+	TArray<FYcRedDotDataProviderData> RedRelierArray(pList->DataProviders);
 	for (auto& Relier : RedRelierArray)
 	{
 		if (Relier.ClearedCallback.IsSet())
@@ -288,15 +288,15 @@ void UYcRedDotManagerSubsystem::BroadcastRedDotCleared(FGameplayTag RedDotTag)
 	}
 }
 
-FYcRedRelierListenerHandle UYcRedDotManagerSubsystem::RegisterRelier(FGameplayTag RedDotTag, TFunction<void()>&& Callback)
+FYcRedDotDataProviderHandle UYcRedDotManagerSubsystem::RegisterRedDotDataProvider(FGameplayTag RedDotTag, TFunction<void()>&& Callback)
 {
 	FYcRedDotListenerList& List = ListenerMap.FindOrAdd(RedDotTag);
 	
-	FYcRedRelierData& Relier = List.Reliers.AddDefaulted_GetRef();
+	FYcRedDotDataProviderData& Relier = List.DataProviders.AddDefaulted_GetRef();
 	Relier.ClearedCallback = Callback;
 	Relier.RedDotTag = RedDotTag;
 	Relier.HandleID = ++List.HandleID;
-	FYcRedRelierListenerHandle Handle = FYcRedRelierListenerHandle(this, RedDotTag, Relier.HandleID);
+	FYcRedDotDataProviderHandle Handle = FYcRedDotDataProviderHandle(this, RedDotTag, Relier.HandleID);
 	
 	return Handle;
 }
@@ -388,25 +388,25 @@ void UYcRedDotManagerSubsystem::UnregisterStateChangedListener(FYcRedDotStateCha
 			pList->Listeners.RemoveAtSwap(MatchIndex);
 		}
 
-		if (pList->Listeners.Num() == 0)
+		if (pList->Listeners.Num() == 0 && pList->DataProviders.Num() == 0)
 		{
 			ListenerMap.Remove(Handle.RedDotTag);
 		}
 	}
 }
 
-void UYcRedDotManagerSubsystem::UnregisterRelierListener(FYcRedRelierListenerHandle Handle)
+void UYcRedDotManagerSubsystem::UnregisterRedDotDataProvider(FYcRedDotDataProviderHandle Handle)
 {
 	if (FYcRedDotListenerList* pList = ListenerMap.Find(Handle.RedDotTag))
 	{
-		int32 MatchIndex = pList->Reliers.IndexOfByPredicate([ID = Handle.ID](const FYcRedRelierData& Other) { return Other.HandleID == ID; });
+		int32 MatchIndex = pList->DataProviders.IndexOfByPredicate([ID = Handle.ID](const FYcRedDotDataProviderData& Other) { return Other.HandleID == ID; });
 		if (MatchIndex != INDEX_NONE)
 		{
-			pList->Reliers.RemoveAtSwap(MatchIndex);
+			pList->DataProviders.RemoveAtSwap(MatchIndex);
 		}
 		
 		
-		if (pList->Reliers.Num() == 0)
+		if (pList->DataProviders.Num() == 0 && pList->Listeners.Num() == 0)
 		{
 			ListenerMap.Remove(Handle.RedDotTag);
 		}

@@ -113,21 +113,21 @@ struct YICHENREDDOTSYSTEM_API FYcRedDotStateChangedListenerData
 };
 
 /** 
- * 红点标签依赖者数据(依赖者也可以理解为红点标签的红点数据贡献者, 红点标签数据是由所有依赖者聚合而来)
- * 用于记录RedDotTag被哪些项目UI依赖, 在RedDotTag发生清理事件时利用这里的函数指针通知依赖者清理其红点数据
+ * 红点数据提供者绑定数据(这就是为红点标签的红点数据做贡献的目标对象包装, 红点标签数据是由所有提供者提供的数据聚合而来)
+ * 用于记录RedDotTag与那些提供者有关, 在RedDotTag发生清理事件时利用这里的回调函数通知提供者清理它们自身的红点数据
  */
 USTRUCT()
-struct YICHENREDDOTSYSTEM_API FYcRedRelierData
+struct YICHENREDDOTSYSTEM_API FYcRedDotDataProviderData
 {
     GENERATED_BODY()
 
-    // 红点标签清空时要调用的回调函数, 用于通知依赖者清空红点状态及数量
+    // 红点标签清空时要调用的回调函数, 用于通知提供者清空红点数据状态
     TFunction<void()> ClearedCallback;
 	
-    // 所依赖的RedDotTag
+    // 提供者要提供的目标RedDotTag
     UPROPERTY(Transient)
     FGameplayTag RedDotTag;
 	
-    // 记录这个Tag的第几个依赖者
+    // 记录这个Tag的第几个提供者
     int32 HandleID; 
 };

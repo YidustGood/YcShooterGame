@@ -61,5 +61,5 @@ private:
 	TWeakObjectPtr<UWorld> WorldPtr;
 	FGameplayTag RedDotTag;
 	
-	FYcRedRelierListenerHandle ListenerHandle;
+	FYcRedDotDataProviderHandle ListenerHandle;
 };

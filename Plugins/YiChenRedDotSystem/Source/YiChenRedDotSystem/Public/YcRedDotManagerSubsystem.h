@@ -50,19 +50,19 @@ private:
 };
 
 /**
- * 红点依赖者的 Handle，用于管理依赖者的生命周期
- * 通过 RegisterRelier() 获取该 Handle
- * 调用 Unregister() 可注销该依赖者
+ * 红点数据提供者的 Handle，用于管理提供者的一些回调绑定生命周期
+ * 通过 RegisterRedDotDataProvider() 获取该 Handle
+ * 调用 Unregister() 可注销
  */
 USTRUCT(BlueprintType)
-struct YICHENREDDOTSYSTEM_API FYcRedRelierListenerHandle
+struct YICHENREDDOTSYSTEM_API FYcRedDotDataProviderHandle
 {
 	GENERATED_BODY()
 
-	FYcRedRelierListenerHandle() {}
+	FYcRedDotDataProviderHandle() {}
 
 	/**
-	 * 注销该依赖者，停止接收红点清除通知
+	 * 注销停止接收红点清除通知
 	 * @note 调用后该 Handle 会变为无效状态（ID 被重置为 0）
 	 */
 	void Unregister();
@@ -85,7 +85,7 @@ private:
 
 	friend UYcRedDotManagerSubsystem;
 
-	FYcRedRelierListenerHandle(UYcRedDotManagerSubsystem* InSubsystem, FGameplayTag InRedDotTag, int32 InId) : Subsystem(InSubsystem), RedDotTag(InRedDotTag), ID(InId) {}
+	FYcRedDotDataProviderHandle(UYcRedDotManagerSubsystem* InSubsystem, FGameplayTag InRedDotTag, int32 InId) : Subsystem(InSubsystem), RedDotTag(InRedDotTag), ID(InId) {}
 };
 
 
@@ -176,8 +176,8 @@ public:
 	 * @param ParentTag 父标签。该函数会清除该标签及其所有子标签的红点数据
 	 * @note 该函数会：
 	 *   1. 将父标签的 Count 设置为 0，并触发向上穿透更新
-	 *   2. 调用 BroadcastRedDotCleared(ParentTag) 通知所有依赖者
-	 *   3. 将所有子标签的 Count 设置为 0，并调用 BroadcastRedDotCleared 通知依赖者
+	 *   2. 调用 BroadcastRedDotCleared(ParentTag) 通知红点标签所有提供者
+	 *   3. 将所有子标签的 Count 设置为 0，并调用 BroadcastRedDotCleared 通知相关的提供者让它们清除红点数据状态
 	 * @note 仅会处理已注册在 RedDotStates 中的标签
 	 */
 	UFUNCTION(BlueprintCallable, Category = "RedDot|Batch")
@@ -200,14 +200,13 @@ public:
 		bool bUnregisterOnWorldDestroyed);
 	
 	/**
-	 * 注册红点依赖者，在红点被清除时触发回调
-	 * @param RedDotTag 要依赖的红点标签
+	 * 注册红点提供者, 包含了清理回调函数, 在红点被清除时触发回调
+	 * @param RedDotTag 提供者要提供数据的目标红点标签
 	 * @param Callback 红点被清除时的回调函数，无参数
-	 * @return 依赖者 Handle，用于后续注销。调用 Handle.Unregister() 可手动注销
+	 * @return 提供者 Handle，用于后续注销。调用 Handle.Unregister() 可手动注销
 	 * @note 回调函数会在 BroadcastRedDotCleared 中被调用
-	 * @note 依赖者用于在红点清除时通知相关 UI 或逻辑进行清理
 	 */
-	FYcRedRelierListenerHandle RegisterRelier(FGameplayTag RedDotTag, TFunction<void()>&& Callback);
+	FYcRedDotDataProviderHandle RegisterRedDotDataProvider(FGameplayTag RedDotTag, TFunction<void()>&& Callback);
 
 protected:
 	/** 获取或创建红点信息 */
@@ -240,14 +239,14 @@ protected:
 	/** 单一节点广播红点变化事件, 用于清理子节点红点数据 */
 	void BroadcastRedDotChangedSingle(FGameplayTag RedDotTag, const FRedDotInfo* RedDotInfo);
 	
-	/** 清理目标红点, 内部调用所有相关依赖者回调函数, 以实现清理依赖者数据 */
+	/** 清理目标红点, 内部调用所有相关提供者的清理事件回调函数, 以实现通知提供者者清理数据 */
 	void BroadcastRedDotCleared(FGameplayTag RedDotTag);
 	
 	/** 注销红点数据状态监听者 */
 	void UnregisterStateChangedListener(FYcRedDotStateChangedListenerHandle Handle);
 	
-	/** 注销红点依赖者 */
-	void UnregisterRelierListener(FYcRedRelierListenerHandle Handle);
+	/** 注销红点提供者 */
+	void UnregisterRedDotDataProvider(FYcRedDotDataProviderHandle Handle);
 
 private:
 	/**
@@ -272,32 +271,32 @@ private:
 	TMap<FGameplayTag, TArray<FGameplayTag>> TagHierarchyCache;
 	
 	/**
-	 * 红点监听者和依赖者列表容器
-	 * 存储某个红点标签对应的所有监听者和依赖者
+	 * 红点监听者和数据提供者包装
+	 * 存储一个红点标签所有的状态变化监听者和数据提供者
 	 */
 	struct FYcRedDotListenerList
 	{
 		/** 该标签的所有状态变化监听者 */
 		TArray<FYcRedDotStateChangedListenerData> Listeners;
 		
-		/** 该标签的所有依赖者（在清除时触发回调） */
-		TArray<FYcRedRelierData> Reliers;
+		/** 该标签的所有数据提供者（这里主要是用于清除时触发提供者清除回调, 以便提供者能清理自身数据状态） */
+		TArray<FYcRedDotDataProviderData> DataProviders;
 		
 		/** Handle ID 计数器，用于生成唯一的 Handle ID */
 		int32 HandleID = 0;
 	};
 
 	/**
-	 * 监听者和依赖者映射表
-	 * 存储每个红点标签对应的监听者和依赖者列表
+	 * 监听者和提供者监听映射表
+	 * 存储每个红点标签对应的监听者和提供者列表
 	 * Key: 红点标签
-	 * Value: 该标签的监听者和依赖者列表（FYcRedDotListenerList）
-	 * @note 通过 RegisterRedDotStateChangedListener() 和 RegisterRelier() 进行修改
+	 * Value: 该标签的监听者和提供者列表（FYcRedDotListenerList）
+	 * @note 通过 RegisterRedDotStateChangedListener() 和 RegisterRedDotDataProvider() 进行修改
 	 * @note 在 BroadcastRedDotChangedForward()、BroadcastRedDotChangedSingle() 和 BroadcastRedDotCleared() 中查询
-	 * @note 当监听者或依赖者列表为空时，会从 ListenerMap 中移除该标签条目
+	 * @note 当监听者或提供者列表为空时，会从 ListenerMap 中移除该标签条目
 	 */
 	TMap<FGameplayTag, FYcRedDotListenerList> ListenerMap;
 	
 	friend FYcRedDotStateChangedListenerHandle;
-	friend FYcRedRelierListenerHandle;
+	friend FYcRedDotDataProviderHandle;
 };

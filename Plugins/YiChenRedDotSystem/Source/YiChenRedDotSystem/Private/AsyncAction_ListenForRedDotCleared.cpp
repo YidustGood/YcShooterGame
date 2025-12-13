@@ -33,7 +33,7 @@ void UAsyncAction_ListenForRedDotCleared::Activate()
 			UYcRedDotManagerSubsystem& RedDotManager = UYcRedDotManagerSubsystem::Get(World);
 
 			TWeakObjectPtr<UAsyncAction_ListenForRedDotCleared> WeakThis(this);
-			ListenerHandle = RedDotManager.RegisterRelier(RedDotTag,
+			ListenerHandle = RedDotManager.RegisterRedDotDataProvider(RedDotTag,
 				[WeakThis]()
 				{
 					if (UAsyncAction_ListenForRedDotCleared* StrongThis = WeakThis.Get())

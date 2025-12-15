@@ -235,22 +235,25 @@ void UYcRedDotManagerSubsystem::BroadcastRedDotChangedForward(FGameplayTag RedDo
 	int Delta = RedDotInfo->Delta;
 	for (FGameplayTag Tag = RedDotTag; Tag.IsValid(); Tag = Tag.RequestDirectParent())
 	{
-		const FYcRedDotListenerList* pList = ListenerMap.Find(Tag);
-		FRedDotInfo* ParentRedDotInfo =  RedDotStates.Find(Tag);
-		if (pList == nullptr || ParentRedDotInfo == nullptr) continue;
+		// 必须用GetOrCreateRedDotInfo(), 以确保ParentTag能被注册在RedDotStates中, 否则会丢失父级节点统计数据
+		FRedDotInfo* ParentRedDotInfo = &GetOrCreateRedDotInfo(Tag);
+		if (ParentRedDotInfo == nullptr) continue;
 		if (!bOnInitialTag)
 		{
 			ParentRedDotInfo->Count += Delta;
 		}
-		// Copy in case there are removals while handling callbacks
-		TArray<FYcRedDotStateChangedListenerData> ListenerArray(pList->Listeners);
-		// 遍历当前标签的监听列表
-		for (const FYcRedDotStateChangedListenerData& Listener : ListenerArray)
+		
+		// 如果存在监听者, 就调用监听者回调通知数量发生改变
+		const FYcRedDotListenerList* pList = ListenerMap.Find(Tag);
+		if(pList != nullptr)
 		{
-			if (!bOnInitialTag && Listener.MatchType != EYcRedDotTagMatch::PartialMatch) continue;
-			
-			if (Listener.ReceivedCallback.IsSet())
+			// 复制以防在处理回调时出现删除情况
+			TArray<FYcRedDotStateChangedListenerData> ListenerArray(pList->Listeners);
+			// 遍历当前标签的监听列表
+			for (const FYcRedDotStateChangedListenerData& Listener : ListenerArray)
 			{
+				if (!bOnInitialTag && Listener.MatchType != EYcRedDotTagMatch::PartialMatch) continue;
+				if (!Listener.ReceivedCallback.IsSet()) continue;
 				Listener.ReceivedCallback(RedDotTag, ParentRedDotInfo);
 			}
 		}
@@ -260,7 +263,7 @@ void UYcRedDotManagerSubsystem::BroadcastRedDotChangedForward(FGameplayTag RedDo
 
 void UYcRedDotManagerSubsystem::BroadcastRedDotChangedSingle(FGameplayTag RedDotTag, const FRedDotInfo* RedDotInfo)
 {
-	const FYcRedDotListenerList* pList = ListenerMap.Find(RedDotTag);
+	const FYcRedDotListenerList* pList = &ListenerMap.FindOrAdd(RedDotTag);
 	if (pList == nullptr) return;
 	// Copy in case there are removals while handling callbacks
 	TArray<FYcRedDotStateChangedListenerData> ListenerArray(pList->Listeners);
@@ -276,7 +279,7 @@ void UYcRedDotManagerSubsystem::BroadcastRedDotChangedSingle(FGameplayTag RedDot
 
 void UYcRedDotManagerSubsystem::BroadcastRedDotCleared(FGameplayTag RedDotTag)
 {
-	const FYcRedDotListenerList* pList = ListenerMap.Find(RedDotTag);
+	const FYcRedDotListenerList* pList = &ListenerMap.FindOrAdd(RedDotTag);
 	if (pList == nullptr) return;
 	TArray<FYcRedDotDataProviderData> RedRelierArray(pList->DataProviders);
 	for (auto& Relier : RedRelierArray)

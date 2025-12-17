@@ -9,7 +9,7 @@ public class YiChenGameUI : ModuleRules
         PublicDependencyModuleNames.AddRange(
             new string[]
             {
-                "Core",
+                "Core", "GameplayTags", "UIExtension",
             }
         );
 
@@ -25,6 +25,8 @@ public class YiChenGameUI : ModuleRules
                 "CommonGame",
                 "GameplayTags",
                 "UMG",
+                "GameFeatures",
+                "YiChenGameplay"
             }
         );
     }

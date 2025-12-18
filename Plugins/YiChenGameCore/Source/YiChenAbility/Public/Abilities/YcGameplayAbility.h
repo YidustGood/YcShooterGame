@@ -141,7 +141,7 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = Ability, DisplayName = "OnPawnAvatarSet")
 	void K2_OnPawnAvatarSet();
 	
-private:
+protected:
 	/**
 	 * 技能的激活策略
 	 * 定义技能的激活时机：OnInputTriggered（输入触发）、WhileInputActive（输入保持）或OnSpawn（生成时）

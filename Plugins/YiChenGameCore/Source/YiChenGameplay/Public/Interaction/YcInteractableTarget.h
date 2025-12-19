@@ -79,7 +79,21 @@ public:
 	 * @param InteractionEventTag 正在处理的交互事件的标签。
 	 * @param InOutEventData 将要发送的Gameplay事件数据，可在此函数中进行修改和填充。
 	 */
-	virtual void CustomizeInteractionEventData(const FGameplayTag& InteractionEventTag, FGameplayEventData& InOutEventData)
-	{
-	}
+	virtual void CustomizeInteractionEventData(const FGameplayTag& InteractionEventTag, FGameplayEventData& InOutEventData) {};
+	
+	/**
+	 * 当玩家开始注视/聚焦时会被调用的接口, 注意这只是发生在玩家本地发生的
+	 * 例如可以用来实现物体被玩家聚焦时开启物体高亮描边
+	 * 接口是在UAbilityTask_WaitForInteractableTargets::UpdateInteractableOptions中被处理调用
+	 * @param InteractQuery 聚焦的玩家数据
+	 */
+	virtual void OnPlayerFocusBegin(const FYcInteractionQuery& InteractQuery) {};
+	
+	/**
+	 * 当玩家结束注视/聚焦时会被调用的接口, 注意这只是发生在玩家本地发生的
+	 * 例如可以用来实现物体失去玩家焦点时关闭物体高亮描边
+	 * @param InteractQuery 失焦的玩家数据
+	 * 接口是在UAbilityTask_WaitForInteractableTargets::UpdateInteractableOptions中被处理调用
+	 */
+	virtual void OnPlayerFocusEnd(const FYcInteractionQuery& InteractQuery) {};
 };

@@ -25,8 +25,29 @@ public:
 	 * @param InteractionBuilder	用于向外部填充 `FYcInteractionOption` 的构造器。
 	 */
 	virtual void GatherInteractionOptions(const FYcInteractionQuery& InteractQuery, FYcInteractionOptionBuilder& InteractionBuilder) override;
+	virtual void OnPlayerFocusBegin(const FYcInteractionQuery& InteractQuery) override;
+	virtual void OnPlayerFocusEnd(const FYcInteractionQuery& InteractQuery) override;
 	// ~IYcInteractableTarget interface.
 	
+
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPlayerFocusBegin,const FYcInteractionQuery&, InteractQuery);
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPlayerFocusEnd,const FYcInteractionQuery&, InteractQuery);
+	/**
+	 * 当玩家开始注视/聚焦时触发的委托, 注意这只是发生在玩家本地发生的
+	 * 例如可以用来实现物体被玩家聚焦时开启物体高亮描边
+	 * @param InteractQuery 聚焦的玩家数据
+	 */
+	UPROPERTY(BlueprintAssignable)
+	FPlayerFocusBegin OnPlayerFocusBeginEvent;
+	
+	/**
+	 * 当玩家结束注视/聚焦时触发的事件, 注意这只是发生在玩家本地发生的
+	 * 例如可以用来实现物体失去玩家焦点时关闭物体高亮描边
+	 * @param InteractQuery 失焦的玩家数据
+	 */
+	UPROPERTY(BlueprintAssignable)
+	FPlayerFocusEnd OnPlayerFocusEndEvent;
+
 protected:
 	/** 这个交互组件的交互配置信息, 通过配置不同的InteractionAbilityToGrant实现不同的交互表现 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Interactable)

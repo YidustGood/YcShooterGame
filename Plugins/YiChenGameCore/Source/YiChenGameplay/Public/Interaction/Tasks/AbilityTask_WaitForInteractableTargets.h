@@ -77,4 +77,7 @@ protected:
 
 	/** 当前交互选项 */
 	TArray<FYcInteractionOption> CurrentOptions;
+	
+	/** 缓存的上一次检测到的交互接口 */
+	TSet<TScriptInterface<IYcInteractableTarget>> CachedInteractableTargets;
 };

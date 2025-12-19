@@ -120,11 +120,24 @@ void UAbilityTask_WaitForInteractableTargets::UpdateInteractableOptions(const FY
 {
 	YC_INTERACTION_SCOPE_CYCLE_COUNTER(UpdateInteractableOptions);
 	
+	// 如果新传入的交互目标数量为0, 但是缓存上一次检测的不为0, 代表需要更新, 其它情况通过下面循环动态判定是否需要更新
+	bool bOptionsChanged = InteractableTargets.Num() == 0 && CachedInteractableTargets.Num() != 0;
 	TArray<FYcInteractionOption> NewOptions;
 
 	//遍历InteractableTargets，
 	for (const TScriptInterface<IYcInteractableTarget>& InteractiveTarget : InteractableTargets)
 	{
+		// 如果本次扫描的交互目标在上一次扫描也存在就移除它以得出失焦的交互目标
+		if (CachedInteractableTargets.Contains(InteractiveTarget))
+		{
+			CachedInteractableTargets.Remove(InteractiveTarget);
+			continue; // 对于上一次扫描就存在的交互目标不需要再做额外的处理直接跳过
+		}
+		bOptionsChanged = true;
+		
+		// 通知物体被玩家注视/聚焦
+		InteractiveTarget->OnPlayerFocusBegin(InteractQuery);
+		
 		// 存储从交互对象获取到的Options
 		TArray<FYcInteractionOption> TempOptions;
 		// 使用交互目标接口实例化InteractionBuilder, 这会设置InteractionBuilder的Options引用到TempIOptions
@@ -166,29 +179,16 @@ void UAbilityTask_WaitForInteractableTargets::UpdateInteractableOptions(const FY
 			}
 		}
 	}
-
-	bool bOptionsChanged = false;
-	// 判断Options是否真的发生了变化, 数量相同则排序遍历对比
-	if (NewOptions.Num() == CurrentOptions.Num())
+	
+	// 在对新的交互目标数组循环过程中我们从上一次扫描缓存的交互目标中进行了匹配移除, 那么剩余的就是失去玩家焦点的, 调用失焦接口
+	for (auto& Target : CachedInteractableTargets)
 	{
-		NewOptions.Sort();
-
-		for (int OptionIndex = 0; OptionIndex < NewOptions.Num(); OptionIndex++)
-		{
-			const FYcInteractionOption& NewOption = NewOptions[OptionIndex];
-			const FYcInteractionOption& CurrentOption = CurrentOptions[OptionIndex];
-
-			if (NewOption != CurrentOption)
-			{
-				bOptionsChanged = true;
-				break;
-			}
-		}
+		Target->OnPlayerFocusEnd(InteractQuery);
 	}
-	else
-	{
-		bOptionsChanged = true;
-	}
+	
+	// 重新缓存本次交互目标
+	CachedInteractableTargets.Reset();
+	CachedInteractableTargets.Append(InteractableTargets);
 	
 	// 如发生变化则更新CurrentOptions并进行广播
 	if (bOptionsChanged)

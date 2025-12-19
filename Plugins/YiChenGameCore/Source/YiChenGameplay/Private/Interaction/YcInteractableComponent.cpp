@@ -15,3 +15,13 @@ void UYcInteractableComponent::GatherInteractionOptions(const FYcInteractionQuer
 {
 	InteractionBuilder.AddInteractionOption(Option);
 }
+
+void UYcInteractableComponent::OnPlayerFocusBegin(const FYcInteractionQuery& InteractQuery)
+{
+	OnPlayerFocusBeginEvent.Broadcast(InteractQuery);
+}
+
+void UYcInteractableComponent::OnPlayerFocusEnd(const FYcInteractionQuery& InteractQuery)
+{
+	OnPlayerFocusEndEvent.Broadcast(InteractQuery);
+}

@@ -9,6 +9,9 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(AbilityTask_WaitForInteractableTargets_SingleLineTrace)
 
+// ==================== 性能计数器声明 ====================
+DECLARE_CYCLE_STAT(TEXT("PerformTrace"), STAT_YcInteraction_PerformTrace, STATGROUP_YcInteraction);
+
 UAbilityTask_WaitForInteractableTargets_SingleLineTrace* UAbilityTask_WaitForInteractableTargets_SingleLineTrace::WaitForInteractableTargets_SingleLineTrace(UGameplayAbility* OwningAbility,
 	FYcInteractionQuery InteractionQuery, FCollisionProfileName TraceProfile, FGameplayAbilityTargetingLocationInfo StartLocation, float InteractionScanLength, float InteractionScanRate)
 {
@@ -45,6 +48,8 @@ void UAbilityTask_WaitForInteractableTargets_SingleLineTrace::OnDestroy(bool Abi
 
 void UAbilityTask_WaitForInteractableTargets_SingleLineTrace::PerformTrace()
 {
+	YC_INTERACTION_SCOPE_CYCLE_COUNTER(PerformTrace); // 注意这里的统计包含了LineTrace的耗时
+	
 	AActor* AvatarActor = Ability->GetCurrentActorInfo()->AvatarActor.Get();
 	if (!AvatarActor) return;
 

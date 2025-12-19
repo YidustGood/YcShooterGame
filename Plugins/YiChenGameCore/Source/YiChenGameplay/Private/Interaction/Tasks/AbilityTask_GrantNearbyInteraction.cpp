@@ -15,6 +15,9 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(AbilityTask_GrantNearbyInteraction)
 
+// ==================== 性能计数器声明 ====================
+DECLARE_CYCLE_STAT(TEXT("QueryInteractables"), STAT_YcInteraction_QueryInteractables, STATGROUP_YcInteraction);
+
 UAbilityTask_GrantNearbyInteraction::UAbilityTask_GrantNearbyInteraction(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -48,6 +51,8 @@ void UAbilityTask_GrantNearbyInteraction::OnDestroy(bool AbilityEnded)
 
 void UAbilityTask_GrantNearbyInteraction::QueryInteractables()
 {
+	YC_INTERACTION_SCOPE_CYCLE_COUNTER(QueryInteractables);
+	
 	UWorld* World = GetWorld();
 	AActor* ActorOwner = GetAvatarActor();
 

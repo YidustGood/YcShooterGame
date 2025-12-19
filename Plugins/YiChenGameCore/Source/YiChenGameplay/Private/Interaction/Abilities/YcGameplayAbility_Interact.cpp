@@ -21,6 +21,10 @@
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Ability_Interaction_Activate, "Ability.Interaction.Activate");
 UE_DEFINE_GAMEPLAY_TAG(TAG_INTERACTION_DURATION_MESSAGE, "Ability.Interaction.Duration.Message");
 
+// ==================== 性能计数器声明 ====================
+DECLARE_CYCLE_STAT(TEXT("TriggerInteraction"), STAT_YcInteraction_TriggerInteraction, STATGROUP_YcInteraction);
+
+
 UYcGameplayAbility_Interact::UYcGameplayAbility_Interact(const FObjectInitializer& ObjectInitializer)
 {
 	ActivationPolicy = EYcAbilityActivationPolicy::OnSpawn;
@@ -61,6 +65,8 @@ void UYcGameplayAbility_Interact::UpdateInteractions(const TArray<FYcInteraction
 
 void UYcGameplayAbility_Interact::TriggerInteraction()
 {
+	YC_INTERACTION_SCOPE_CYCLE_COUNTER(TriggerInteraction);
+	
 	if (CurrentOptions.Num() == 0) return;
 
 	UAbilitySystemComponent* AbilitySystem = GetAbilitySystemComponentFromActorInfo();

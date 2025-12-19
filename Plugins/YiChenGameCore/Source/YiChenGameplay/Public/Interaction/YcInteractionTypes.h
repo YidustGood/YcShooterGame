@@ -11,6 +11,21 @@
 class IYcInteractableTarget;
 class UUserWidget;
 
+// ==================== 性能追踪宏定义 ====================
+// 用于追踪关键函数的 CPU 耗时，可通过 Unreal Insights 或日志查看
+
+#define YC_INTERACTION_SCOPE_CYCLE_COUNTER(CounterName) \
+SCOPE_CYCLE_COUNTER(STAT_YcInteraction_##CounterName)
+
+// 条件编译：仅在 WITH_INTERACTION_PROFILING 启用时进行详细追踪
+#if !defined(WITH_INTERACTION_PROFILING)
+#define WITH_INTERACTION_PROFILING (UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT)
+#endif
+
+// ==================== 性能计数器声明 ====================
+DECLARE_STATS_GROUP(TEXT("YcInteraction"), STATGROUP_YcInteraction, STATCAT_Advanced);
+
+
 /** 
  * 一个可交互对象的配置结构体
  * 用于配置具体交互逻辑的实现技能、交互UI、交互描述文本等

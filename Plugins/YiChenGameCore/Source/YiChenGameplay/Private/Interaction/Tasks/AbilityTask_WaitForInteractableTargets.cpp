@@ -10,6 +10,10 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(AbilityTask_WaitForInteractableTargets)
 
+// ==================== 性能计数器声明 ====================
+DECLARE_CYCLE_STAT(TEXT("LineTrace"), STAT_YcInteraction_LineTrace, STATGROUP_YcInteraction);
+DECLARE_CYCLE_STAT(TEXT("UpdateInteractableOptions"), STAT_YcInteraction_UpdateInteractableOptions, STATGROUP_YcInteraction);
+
 UAbilityTask_WaitForInteractableTargets::UAbilityTask_WaitForInteractableTargets(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -18,6 +22,8 @@ UAbilityTask_WaitForInteractableTargets::UAbilityTask_WaitForInteractableTargets
 void UAbilityTask_WaitForInteractableTargets::LineTrace(FHitResult& OutHitResult, const UWorld* World, const FVector& Start, const FVector& End, FName ProfileName,
 														const FCollisionQueryParams Params)
 {
+	YC_INTERACTION_SCOPE_CYCLE_COUNTER(LineTrace);
+	
 	check(World);
 
 	OutHitResult = FHitResult();
@@ -112,6 +118,8 @@ bool UAbilityTask_WaitForInteractableTargets::ClipCameraRayToAbilityRange(FVecto
 
 void UAbilityTask_WaitForInteractableTargets::UpdateInteractableOptions(const FYcInteractionQuery& InteractQuery, const TArray<TScriptInterface<IYcInteractableTarget>>& InteractableTargets)
 {
+	YC_INTERACTION_SCOPE_CYCLE_COUNTER(UpdateInteractableOptions);
+	
 	TArray<FYcInteractionOption> NewOptions;
 
 	//遍历InteractableTargets，

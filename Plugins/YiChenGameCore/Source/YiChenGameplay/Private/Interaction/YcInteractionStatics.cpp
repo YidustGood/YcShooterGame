@@ -56,6 +56,7 @@ void UYcInteractionStatics::AppendInteractableTargetsFromOverlapResults(const TA
 {
 	for (const FOverlapResult& Overlap : OverlapResults)
 	{
+		if (!Overlap.GetActor()) continue;
 		// 检查重叠的Actor是否实现了交互接口。
 		TScriptInterface<IYcInteractableTarget> InteractableActor(Overlap.GetActor());
 		if (InteractableActor)
@@ -82,6 +83,7 @@ void UYcInteractionStatics::AppendInteractableTargetsFromOverlapResults(const TA
 
 void UYcInteractionStatics::GetInteractableTargetsFromHitResult(const FHitResult& HitResult, TArray<TScriptInterface<IYcInteractableTarget>>& OutInteractableTargets)
 {
+	if (!HitResult.GetActor()) return;
 	// 检查命中的Actor是否实现了交互接口。
 	TScriptInterface<IYcInteractableTarget> InteractableActor(HitResult.GetActor());
 	if (InteractableActor)

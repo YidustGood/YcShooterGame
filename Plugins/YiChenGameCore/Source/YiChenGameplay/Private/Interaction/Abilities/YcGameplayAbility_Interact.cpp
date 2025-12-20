@@ -20,10 +20,11 @@
 
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Ability_Interaction_Activate, "Ability.Interaction.Activate");
 UE_DEFINE_GAMEPLAY_TAG(TAG_INTERACTION_DURATION_MESSAGE, "Ability.Interaction.Duration.Message");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Interaction_UpdateInteractions, "Ability.Interaction.UpdateInteractions");
 
 // ==================== 性能计数器声明 ====================
 DECLARE_CYCLE_STAT(TEXT("TriggerInteraction"), STAT_YcInteraction_TriggerInteraction, STATGROUP_YcInteraction);
-
+DECLARE_CYCLE_STAT(TEXT("UpdateInteractions"), STAT_YcInteraction_UpdateInteractions, STATGROUP_YcInteraction);
 
 UYcGameplayAbility_Interact::UYcGameplayAbility_Interact(const FObjectInitializer& ObjectInitializer)
 {
@@ -60,7 +61,26 @@ void UYcGameplayAbility_Interact::ActivateAbility(const FGameplayAbilitySpecHand
 
 void UYcGameplayAbility_Interact::UpdateInteractions(const TArray<FYcInteractionOption>& InteractiveOptions)
 {
+	YC_INTERACTION_SCOPE_CYCLE_COUNTER(UpdateInteractions);
+	
 	CurrentOptions = InteractiveOptions;
+	if (CurrentOptions.Num() == 0) return;
+	
+	/**
+	 * 如果在运行时Option没有设置交互UI类就指定为默认的
+	 * 但是UAbilityTask_WaitForInteractableTargets::UpdateInteractableOptions先于当前这个UpdateInteractions函数执行
+	 * 里面会先调用IYcInteractableTarget::OnPlayerFocusBegin, UYcInteractableComponent实现了该接口并在其中做UI添加的逻辑
+	 * 但是遇上InteractionWidgetClass为空的时候, 这里的回退默认值会在UI添加逻辑之后执行, 导致交互组件在第一次交互时无法正确创建UI
+	 * 简单的解决办法是在UYcInteractableComponent::OnPlayerFocusBegin中设置下一帧再执行UI创建逻辑
+	 */
+	for (auto& Option : CurrentOptions)
+	{
+		if (Option.InteractionWidgetClass.IsNull())
+		{
+			Option.InteractionWidgetClass = DefaultInteractionWidgetClass;
+			Option.InteractableTarget->UpdateInteractionOption(Option);
+		}
+	}
 }
 
 void UYcGameplayAbility_Interact::TriggerInteraction()

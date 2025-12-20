@@ -7,7 +7,6 @@
 #include "YcGameplayAbility_Interact.generated.h"
 
 struct FYcInteractionOption;
-class UIndicatorDescriptor;
 
 /**
  * 提供给角色交互能力的技能

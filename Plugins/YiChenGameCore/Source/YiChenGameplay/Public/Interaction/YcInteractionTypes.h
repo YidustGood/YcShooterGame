@@ -50,9 +50,8 @@ public:
 
 	// 1、将交互时需要激活的能力授予角色
 
-
 	/** 当角色接近可交互物体时授予的能力类 */
-		UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TSubclassOf<UGameplayAbility> InteractionAbilityToGrant;
 
 	// - OR -
@@ -62,18 +61,20 @@ public:
 	UPROPERTY(VisibleInstanceOnly,BlueprintReadOnly, Category="Option")
 	TObjectPtr<UAbilitySystemComponent> TargetAbilitySystem = nullptr;
 
-	/** 本交互选项在目标对象上激活的能力句柄 */
-		UPROPERTY(BlueprintReadOnly)
-	FGameplayAbilitySpecHandle TargetInteractionAbilityHandle;
-
 	// UI
 	//--------------------------------------------------------------
-
 	/** 显示此交互的 UI 类 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TSoftClassPtr<UUserWidget> InteractionWidgetClass;
-
+	
+	// UI的挂在点Tag, 用于控制交互UI显示在主布局的哪个位置上, 不填写默认使用 `HUD.Slot.Interaction`
+	UPROPERTY(EditAnywhere, BlueprintReadWrite,  meta = (Categories = "HUD.Slot"))
+	FGameplayTag WidgetExtensionPointTag;
 	//--------------------------------------------------------------
+	
+	/** 本交互选项在目标对象上激活的能力句柄 */
+	UPROPERTY(BlueprintReadOnly)
+	FGameplayAbilitySpecHandle TargetInteractionAbilityHandle;
 
 public:
 	// 重载==运算符，将内部所有对象进行一一对比

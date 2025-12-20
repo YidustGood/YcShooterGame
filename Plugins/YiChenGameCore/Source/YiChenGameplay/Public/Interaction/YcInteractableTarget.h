@@ -66,12 +66,18 @@ class YICHENGAMEPLAY_API IYcInteractableTarget
 public:
 	
 	/**
-	 * 收集当前可交互对象的所有交互选项。
-	 * 实现此函数的对象应根据查询信息，决定提供哪些交互选项，并通过OptionBuilder将它们添加进去。
-	 * @param InteractQuery 包含交互发起者信息的查询结构体。
-	 * @param OptionBuilder 用于构建和添加交互选项的工具。
+	 * 收集当前可交互对象的所有交互选项
+	 * 实现此函数的对象应根据查询信息，决定提供哪些交互选项，并通过OptionBuilder将它们添加进去
+	 * @param InteractQuery 包含交互发起者信息的查询结构体
+	 * @param OptionBuilder 用于构建和添加交互选项的工具
 	 */
 	virtual void GatherInteractionOptions(const FYcInteractionQuery& InteractQuery, FYcInteractionOptionBuilder& OptionBuilder) = 0;
+	
+	/**
+	 * 更新交互选项
+	 * @param NewOption 新的交互选项
+	 */
+	virtual void UpdateInteractionOption(const FYcInteractionOption& NewOption) = 0;
 
 	/**
 	 * 自定义交互时触发的Gameplay事件数据。
@@ -81,19 +87,45 @@ public:
 	 */
 	virtual void CustomizeInteractionEventData(const FGameplayTag& InteractionEventTag, FGameplayEventData& InOutEventData) {};
 	
+	
 	/**
-	 * 当玩家开始注视/聚焦时会被调用的接口, 注意这只是发生在玩家本地发生的
+	 * 当玩家开始注视/聚焦交互物体时会被调用的接口，注意这只是发生在玩家本地
 	 * 例如可以用来实现物体被玩家聚焦时开启物体高亮描边
-	 * 接口是在UAbilityTask_WaitForInteractableTargets::UpdateInteractableOptions中被处理调用
-	 * @param InteractQuery 聚焦的玩家数据
+	 * 接口在 UAbilityTask_WaitForInteractableTargets::UpdateInteractableOptions 中处理调用
+	 * 注意：这是视线聚焦，与物理接近（Approach）是不同的概念
+	 * 
+	 * @param InteractQuery 包含玩家角色、控制器、交互参数等信息
 	 */
 	virtual void OnPlayerFocusBegin(const FYcInteractionQuery& InteractQuery) {};
 	
 	/**
-	 * 当玩家结束注视/聚焦时会被调用的接口, 注意这只是发生在玩家本地发生的
+	 * 当玩家结束注视/聚焦交互物体时会被调用的接口，注意这只是发生在玩家本地
 	 * 例如可以用来实现物体失去玩家焦点时关闭物体高亮描边
-	 * @param InteractQuery 失焦的玩家数据
-	 * 接口是在UAbilityTask_WaitForInteractableTargets::UpdateInteractableOptions中被处理调用
+	 * 接口在 UAbilityTask_WaitForInteractableTargets::UpdateInteractableOptions 中处理调用
+	 * 注意：这是视线聚焦结束，与物理离开（Leave）是不同的概念
+	 * 
+	 * @param InteractQuery 包含玩家角色、控制器、交互参数等信息
 	 */
 	virtual void OnPlayerFocusEnd(const FYcInteractionQuery& InteractQuery) {};
+	
+	// @TODO 玩家在交互物体附加时的响应接口
+	// /**
+	//  * 当玩家接近交互物体时会被调用的接口，注意这只是发生在玩家本地
+	//  * 例如可以用来实现玩家接近时播放音效、开启粒子特效、显示UI提示等
+	//  * 接口是在UAbilityTask_GrantNearbyInteraction::QueryInteractables中被处理调用
+	//  * 注意：这是物理接近，与视线聚焦（Focus）是不同的概念
+	//  * 
+	//  * @param InteractQuery 包含玩家角色、控制器、交互参数等信息
+	//  */
+	// void OnPlayerApproach(const FYcInteractionQuery& InteractQuery);
+	//
+	// /**
+	//  * 当玩家离开交互物体时会被调用的接口，注意这只是发生在玩家本地
+	//  * 例如可以用来实现玩家离开时停止音效、关闭特效、隐藏UI提示等
+	//  * 接口是在UAbilityTask_GrantNearbyInteraction::QueryInteractables中被处理调用
+	//  * 注意：这是物理离开，与视线聚焦结束（FocusEnd）是不同的概念
+	//  * 
+	//  * @param InteractQuery 包含玩家角色、控制器、交互参数等信息
+	//  */
+	// void OnPlayerLeave(const FYcInteractionQuery& InteractQuery);
 };

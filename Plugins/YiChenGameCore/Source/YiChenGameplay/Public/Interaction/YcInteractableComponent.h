@@ -1,7 +1,8 @@
-﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
+// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 #pragma once
 
+#include "UIExtensionSystem.h"
 #include "YcInteractableTarget.h"
 #include "Components/ActorComponent.h"
 #include "YcInteractableComponent.generated.h"
@@ -25,6 +26,7 @@ public:
 	 * @param InteractionBuilder	用于向外部填充 `FYcInteractionOption` 的构造器。
 	 */
 	virtual void GatherInteractionOptions(const FYcInteractionQuery& InteractQuery, FYcInteractionOptionBuilder& InteractionBuilder) override;
+	virtual void UpdateInteractionOption(const FYcInteractionOption& NewOption) override;
 	virtual void OnPlayerFocusBegin(const FYcInteractionQuery& InteractQuery) override;
 	virtual void OnPlayerFocusEnd(const FYcInteractionQuery& InteractQuery) override;
 	// ~IYcInteractableTarget interface.
@@ -52,4 +54,8 @@ protected:
 	/** 这个交互组件的交互配置信息, 通过配置不同的InteractionAbilityToGrant实现不同的交互表现 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Interactable)
 	FYcInteractionOption Option;
+	
+private:
+	/** 当前交互UI的句柄, 用于在失去玩家焦点后移除交互UI */
+	FUIExtensionHandle InteractionWidgetHandle;
 };

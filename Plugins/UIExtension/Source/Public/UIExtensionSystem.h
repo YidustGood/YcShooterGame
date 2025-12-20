@@ -39,7 +39,7 @@ enum class EUIExtensionAction : uint8
 	Removed
 };
 
-DECLARE_DELEGATE_TwoParams(FExtendExtensionPointDelegate, EUIExtensionAction Action, const FUIExtensionRequest& Request);
+DECLARE_DELEGATE_ThreeParams(FExtendExtensionPointDelegate, EUIExtensionAction Action, const FUIExtensionRequest& Request, TObjectPtr<UUserWidget>& OutWidgetInst);
 
 /*
  *
@@ -53,6 +53,11 @@ public:
 	TWeakObjectPtr<UObject> ContextObject;
 	//Kept alive by UUIExtensionSubsystem::AddReferencedObjects
 	TObjectPtr<UObject> Data = nullptr;
+	/** 
+	 * 上面的Data是WidgetClass而非Widget实例对象, 通过执行FUIExtensionPoint::Callback的时候传入WidgetInst,
+	 * 内部从WidgetPool创建出Widget后设置到WidgetInst, 这样我们就能访问创建的WidgetInst了
+	 */
+	TObjectPtr<UUserWidget> WidgetInst = nullptr;
 };
 
 /**
@@ -137,7 +142,14 @@ public:
 	{
 		return PointerHash(Handle.DataPtr.Get());
 	}
-
+	// 奕尘代码新增开始
+	// 增加获取创建的Widget对象函数
+	 TObjectPtr<UUserWidget> GetWidgetInstance() const
+	{
+		if (!DataPtr.IsValid()) return nullptr;
+		return DataPtr.Get()->WidgetInst;
+	};
+	// ~奕尘代码新增结束
 private:
 	TWeakObjectPtr<UUIExtensionSubsystem> ExtensionSource;
 
@@ -183,7 +195,7 @@ public:
 	TObjectPtr<UObject> ContextObject = nullptr;
 };
 
-DECLARE_DYNAMIC_DELEGATE_TwoParams(FExtendExtensionPointDynamicDelegate, EUIExtensionAction, Action, const FUIExtensionRequest&, ExtensionRequest);
+DECLARE_DYNAMIC_DELEGATE_ThreeParams(FExtendExtensionPointDynamicDelegate, EUIExtensionAction, Action, const FUIExtensionRequest&, ExtensionRequest, UUserWidget*, OutWidgetInst);
 
 /**
  * 

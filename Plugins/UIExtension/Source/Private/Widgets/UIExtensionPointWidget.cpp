@@ -114,7 +114,7 @@ void UUIExtensionPointWidget::RegisterExtensionPointForPlayerState(UCommonLocalP
 	}
 }
 
-void UUIExtensionPointWidget::OnAddOrRemoveExtension(EUIExtensionAction Action, const FUIExtensionRequest& Request)
+void UUIExtensionPointWidget::OnAddOrRemoveExtension(EUIExtensionAction Action, const FUIExtensionRequest& Request, TObjectPtr<UUserWidget>& OutWidgetInst)
 {
 	if (Action == EUIExtensionAction::Added)
 	{
@@ -124,6 +124,7 @@ void UUIExtensionPointWidget::OnAddOrRemoveExtension(EUIExtensionAction Action, 
 		if (WidgetClass)
 		{
 			UUserWidget* Widget = CreateEntryInternal(WidgetClass);
+			OutWidgetInst = Widget;
 			ExtensionMapping.Add(Request.ExtensionHandle, Widget);
 		}
 		else if (DataClasses.Num() > 0)
@@ -139,6 +140,7 @@ void UUIExtensionPointWidget::OnAddOrRemoveExtension(EUIExtensionAction Action, 
 					{
 						ExtensionMapping.Add(Request.ExtensionHandle, Widget);
 						ConfigureWidgetForData.ExecuteIfBound(Widget, Data);
+						OutWidgetInst = Widget;
 					}
 				}
 			}
@@ -150,6 +152,7 @@ void UUIExtensionPointWidget::OnAddOrRemoveExtension(EUIExtensionAction Action, 
 		{
 			RemoveEntryInternal(Extension);
 			ExtensionMapping.Remove(Request.ExtensionHandle);
+			OutWidgetInst = nullptr;
 		}
 	}
 }

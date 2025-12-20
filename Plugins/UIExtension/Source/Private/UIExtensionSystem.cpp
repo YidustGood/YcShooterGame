@@ -195,7 +195,7 @@ void UUIExtensionSubsystem::NotifyExtensionPointOfExtensions(TSharedPtr<FUIExten
 				if (ExtensionPoint->DoesExtensionPassContract(Extension.Get()))
 				{
 					FUIExtensionRequest Request = CreateExtensionRequest(Extension);
-					ExtensionPoint->Callback.ExecuteIfBound(EUIExtensionAction::Added, Request);
+					ExtensionPoint->Callback.ExecuteIfBound(EUIExtensionAction::Added, Request, Extension->WidgetInst);
 				}
 			}
 		}
@@ -224,7 +224,7 @@ void UUIExtensionSubsystem::NotifyExtensionPointsOfExtension(EUIExtensionAction 
 					if (ExtensionPoint->DoesExtensionPassContract(Extension.Get()))
 					{
 						FUIExtensionRequest Request = CreateExtensionRequest(Extension);
-						ExtensionPoint->Callback.ExecuteIfBound(Action, Request);
+						ExtensionPoint->Callback.ExecuteIfBound(Action, Request, Extension->WidgetInst);
 					}
 				}
 			}
@@ -306,8 +306,8 @@ FUIExtensionRequest UUIExtensionSubsystem::CreateExtensionRequest(const TSharedP
 
 FUIExtensionPointHandle UUIExtensionSubsystem::K2_RegisterExtensionPoint(FGameplayTag ExtensionPointTag, EUIExtensionPointMatch ExtensionPointTagMatchType, const TArray<UClass*>& AllowedDataClasses, FExtendExtensionPointDynamicDelegate ExtensionCallback)
 {
-	return RegisterExtensionPoint(ExtensionPointTag, ExtensionPointTagMatchType, AllowedDataClasses, FExtendExtensionPointDelegate::CreateWeakLambda(ExtensionCallback.GetUObject(), [this, ExtensionCallback](EUIExtensionAction Action, const FUIExtensionRequest& Request) {
-		ExtensionCallback.ExecuteIfBound(Action, Request);
+	return RegisterExtensionPoint(ExtensionPointTag, ExtensionPointTagMatchType, AllowedDataClasses, FExtendExtensionPointDelegate::CreateWeakLambda(ExtensionCallback.GetUObject(), [this, ExtensionCallback](EUIExtensionAction Action, const FUIExtensionRequest& Request, UUserWidget* OutWidgetInst) {
+		ExtensionCallback.ExecuteIfBound(Action, Request, OutWidgetInst);
 	}));
 }
 

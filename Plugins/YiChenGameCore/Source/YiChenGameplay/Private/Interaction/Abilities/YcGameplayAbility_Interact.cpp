@@ -8,6 +8,7 @@
 #include "YiChenGameplay.h"
 #include "Abilities/Tasks/AbilityTask_WaitInputPress.h"
 #include "Abilities/Tasks/AbilityTask_WaitInputRelease.h"
+#include "Interaction/InteractionIndicatorComponent.h"
 #include "Interaction/YcInteractableTarget.h"
 #include "Interaction/YcInteractionStatics.h"
 #include "Interaction/YcInteractionTypes.h"
@@ -48,12 +49,16 @@ void UYcGameplayAbility_Interact::ActivateAbility(const FGameplayAbilitySpecHand
 		Task->ReadyForActivation();
 	}
 	
-	// 玩家视野目标交互物更新逻辑仅在操控端进行
-	AController* Controller = GetControllerFromActorInfo();
-	if (Controller && Controller->IsLocalPlayerController())
+	if (const AController* Controller = GetControllerFromActorInfo())
 	{
+		// 开启扫描玩家视野聚焦的交互目标
 		LookForInteractables();
-		ListenInteractPress();
+		
+		// 玩家视野目标交互物操作监听逻辑仅在操控端进行
+		if (Controller->IsLocalPlayerController())
+		{
+			ListenInteractPress();
+		}
 	}
 	
 	YC_LOG(LogYcGameplay, Log, TEXT("技能-视野目标交互对象检测开启"));
@@ -62,9 +67,24 @@ void UYcGameplayAbility_Interact::ActivateAbility(const FGameplayAbilitySpecHand
 void UYcGameplayAbility_Interact::UpdateInteractions(const TArray<FYcInteractionOption>& InteractiveOptions)
 {
 	YC_INTERACTION_SCOPE_CYCLE_COUNTER(UpdateInteractions);
+
+	const AController* Controller = GetControllerFromActorInfo();
+	if (Controller == nullptr) return;
 	
 	CurrentOptions = InteractiveOptions;
 	if (CurrentOptions.Num() == 0) return;
+	
+	
+	UInteractionIndicatorComponent* IndicatorComp = UInteractionIndicatorComponent::GetComponent(Controller);
+	if (!IndicatorComp)
+	{
+		IndicatorComp = GetAvatarActorFromActorInfo() ? GetAvatarActorFromActorInfo()->FindComponentByClass<UInteractionIndicatorComponent>() : nullptr;
+	}
+	
+	if (IndicatorComp)
+	{
+		IndicatorComp->EmptyIndicators();
+	}
 	
 	/**
 	 * 如果在运行时Option没有设置交互UI类就指定为默认的
@@ -79,6 +99,13 @@ void UYcGameplayAbility_Interact::UpdateInteractions(const TArray<FYcInteraction
 		{
 			Option.InteractionWidgetClass = DefaultInteractionWidgetClass;
 			Option.InteractableTarget->UpdateInteractionOption(Option);
+		}
+		if (IndicatorComp)
+		{
+			FIndicatorDescriptor Indicator;
+			Indicator.TargetActor = UYcInteractionStatics::GetActorFromInteractableTarget(Option.InteractableTarget);
+			Indicator.InteractableTarget = Option.InteractableTarget;
+			IndicatorComp->AddIndicator(Indicator);
 		}
 	}
 }

@@ -27,7 +27,8 @@ public class YiChenGameCore : ModuleRules
 			{
 				"Core", 
 				"GameplayTags",
-				"NetCore"
+				"NetCore", 
+				"GameplayMessageRuntime"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -40,6 +41,7 @@ public class YiChenGameCore : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
+				"UMG"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

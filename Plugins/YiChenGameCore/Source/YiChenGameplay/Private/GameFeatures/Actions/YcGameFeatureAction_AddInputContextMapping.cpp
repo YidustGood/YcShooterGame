@@ -96,7 +96,7 @@ void UYcGameFeatureAction_AddInputContextMapping::AddToWorld(const FWorldContext
 void UYcGameFeatureAction_AddInputContextMapping::Reset(FPerContextData& ActiveData)
 {
 	ActiveData.ExtensionRequestHandles.Empty();
-
+	
 	while (!ActiveData.LocalPlayersAddedTo.IsEmpty())
 	{
 		TWeakObjectPtr<ULocalPlayer> LocalPlayerPtr = ActiveData.LocalPlayersAddedTo.Top();
@@ -148,6 +148,8 @@ void UYcGameFeatureAction_AddInputContextMapping::AddInputMappingForPlayer(ULoca
 
 void UYcGameFeatureAction_AddInputContextMapping::RemoveInputMapping(ULocalPlayer* LocalPlayer, FPerContextData& ActiveData)
 {
+	ActiveData.LocalPlayersAddedTo.Remove(LocalPlayer);
+	
 	UEnhancedInputLocalPlayerSubsystem* InputSystem = LocalPlayer ? LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr;
 	if (InputSystem == nullptr) return;
 	
@@ -158,7 +160,6 @@ void UYcGameFeatureAction_AddInputContextMapping::RemoveInputMapping(ULocalPlaye
 			InputSystem->RemoveMappingContext(IMC);
 		}
 	}
-	ActiveData.LocalPlayersAddedTo.Remove(LocalPlayer);
 }
 
 void UYcGameFeatureAction_AddInputContextMapping::RegisterInputMappingContexts()

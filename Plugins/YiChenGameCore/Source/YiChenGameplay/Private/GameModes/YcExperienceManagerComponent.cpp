@@ -7,10 +7,12 @@
 #include "GameFeaturesSubsystem.h"
 #include "GameFeaturesSubsystemSettings.h"
 #include "YiChenGameplay.h"
+#include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameModes/YcExperienceActionSet.h"
 #include "GameModes/YcExperienceDefinition.h"
 #include "GameModes/YcExperienceManagerSubsystem.h"
 #include "GameModes/YcWorldSettings.h"
+#include "GameplayCommon/ExperienceMessageTypes.h"
 #include "Net/UnrealNetwork.h"
 #include "System/YcAssetManager.h"
 #include "Utils/CommonSimpleUtil.h"
@@ -349,15 +351,25 @@ void UYcExperienceManagerComponent::OnExperienceFullLoadCompleted()
 	
 	LoadState = EYcExperienceLoadState::Loaded;
 	
+	UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(this);
+	
 	// 按照优先级调用委托
 	OnExperienceLoaded_HighPriority.Broadcast(CurrentExperience);
 	OnExperienceLoaded_HighPriority.Clear();
+	
+	// 配合GameplayMessageSubsystem广播消息, 实现跨模块低耦合的Experience加载完成消息通知
+	// 共同依赖YiChenGameCore模块中定义的FExperienceLoadedMessage和GameplayTag即可, 避免了模块循环依赖的产生
+	FExperienceLoadedMessage LoadedMessage;
+	LoadedMessage.LoadedExperienceObject = CurrentExperience;
+	MessageSubsystem.BroadcastMessage(YcGameplayTags::Experience_StateEvent_Loaded_HighPriority, LoadedMessage);
 
 	OnExperienceLoaded.Broadcast(CurrentExperience);
 	OnExperienceLoaded.Clear();
+	MessageSubsystem.BroadcastMessage(YcGameplayTags::Experience_StateEvent_Loaded, LoadedMessage);
 
 	OnExperienceLoaded_LowPriority.Broadcast(CurrentExperience);
 	OnExperienceLoaded_LowPriority.Clear();
+	MessageSubsystem.BroadcastMessage(YcGameplayTags::Experience_StateEvent_Loaded_LowPriority, LoadedMessage);
 	
 	// @TODO 通知设置类Experience加载完成, 以提供设置对Experience系统的响应能力(非必要)
 	// Apply any necessary scalability settings

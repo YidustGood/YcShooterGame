@@ -146,7 +146,58 @@ void UYcTeamCreationComponent::OnPlayerInitialized(FGameplayTag Channel,
 
 int32 UYcTeamCreationComponent::GetLeastPopulatedTeamID() const
 {
-	// @TODO 返回玩家人数最少的那一方队伍，以实现团队平衡
-	return 1;
+	const int32 NumTeams = TeamsToCreate.Num();
+	if (NumTeams == 0) return INDEX_NONE;
+	
+	TMap<int32, uint32> TeamMemberCounts;
+	TeamMemberCounts.Reserve(NumTeams);
+
+	for (const auto& KVP : TeamsToCreate)
+	{
+		const int32 TeamId = KVP.Key;
+		TeamMemberCounts.Add(TeamId, 0);
+	}
+
+	// 通过GameState拿到当前所有的PlayerState然后进行各团队人数统计
+	AGameStateBase* GameState = GetGameStateChecked<AGameStateBase>();
+	TScriptInterface<IYcTeamAgentInterface> TeamAgent;
+	for (APlayerState* PS : GameState->PlayerArray)
+	{
+		UYcTeamSubsystem::FindTeamAgentFromActor(PS, TeamAgent);
+		if (TeamAgent == nullptr) continue;
+		
+		const int32 PlayerTeamID = TeamAgent->GetTeamId();
+
+		if ((PlayerTeamID != INDEX_NONE) && !PS->IsInactive())	//  不计算未分配角色或处于离线状态的玩家
+		{
+			check(TeamMemberCounts.Contains(PlayerTeamID))
+			TeamMemberCounts[PlayerTeamID] += 1;
+		}
+	}
+	
+	// 按照团队人数从少到多的顺序排列，然后按照团队编号进行排序。
+	int32 BestTeamId = INDEX_NONE;
+	uint32 BestPlayerCount = TNumericLimits<uint32>::Max();
+	for (const auto& KVP : TeamMemberCounts)
+	{
+		const int32 TestTeamId = KVP.Key;
+		const uint32 TestTeamPlayerCount = KVP.Value;
+
+		if (TestTeamPlayerCount < BestPlayerCount)
+		{
+			BestTeamId = TestTeamId;
+			BestPlayerCount = TestTeamPlayerCount;
+		}
+		else if (TestTeamPlayerCount == BestPlayerCount)
+		{
+			if ((TestTeamId < BestTeamId) || (BestTeamId == INDEX_NONE))
+			{
+				BestTeamId = TestTeamId;
+				BestPlayerCount = TestTeamPlayerCount;
+			}
+		}
+	}
+	
+	return BestTeamId;
 }
 #endif	// WITH_SERVER_CODE

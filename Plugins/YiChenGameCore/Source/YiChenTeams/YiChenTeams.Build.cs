@@ -25,7 +25,8 @@ public class YiChenTeams : ModuleRules
                 "GameplayAbilities",
                 "ModularGameplay", 
                 "GameplayMessageRuntime",
-                "AIModule"
+                "AIModule",
+                "NetCore"
             }
         );
     }

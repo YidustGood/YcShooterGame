@@ -18,4 +18,14 @@ public:
 	/** 团队名称，可在编辑器中编辑，蓝图只读 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FText TeamName;
+	
+	/** 团队颜色 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FLinearColor TeamColor;
+	
+	//~UObject interface
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+	//~End of UObject interface
 };

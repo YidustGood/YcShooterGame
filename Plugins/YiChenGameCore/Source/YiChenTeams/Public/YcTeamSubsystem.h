@@ -224,6 +224,41 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category=Teams)
 	bool TeamHasTag(const int32 TeamId, const FGameplayTag Tag) const;
+	
+	/**
+	 * 从指定观察者团队的视角获取目标团队的展示资产
+	 * 在某些模式下（例如“本地玩家始终为蓝队”），不同观察者看到的同一团队可能使用不同的展示资产
+	 * @param TeamId 目标团队ID
+	 * @param ViewerTeamId 观察者所属的团队ID
+	 * @return 用于展示的团队资产指针，如果未配置则返回nullptr
+	 */
+	UFUNCTION(BlueprintCallable, Category=Teams)
+	UYcTeamAsset* GetTeamAsset(int32 TeamId, int32 ViewerTeamId);
+ 
+	/**
+	 * 从指定观察者对象的视角获取目标团队的最终展示资产
+	 * 会根据观察者对象所属团队（通过团队系统查询）来决定返回哪一个展示资产
+	 * @param TeamId 目标团队ID
+	 * @param ViewerTeamAgent 观察者对象（需能通过团队系统推导其TeamId）
+	 * @return 用于展示的团队资产指针，如果未配置则返回nullptr
+	 */
+	UFUNCTION(BlueprintCallable, Category = Teams)
+	UYcTeamAsset* GetEffectiveTeamAsset(int32 TeamId, UObject* ViewerTeamAgent);
+ 
+	/**
+	 * 当某个团队展示资产被编辑时调用
+	 * 会触发相关团队的资产变更委托，通知所有观察者更新（例如刷新队伍颜色/图标）
+	 * @param ModifiedAsset 已被修改的团队展示资产
+	 */
+	void NotifyTeamAssetModified(UYcTeamAsset* ModifiedAsset);
+ 
+	/**
+	 * 为指定团队ID注册团队资产变更通知
+	 * 可获取该团队对应的资产变更委托，用于绑定监听逻辑
+	 * @param TeamId 要监听的团队ID
+	 * @return 该团队对应的资产变更委托引用
+	 */
+	FOnYcTeamAssetChangedDelegate& GetTeamAssetChangedDelegate(int32 TeamId);
 private:
 	/** 团队ID到团队跟踪信息的映射表 */
 	UPROPERTY()

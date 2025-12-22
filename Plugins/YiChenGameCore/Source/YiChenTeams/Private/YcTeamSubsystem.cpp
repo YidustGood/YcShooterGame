@@ -434,3 +434,36 @@ bool UYcTeamSubsystem::TeamHasTag(const int32 TeamId, const FGameplayTag Tag) co
 {
 	return GetTeamTagStackCount(TeamId, Tag) > 0;
 }
+
+UYcTeamAsset* UYcTeamSubsystem::GetTeamAsset(int32 TeamId, int32 ViewerTeamId)
+{
+	// @TODO 处理ViewerTeamId, 目前只是直接简单的返回TeamId的资产
+
+	if (FYcTeamTrackingInfo* Entry = TeamMap.Find(TeamId))
+	{
+		return Entry->TeamAsset;
+	}
+	return nullptr;
+}
+
+UYcTeamAsset* UYcTeamSubsystem::GetEffectiveTeamAsset(int32 TeamId, UObject* ViewerTeamAgent)
+{
+	return GetTeamAsset(TeamId, FindTeamFromObject(ViewerTeamAgent));
+}
+
+void UYcTeamSubsystem::NotifyTeamAssetModified(UYcTeamAsset* ModifiedAsset)
+{
+	// 当前在资产被编辑时广播给所有观察者，而非仅广播给被编辑的那个
+	for (const auto& KVP : TeamMap)
+	{
+		const int32 TeamId = KVP.Key;
+		const FYcTeamTrackingInfo& TrackingInfo = KVP.Value;
+
+		TrackingInfo.OnTeamAssetChanged.Broadcast(TrackingInfo.TeamAsset);
+	}
+}
+
+FOnYcTeamAssetChangedDelegate& UYcTeamSubsystem::GetTeamAssetChangedDelegate(int32 TeamId)
+{
+	return TeamMap.FindOrAdd(TeamId).OnTeamAssetChanged;
+}

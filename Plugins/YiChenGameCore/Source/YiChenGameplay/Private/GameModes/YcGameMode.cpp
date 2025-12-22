@@ -20,6 +20,8 @@
 #include "Utils/CommonSimpleUtil.h"
 #include "Character/YcPawnData.h"
 #include "Character/YcPawnExtensionComponent.h"
+#include "GameFramework/GameplayMessageSubsystem.h"
+#include "GameplayCommon/GameplayMessageTypes.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcGameMode)
 
@@ -146,6 +148,16 @@ void AYcGameMode::FinishRestartPlayer(AController* NewPlayer, const FRotator& St
 bool AYcGameMode::PlayerCanRestart_Implementation(APlayerController* Player)
 {
 	return Super::PlayerCanRestart_Implementation(Player);
+}
+
+void AYcGameMode::GenericPlayerInitialization(AController* NewPlayer)
+{
+	Super::GenericPlayerInitialization(NewPlayer);
+	
+	// 通过GMS广播新的玩家/AI加入此时Controller已经完成初始化, 以便其它系统模块做响应, 例如团队系统模块的队伍创建器组件监听该消息为玩家分配团队ID
+	auto& MessageSubsystem = UGameplayMessageSubsystem::Get(this);
+	const FGameModePlayerInitializedMessage Message(this, NewPlayer);
+	MessageSubsystem.BroadcastMessage(YcGameplayTags::Gameplay_GameMode_PlayerInitialized, Message);
 }
 
 bool AYcGameMode::IsExperienceLoaded() const

@@ -11,6 +11,7 @@
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameFramework/PlayerState.h"
 #include "GameplayCommon/ExperienceMessageTypes.h"
+#include "GameplayCommon/GameplayMessageTypes.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcTeamCreationComponent)
 
@@ -78,7 +79,9 @@ void UYcTeamCreationComponent::ServerAssignPlayersToTeams()
 		ServerChooseTeamForPlayer(PS);
 	}
 	
-	// @TODO 处理新玩家加入时的队伍分配，实际上就是OnExperienceLoaded之后的新玩家
+	// 监听新的玩家/AI加入游戏并初始化完Controller的消息, 以便为新玩家/AI分配团队ID
+	UGameplayMessageSubsystem& Subsystem = UGameplayMessageSubsystem::Get(this);
+	Subsystem.RegisterListener(YcGameplayTags::Gameplay_GameMode_PlayerInitialized, this, &ThisClass::OnPlayerInitialized);
 }
 
 void UYcTeamCreationComponent::ServerChooseTeamForPlayer(APlayerState* PS)
@@ -132,12 +135,13 @@ void UYcTeamCreationComponent::ServerCreateTeam(const int32 TeamId, UYcTeamAsset
 	// @TODO 创建队伍私有信息对象
 }
 
-void UYcTeamCreationComponent::OnPlayerInitialized(AGameModeBase* GameMode, const AController* NewPlayer)
+void UYcTeamCreationComponent::OnPlayerInitialized(FGameplayTag Channel,
+	const FGameModePlayerInitializedMessage& Message)
 {
-	check(NewPlayer);
-	check(NewPlayer->PlayerState);
+	check(Message.NewPlayer);
+	check(Message.NewPlayer->PlayerState);
 	// 为新玩家选择并分配团队
-	ServerChooseTeamForPlayer(NewPlayer->PlayerState);
+	ServerChooseTeamForPlayer(Message.NewPlayer->PlayerState);
 }
 
 int32 UYcTeamCreationComponent::GetLeastPopulatedTeamID() const

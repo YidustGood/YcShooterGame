@@ -6,6 +6,7 @@
 #include "GameplayMessage/ScopedGameplayMessageListener.h"
 #include "YcTeamCreationComponent.generated.h"
 
+struct FGameModePlayerInitializedMessage;
 struct FGameplayTag;
 struct FExperienceLoadedMessage;
 class UYcTeamAsset;
@@ -86,11 +87,11 @@ private:
 	
 	/**
 	 * 新玩家加入时的回调
-	 * 由GameMode发起，从这里开始为新玩家分配队伍ID
-	 * @param GameMode 游戏模式
-	 * @param NewPlayer 新加入的玩家控制器
+	 * 由GameMode发起消息通知，从这里开始为新玩家分配队伍ID
+	 * @param Channel 消息通道
+	 * @param Message 消息体, 包含GameMode和新的Controller
 	 */
-	void OnPlayerInitialized(AGameModeBase* GameMode, const AController* NewPlayer);
+	void OnPlayerInitialized(FGameplayTag Channel, const FGameModePlayerInitializedMessage& Message);
 	
 	/**
 	 * 返回玩家数量最少的团队ID

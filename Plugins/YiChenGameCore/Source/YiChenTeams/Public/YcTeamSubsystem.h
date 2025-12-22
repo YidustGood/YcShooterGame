@@ -62,6 +62,9 @@ enum class EYcTeamComparison : uint8
 
 /**
  * 团队子系统，用于方便地访问基于团队的Actor（如Pawn或PlayerState）的团队信息
+ * 推荐做法是在PlayerState中实现IYcTeamAgentInterface接口
+ * 或者给PlayerState挂载UYcTeamComponent组件, 该组件提供了基本的团队接口实现
+ * 在通过团队子系统查找Actor团队信息的时候会迭代寻找, 最终是会在PlayerState或者其组件上寻找团队接口实现来进行调用
  */
 UCLASS()
 class YICHENTEAMS_API UYcTeamSubsystem : public UWorldSubsystem
@@ -128,6 +131,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Team")
 	static bool FindTeamAgentFromActor(AActor* PossibleTeamActor, TScriptInterface<IYcTeamAgentInterface>& OutTeamAgent);
+	
+	/**
+	 * 从Actor的组件中查找团队代理接口
+	 * @param PossibleTeamActor 可能包含团队接口的Actor
+	 * @param OutTeamAgent 输出的团队代理接口
+	 * @return 找到团队代理接口返回true，否则返回false
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Team")
+	static bool FindTeamAgentFromActorComponents(AActor* PossibleTeamActor, TScriptInterface<IYcTeamAgentInterface>& OutTeamAgent);
 	
 	/**
 	 * 查找对象所属的团队ID

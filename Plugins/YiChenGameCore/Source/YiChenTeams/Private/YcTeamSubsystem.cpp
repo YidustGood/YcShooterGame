@@ -177,7 +177,15 @@ bool UYcTeamSubsystem::FindTeamAgentFromActor(AActor* PossibleTeamActor, TScript
 	
 	{
 		// 首先，检查Actor本身是否直接实现了队伍接口。
-		const TScriptInterface<IYcTeamAgentInterface> TeamAgent(PossibleTeamActor);
+		TScriptInterface<IYcTeamAgentInterface> TeamAgent(PossibleTeamActor);
+		if (TeamAgent)
+		{
+			OutTeamAgent = TeamAgent;
+			return true;
+		}
+		
+		// 其次，检查Actor组件是否实现了队伍接口。
+		FindTeamAgentFromActorComponents(PossibleTeamActor, TeamAgent);
 		if (TeamAgent)
 		{
 			OutTeamAgent = TeamAgent;
@@ -185,7 +193,7 @@ bool UYcTeamSubsystem::FindTeamAgentFromActor(AActor* PossibleTeamActor, TScript
 		}
 	}
 
-	// 再尝试获取PlayerState, 因为推荐做法是放在PlayerState上管理玩家队伍信息
+	// 最后再尝试获取PlayerState, 因为推荐做法是放在PlayerState上管理玩家队伍信息
 	APlayerState* PlayerState = nullptr;
 	
 	if (const APawn* Pawn = Cast<const APawn>(PossibleTeamActor))
@@ -199,7 +207,15 @@ bool UYcTeamSubsystem::FindTeamAgentFromActor(AActor* PossibleTeamActor, TScript
 	
 	if (PlayerState)
 	{
-		const TScriptInterface<IYcTeamAgentInterface> TeamAgent(PlayerState);
+		TScriptInterface<IYcTeamAgentInterface> TeamAgent(PlayerState);
+		if (TeamAgent)
+		{
+			OutTeamAgent = TeamAgent;
+			return true;
+		}
+		
+		// 检查PlayerState的组件是否实现了队伍接口。
+		FindTeamAgentFromActorComponents(PlayerState, TeamAgent);
 		if (TeamAgent)
 		{
 			OutTeamAgent = TeamAgent;
@@ -214,6 +230,25 @@ bool UYcTeamSubsystem::FindTeamAgentFromActor(AActor* PossibleTeamActor, TScript
 		{
 			return FindTeamAgentFromActor(Instigator, OutTeamAgent);
 		}
+	}
+	
+	return false;
+}
+
+bool UYcTeamSubsystem::FindTeamAgentFromActorComponents(AActor* PossibleTeamActor,
+	TScriptInterface<IYcTeamAgentInterface>& OutTeamAgent)
+{
+	if (PossibleTeamActor == nullptr) return false;
+	
+	// 查找Actor的组件是否有实现了团队代理接口的
+	UActorComponent* ActorComponent = PossibleTeamActor->FindComponentByInterface(UYcTeamAgentInterface::StaticClass());
+	if (ActorComponent == nullptr) return false;
+	
+	const TScriptInterface<IYcTeamAgentInterface> TeamAgent(ActorComponent);
+	if (TeamAgent)
+	{
+		OutTeamAgent = TeamAgent;
+		return true;
 	}
 	
 	return false;

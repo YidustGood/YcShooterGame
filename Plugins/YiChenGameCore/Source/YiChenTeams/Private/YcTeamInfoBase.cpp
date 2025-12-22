@@ -24,6 +24,7 @@ void AYcTeamInfoBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	
 	DOREPLIFETIME_CONDITION(AYcTeamInfoBase, TeamId, COND_InitialOnly);
+	DOREPLIFETIME(AYcTeamInfoBase, TeamTags);
 }
 
 void AYcTeamInfoBase::BeginPlay()
@@ -34,7 +35,7 @@ void AYcTeamInfoBase::BeginPlay()
 }
 
 void AYcTeamInfoBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
+{ 
 	// 在游戏结束时注销团队信息
 	if (TeamId != INDEX_NONE)
 	{

@@ -353,3 +353,84 @@ bool UYcTeamSubsystem::CanCauseDamage(UObject* Instigator, UObject* Target, bool
 
 	return false;	
 }
+
+void UYcTeamSubsystem::AddTeamTagStack(const int32 TeamId, const FGameplayTag Tag, const int32 StackCount)
+{
+	auto FailureHandler = [&](const FString& ErrorMessage)
+	{
+		UE_LOG(LogYcTeamSystem, Error, TEXT("AddTeamTagStack(TeamId: %d, Tag: %s, StackCount: %d) %s"), TeamId, *Tag.ToString(), StackCount, *ErrorMessage);
+	};
+
+	if (const FYcTeamTrackingInfo* Entry = TeamMap.Find(TeamId))
+	{
+		if (Entry->PublicInfo)
+		{
+			if (Entry->PublicInfo->HasAuthority())
+			{
+				Entry->PublicInfo->TeamTags.AddStack(Tag, StackCount);
+			}
+			else
+			{
+				FailureHandler(TEXT("failed because it was called on a client"));
+			}
+		}
+		else
+		{
+			FailureHandler(TEXT("failed because there is no team info spawned yet (called too early, before the experience was ready)"));
+		}
+	}
+	else
+	{
+		FailureHandler(TEXT("failed because it was passed an unknown team id"));
+	}
+}
+
+void UYcTeamSubsystem::RemoveTeamTagStack(const int32 TeamId, const FGameplayTag Tag, const int32 StackCount)
+{
+	auto FailureHandler = [&](const FString& ErrorMessage)
+	{
+		UE_LOG(LogYcTeamSystem, Error, TEXT("RemoveTeamTagStack(TeamId: %d, Tag: %s, StackCount: %d) %s"), TeamId, *Tag.ToString(), StackCount, *ErrorMessage);
+	};
+
+	if (const FYcTeamTrackingInfo* Entry = TeamMap.Find(TeamId))
+	{
+		if (Entry->PublicInfo)
+		{
+			if (Entry->PublicInfo->HasAuthority())
+			{
+				Entry->PublicInfo->TeamTags.RemoveStack(Tag, StackCount);
+			}
+			else
+			{
+				FailureHandler(TEXT("failed because it was called on a client"));
+			}
+		}
+		else
+		{
+			FailureHandler(TEXT("failed because there is no team info spawned yet (called too early, before the experience was ready)"));
+		}
+	}
+	else
+	{
+		FailureHandler(TEXT("failed because it was passed an unknown team id"));
+	}
+}
+
+int32 UYcTeamSubsystem::GetTeamTagStackCount(const int32 TeamId, const FGameplayTag Tag) const
+{
+	if (const FYcTeamTrackingInfo* Entry = TeamMap.Find(TeamId))
+	{
+		const int32 PublicStackCount = (Entry->PublicInfo != nullptr) ? Entry->PublicInfo->TeamTags.GetStackCount(Tag) : 0;
+		return PublicStackCount;
+	}
+	else
+	{
+		UE_LOG(LogYcTeamSystem, Verbose, TEXT("GetTeamTagStackCount(TeamId: %d, Tag: %s) failed because it was passed an unknown team id"), TeamId, *Tag.ToString());
+		return 0;
+	}
+}
+
+bool UYcTeamSubsystem::TeamHasTag(const int32 TeamId, const FGameplayTag Tag) const
+{
+	return GetTeamTagStackCount(TeamId, Tag) > 0;
+}

@@ -6,6 +6,7 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "YcTeamSubsystem.generated.h"
 
+struct FGameplayTag;
 class AYcTeamInfoBase;
 class IYcTeamAgentInterface;
 class AYcTeamPublicInfo;
@@ -186,6 +187,43 @@ public:
 	 */
 	bool CanCauseDamage(UObject* Instigator, UObject* Target, bool bAllowDamageToSelf = true) const;
 	
+	/**
+	 * 为指定团队的标签添加指定数量的堆栈
+	 * 注意：当 StackCount 小于 1 时不执行任何操作
+	 * @param TeamId 要操作的团队ID
+	 * @param Tag 要添加堆栈的标签
+	 * @param StackCount 要添加的堆栈数量
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category=Teams)
+	void AddTeamTagStack(const int32 TeamId, const FGameplayTag Tag, const int32 StackCount);
+
+	/**
+	 * 为指定团队的标签移除指定数量的堆栈
+	 * 注意：当 StackCount 小于 1 时不执行任何操作
+	 * @param TeamId 要操作的团队ID
+	 * @param Tag 要移除堆栈的标签
+	 * @param StackCount 要移除的堆栈数量
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category=Teams)
+	void RemoveTeamTagStack(const int32 TeamId, const FGameplayTag Tag, const int32 StackCount);
+
+	/**
+	 * 获取指定团队在指定标签上的堆栈数量
+	 * @param TeamId 要查询的团队ID
+	 * @param Tag 要查询的标签
+	 * @return 标签当前的堆栈数量，如果标签不存在则返回0
+	 */
+	UFUNCTION(BlueprintCallable, Category=Teams)
+	int32 GetTeamTagStackCount(const int32 TeamId, const FGameplayTag Tag) const;
+
+	/**
+	 * 判断指定团队是否至少拥有一层指定标签的堆栈
+	 * @param TeamId 要查询的团队ID
+	 * @param Tag 要查询的标签
+	 * @return 至少有一层堆栈返回true，否则返回false
+	 */
+	UFUNCTION(BlueprintCallable, Category=Teams)
+	bool TeamHasTag(const int32 TeamId, const FGameplayTag Tag) const;
 private:
 	/** 团队ID到团队跟踪信息的映射表 */
 	UPROPERTY()

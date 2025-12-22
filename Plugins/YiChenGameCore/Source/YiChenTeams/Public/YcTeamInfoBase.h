@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "YcGameplayTagStack.h"
 #include "GameFramework/Info.h"
 #include "YcTeamInfoBase.generated.h"
 
@@ -58,8 +59,16 @@ private:
 
 public:
 	friend class UYcTeamCreationComponent;
+	friend class UYcTeamSubsystem;
 
 private:
+	/** 
+	 *  基于GameplayTag的数据存储容器, 支持网络复制, 例如用来存储团队得分信息等
+	 *  在YcTeamSubsystem中提供了基于队伍ID的增删查接口
+	 */
+	UPROPERTY(BlueprintReadOnly, Replicated, meta = (AllowPrivateAccess = "true"))
+	FYcGameplayTagStackContainer TeamTags;
+	
 	/** 团队ID，仅在初始时进行网络复制 */
 	UPROPERTY(ReplicatedUsing=OnRep_TeamId)
 	int32 TeamId;

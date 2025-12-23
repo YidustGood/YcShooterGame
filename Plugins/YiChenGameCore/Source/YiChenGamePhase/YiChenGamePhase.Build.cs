@@ -22,7 +22,10 @@ public class YiChenGamePhase : ModuleRules
                 "SlateCore",
                 "YiChenAbility",
                 "GameplayAbilities",
-                "GameplayTags"
+                "GameplayTags",
+                "ModularGameplay", 
+                "GameplayMessageRuntime", 
+                "YiChenGameCore"
             }
         );
     }

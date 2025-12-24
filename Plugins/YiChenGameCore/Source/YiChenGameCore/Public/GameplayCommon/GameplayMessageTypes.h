@@ -42,6 +42,6 @@ struct FGamePhaseMessage
 {
 	GENERATED_BODY()
 	/** 游戏阶段标签 */
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FGameplayTag PhaseTag;
 };

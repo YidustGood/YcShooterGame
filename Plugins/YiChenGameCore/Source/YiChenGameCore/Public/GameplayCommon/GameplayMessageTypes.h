@@ -31,3 +31,17 @@ struct FGameModePlayerInitializedMessage
 	UPROPERTY(BlueprintReadOnly)
 	TObjectPtr<AController> NewPlayer;
 };
+
+/**
+ * 游戏阶段消息, 用于发布切换游戏阶段的消息,
+ * YiChenGamePhase模块的UYcGamePhaseComponent组件会监听消息处理游戏阶段切换逻辑
+ * 其它模块可以通过GameplayMessageSubsystem发送这个消息来与之交互, 实现模块间的解耦
+ */
+USTRUCT(BlueprintType)
+struct FGamePhaseMessage
+{
+	GENERATED_BODY()
+	/** 游戏阶段标签 */
+	UPROPERTY(BlueprintReadOnly)
+	FGameplayTag PhaseTag;
+};

@@ -59,13 +59,21 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, DisplayName = "GetTeamId")
 	int32 K2_GetTeamId() const;
+	
+	/**
+	 * 蓝图可调用的设置玩家的团队ID
+	 * 注意：此函数只能在服务器端调用
+	 * @param NewTeamID 新的团队ID
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, DisplayName = SetTeamID)
+	void K2_SetTeamID(int32 NewTeamID);
 
 	/**
 	 * 设置玩家的小队ID
 	 * 注意：此函数只能在服务器端调用
 	 * @param NewSquadID 新的小队ID
 	 */
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
 	void SetSquadID(int32 NewSquadID);
 	
 protected:

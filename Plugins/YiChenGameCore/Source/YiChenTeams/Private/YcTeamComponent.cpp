@@ -12,7 +12,7 @@
 UYcTeamComponent::UYcTeamComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
-	SetIsReplicated(true);
+	SetIsReplicatedByDefault(true);
 }
 
 void UYcTeamComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -69,6 +69,11 @@ int32 UYcTeamComponent::GetSquadId() const
 int32 UYcTeamComponent::K2_GetTeamId() const
 {
 	return GenericTeamIdToInteger(MyTeamID);
+}
+
+void UYcTeamComponent::K2_SetTeamID(int32 NewTeamID)
+{
+	SetGenericTeamId(IntegerToGenericTeamId(NewTeamID));
 }
 
 void UYcTeamComponent::SetSquadID(int32 NewSquadID)

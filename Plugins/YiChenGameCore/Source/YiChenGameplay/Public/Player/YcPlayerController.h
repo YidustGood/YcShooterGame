@@ -18,9 +18,17 @@ class YICHENGAMEPLAY_API AYcPlayerController : public ACommonPlayerController
 public:
 	AYcPlayerController(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 	
+	/**
+	 * 获取当前控制器对应的 YcPlayerState
+	 * @return 转换后的 AYcPlayerState 指针，如果当前 PlayerState 不是 AYcPlayerState 类型则返回 nullptr
+	 */
 	UFUNCTION(BlueprintCallable, Category = "YcGameCore|PlayerController")
 	AYcPlayerState* GetYcPlayerState() const;
 	
+	/**
+	 * 获取当前控制器对应的 YcAbilitySystemComponent
+	 * @return YcAbilitySystemComponent 指针，如果未找到则返回 nullptr
+	 */
 	UFUNCTION(BlueprintCallable, Category = "YcGameCore|PlayerController")
 	UYcAbilitySystemComponent* GetYcAbilitySystemComponent() const;
 	
@@ -33,4 +41,14 @@ public:
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void OnUnPossess() override;
 	//~End of AController interface
+	
+	////////// Cheat相关 //////////
+	/** 在服务器上执行一条作弊命令（仅作用于当前玩家） */
+	UFUNCTION(Reliable, Server, WithValidation)
+	void ServerCheat(const FString& Msg);
+
+	/** 在服务器上执行一条作弊命令（作用于所有玩家） */
+	UFUNCTION(Reliable, Server, WithValidation)
+	void ServerCheatAll(const FString& Msg);
+	////////// ~Cheat相关 //////////
 };

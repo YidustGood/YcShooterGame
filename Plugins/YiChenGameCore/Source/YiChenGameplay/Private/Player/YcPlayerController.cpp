@@ -4,13 +4,16 @@
 #include "Player/YcPlayerController.h"
 
 #include "AbilitySystemGlobals.h"
+#include "EngineUtils.h"
 #include "YcAbilitySystemComponent.h"
+#include "Player/YcCheatManager.h"
 #include "Player/YcPlayerState.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcPlayerController)
 
 AYcPlayerController::AYcPlayerController(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
+	CheatClass = UYcCheatManager::StaticClass();
 }
 
 AYcPlayerState* AYcPlayerController::GetYcPlayerState() const
@@ -63,4 +66,43 @@ void AYcPlayerController::OnUnPossess()
 		}
 	}
 	Super::OnUnPossess();
+}
+
+void AYcPlayerController::ServerCheatAll_Implementation(const FString& Msg)
+{
+#if USING_CHEAT_MANAGER
+	if (CheatManager)
+	{
+		UE_LOG(LogYcGameCheat, Warning, TEXT("ServerCheat: %s"), *Msg);
+		ClientMessage(ConsoleCommand(Msg));
+	}
+#endif // #if USING_CHEAT_MANAGER
+}
+
+bool AYcPlayerController::ServerCheatAll_Validate(const FString& Msg)
+{
+	return true;
+}
+
+void AYcPlayerController::ServerCheat_Implementation(const FString& Msg)
+{
+#if USING_CHEAT_MANAGER
+	if (CheatManager)
+	{
+		UE_LOG(LogYcGameCheat, Warning, TEXT("ServerCheatAll: %s"), *Msg);
+		for (TActorIterator<AYcPlayerController> It(GetWorld()); It; ++It)
+		{
+			AYcPlayerController* YcPC = (*It);
+			if (YcPC)
+			{
+				YcPC->ClientMessage(YcPC->ConsoleCommand(Msg));
+			}
+		}
+	}
+#endif // #if USING_CHEAT_MANAGER
+}
+
+bool AYcPlayerController::ServerCheat_Validate(const FString& Msg)
+{
+	return true;
 }

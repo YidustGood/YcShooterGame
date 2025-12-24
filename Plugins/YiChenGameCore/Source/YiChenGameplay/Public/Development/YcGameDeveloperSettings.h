@@ -5,8 +5,35 @@
 #include "Engine/DeveloperSettingsBackedByCVars.h"
 #include "YcGameDeveloperSettings.generated.h"
 
+/** 作弊命令执行时机 */
+UENUM()
+enum class ECheatExecutionTime
+{
+	/** 当 CheatManager 创建时执行 */
+	OnCheatManagerCreated,
+
+	/** 当玩家控制一个 Pawn 时执行 */
+	OnPlayerPawnPossession
+};
+
+/** 单条需要自动执行的作弊命令配置 */
+USTRUCT()
+struct FYcCheatToRun
+{
+	GENERATED_BODY()
+
+	/** 执行该作弊命令的时机 */
+	UPROPERTY(EditAnywhere)
+	ECheatExecutionTime Phase = ECheatExecutionTime::OnPlayerPawnPossession;
+
+	/** 要执行的作弊命令字符串（控制台命令格式） */
+	UPROPERTY(EditAnywhere)
+	FString Cheat;
+};
+
 /**
- * Developer settings / editor cheat
+ * 游戏开发相关 Developer Settings / 编辑器作弊配置
+ * 用于配置编辑器下体验覆盖、自动运行的作弊命令以及常用地图等开发期功能
  */
 UCLASS(config=EditorPerProjectUserSettings, MinimalAPI)
 class UYcGameDeveloperSettings : public UDeveloperSettingsBackedByCVars
@@ -16,24 +43,30 @@ public:
 	UYcGameDeveloperSettings();
 	
 	//~UDeveloperSettings interface
+	/**
+	 * 返回在编辑器 Project Settings 中显示的设置分类名称
+	 * @return 分类名称（通常为当前工程名）
+	 */
 	virtual FName GetCategoryName() const override;
 	//~End of UDeveloperSettings interface
 	
-	// The experience override to use for Play in Editor (if not set, the default for the world settings of the open map will be used)
-	// 在编辑器中使用的体验覆盖(如果没有设置，将使用打开地图的默认世界设置)
+	// 在编辑器中用于「Play In Editor」的体验覆盖（如果未设置，则使用当前地图世界设置中的默认体验）
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, config, Category="YcGameCore", meta=(AllowedTypes="YcExperienceDefinition"))
 	FPrimaryAssetId ExperienceOverride;
 	
+	/** 在「Play In Editor」期间自动执行的作弊命令列表 */
+	UPROPERTY(config, EditAnywhere, Category=YcGameCore)
+	TArray<FYcCheatToRun> CheatsToRun;
+	
 public:
 #if WITH_EDITORONLY_DATA
-	/** A list of common maps that will be accessible via the editor detoolbar */
+	/** 常用地图列表，这些地图可以通过编辑器工具栏快捷访问 */
 	UPROPERTY(config, EditAnywhere, BlueprintReadOnly, Category=Maps, meta=(AllowedClasses="/Script/Engine.World"))
 	TArray<FSoftObjectPath> CommonEditorMaps;
 #endif
 	
 #if WITH_EDITOR
-
-	// Called by the editor engine to let us pop reminder notifications when cheats are active
+	/** 由编辑器引擎调用，用于在启用体验覆盖或作弊设置时弹出提醒通知 */
 	YICHENGAMEPLAY_API void OnPlayInEditorStarted() const;
 
 private:

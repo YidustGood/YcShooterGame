@@ -16,13 +16,14 @@ UYcGameDeveloperSettings::UYcGameDeveloperSettings()
 
 FName UYcGameDeveloperSettings::GetCategoryName() const
 {
+	// 在 Project Settings 中使用工程名作为该设置页的分类名称
 	return FApp::GetProjectName();
 }
 
 #if WITH_EDITOR
 void UYcGameDeveloperSettings::OnPlayInEditorStarted() const
 {
-	// Show a notification toast to remind the user that there's an experience override set
+	// 当设置了体验覆盖时，在进入 PIE 时弹出提示通知，提醒开发者当前使用的是覆盖体验
 	if (ExperienceOverride.IsValid())
 	{
 		FNotificationInfo Info(FText::Format(
@@ -36,12 +37,14 @@ void UYcGameDeveloperSettings::OnPlayInEditorStarted() const
 
 void UYcGameDeveloperSettings::ApplySettings()
 {
+	// TODO: 在此处根据配置同步和应用对应的控制台变量或运行时设置
 }
 
 void UYcGameDeveloperSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
+	// 编辑器中修改配置后立即应用设置
 	ApplySettings();
 }
 
@@ -49,6 +52,7 @@ void UYcGameDeveloperSettings::PostReloadConfig(FProperty* PropertyThatWasLoaded
 {
 	Super::PostReloadConfig(PropertyThatWasLoaded);
 
+	// 从配置文件重新加载后应用设置
 	ApplySettings();
 }
 
@@ -56,6 +60,7 @@ void UYcGameDeveloperSettings::PostInitProperties()
 {
 	Super::PostInitProperties();
 
+	// 对象初始化完成后应用一次当前配置
 	ApplySettings();
 }
 #endif

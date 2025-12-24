@@ -45,6 +45,8 @@ enum class EPhaseTagMatchType : uint8
  * 游戏阶段技能依赖 GameState 上的 UYcAbilitySystemComponent，因为它们代表的是“整场对局”的状态而非某个具体玩家，GameState 是最合适的持有者。
  * 本子系统用于管理当前激活的游戏阶段，并提供注册/触发指定阶段开始与结束事件的能力。
  * 各个具体阶段的实际逻辑通过继承 UYcGamePhaseAbility 来实现。
+ * 
+ * 注意：该子系统仅工作在权威端, 为权威端的游戏阶段能力提供支持, 具体的游戏阶段组织切换逻辑由UYcGamePhaseComponent及其子类进行定制实现
  */
 UCLASS()
 class YICHENGAMEPHASE_API UYcGamePhaseSubsystem : public UWorldSubsystem

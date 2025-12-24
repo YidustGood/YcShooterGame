@@ -19,7 +19,7 @@ UYcGamePhaseComponent::UYcGamePhaseComponent(const FObjectInitializer& ObjectIni
 	PrimaryComponentTick.bCanEverTick = false;
 	// -1 表示当前还没有任何阶段被激活
 	CurrentPhaseIndex = -1;
-	SetIsReplicated(true);
+	SetIsReplicatedByDefault(true);
 }
 
 void UYcGamePhaseComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

@@ -8,6 +8,7 @@
 #include "GameFramework/GameplayMessageSubsystem.h"
 
 #include "GameplayCommon/ExperienceMessageTypes.h"
+#include "Net/UnrealNetwork.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcGamePhaseComponent)
 
@@ -18,24 +19,41 @@ UYcGamePhaseComponent::UYcGamePhaseComponent(const FObjectInitializer& ObjectIni
 	PrimaryComponentTick.bCanEverTick = false;
 	// -1 表示当前还没有任何阶段被激活
 	CurrentPhaseIndex = -1;
+	SetIsReplicated(true);
+}
+
+void UYcGamePhaseComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(UYcGamePhaseComponent, CurrentPhaseIndex);
+}
+
+UYcGamePhaseComponent* UYcGamePhaseComponent::GetGamePhaseComponent(AGameStateBase* GameState)
+{
+	if (GameState == nullptr) return nullptr;
+	return GameState->FindComponentByClass<UYcGamePhaseComponent>();
 }
 
 void UYcGamePhaseComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	// 监听游戏体验加载完成事件，体验加载完成后才开始阶段流转
-	UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(this);
-	MessageSubsystem.RegisterListener(YcGameplayTags::Experience_StateEvent_Loaded_HighPriority, this, &ThisClass::OnExperienceLoaded);
-	
-	// @TODO 这里在实际发送消息时一定要注意在 OnExperienceLoaded 之后，否则阶段切换会过早；
-	// @TODO 也可以在收到消息时判断体验是否加载完成，若未完成则缓存起来待体验加载完成后再处理，但目前认为没有强需求。
-	
-	// 为每个游戏阶段创建消息监听, 以接收处理开始某个游戏阶段
-	// 不过请优先使用StartNextPhase()的方式进行顺序的游戏阶段轮转, 发送消息只是提供一个向前跳跃式轮转的途径
-	for (const auto& Phase : GamePhases)
+	// 仅在权威端处理游戏阶段流转
+	if (GetOwner() && GetOwner()->HasAuthority())
 	{
-		MessageSubsystem.RegisterListener(Phase.GamePhaseTag, this, &ThisClass::OnGamePhaseMessage);
+		// 监听游戏体验加载完成事件，体验加载完成后才开始阶段流转
+		UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(this);
+		MessageSubsystem.RegisterListener(YcGameplayTags::Experience_StateEvent_Loaded_HighPriority, this, &ThisClass::OnExperienceLoaded);
+		
+		// @TODO 这里在实际发送消息时一定要注意在 OnExperienceLoaded 之后，否则阶段切换会过早；
+		// @TODO 也可以在收到消息时判断体验是否加载完成，若未完成则缓存起来待体验加载完成后再处理，但目前认为没有强需求。
+		
+		// 为每个游戏阶段创建消息监听, 以接收处理开始某个游戏阶段
+		// 不过请优先使用StartNextPhase()的方式进行顺序的游戏阶段轮转, 发送消息只是提供一个向前跳跃式轮转的途径
+		for (const auto& Phase : GamePhases)
+		{
+			MessageSubsystem.RegisterListener(Phase.GamePhaseTag, this, &ThisClass::OnGamePhaseMessage);
+		}
 	}
 }
 
@@ -71,6 +89,8 @@ void UYcGamePhaseComponent::OnExperienceLoaded(FGameplayTag Channel, const FExpe
 
 void UYcGamePhaseComponent::StartNextPhase()
 {
+	ensure(GetOwner()->HasAuthority() == true);
+	
 	// 确保存在下一阶段定义，且不会越界访问
 	if (GamePhases.IsEmpty() || (CurrentPhaseIndex + 1) >= GamePhases.Num()) return;
 	CurrentPhaseIndex++;
@@ -80,7 +100,7 @@ void UYcGamePhaseComponent::StartNextPhase()
 
 FGameplayTag UYcGamePhaseComponent::GetCurrentPhase()
 {
-	if (GamePhases.IsEmpty() || CurrentPhaseIndex >= GamePhases.Num()) return FGameplayTag();
+	if (GamePhases.IsEmpty() || CurrentPhaseIndex >= GamePhases.Num() || CurrentPhaseIndex < 0) return FGameplayTag();
 	return GamePhases[CurrentPhaseIndex].GamePhaseTag;
 }
 

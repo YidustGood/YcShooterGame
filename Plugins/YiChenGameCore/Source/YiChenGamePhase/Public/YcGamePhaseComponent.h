@@ -49,6 +49,13 @@ class YICHENGAMEPHASE_API UYcGamePhaseComponent : public UGameStateComponent
 	GENERATED_BODY()
 public:
 	UYcGamePhaseComponent(const FObjectInitializer& ObjectInitializer);
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/**
+	 * 获取YcGamePhaseComponent的工具函数
+	 */
+	UFUNCTION(BlueprintCallable, Category = "GamePhase")
+	static UYcGamePhaseComponent* GetGamePhaseComponent(AGameStateBase* GameState);
 	
 	/**
 	 * 组件开始播放时调用
@@ -60,7 +67,7 @@ public:
 	 * 按照顺序开始下一个游戏阶段（不会跳跃）
 	 * 使用 GamePhases 数组中当前索引的下一个阶段定义来驱动阶段切换
 	 */
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
 	void StartNextPhase();
 	
 	/**
@@ -99,6 +106,6 @@ private:
 	TArray<FYcGamePhaseDefinition> GamePhases;
 	
 	/** 当前游戏阶段下标 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
 	int32 CurrentPhaseIndex;
 };

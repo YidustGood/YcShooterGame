@@ -3,17 +3,35 @@
 #include "Abilities/YcGameplayAbility.h"
 
 #include "AbilitySystemGlobals.h"
+#include "AbilitySystemLog.h"
 #include "YcAbilitySourceInterface.h"
 #include "YcAbilitySystemComponent.h"
 #include "YcGameplayEffectContext.h"
 #include "YcGameplayTags.h"
+#include "YiChenAbility.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcGameplayAbility)
+
+/** 确保Ability已实例化的宏，如果未实例化则输出错误日志并直接返回函数 */
+#define ENSURE_ABILITY_IS_INSTANTIATED_OR_RETURN(FunctionName, ReturnValue)																				\
+{																																						\
+if (!ensure(IsInstantiated()))																														\
+{																																					\
+ABILITY_LOG(Error, TEXT("%s: " #FunctionName " cannot be called on a non-instanced ability. Check the instancing policy."), *GetPathName());	\
+return ReturnValue;																																\
+}																																					\
+}
 
 UYcGameplayAbility::UYcGameplayAbility(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	
+	ReplicationPolicy = EGameplayAbilityReplicationPolicy::ReplicateNo;
+	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
+	NetSecurityPolicy = EGameplayAbilityNetSecurityPolicy::ClientOrServer;
+
+	ActivationPolicy = EYcAbilityActivationPolicy::OnInputTriggered;
+	ActivationGroup = EYcAbilityActivationGroup::Independent;
 }
 
 void UYcGameplayAbility::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
@@ -36,7 +54,6 @@ bool UYcGameplayAbility::DoesAbilitySatisfyTagRequirements(const UAbilitySystemC
                                                            const FGameplayTagContainer* SourceTags, const FGameplayTagContainer* TargetTags,
                                                            FGameplayTagContainer* OptionalRelevantTags) const
 {
-	// Specialized version to handle death exclusion and AbilityTags expansion via ASC
 	// 通过ASC处理死亡排除和能力标签扩展的专用版本
 
 	bool bBlocked = false;
@@ -46,7 +63,7 @@ bool UYcGameplayAbility::DoesAbilitySatisfyTagRequirements(const UAbilitySystemC
 	const FGameplayTag& BlockedTag = AbilitySystemGlobals.ActivateFailTagsBlockedTag;
 	const FGameplayTag& MissingTag = AbilitySystemGlobals.ActivateFailTagsMissingTag;
 	
-	// Check if any of this ability's tags are currently blocked
+	// 检查技能的标签是否被阻止
 	if (AbilitySystemComponent.AreAbilityTagsBlocked(GetAssetTags()))
 	{
 		bBlocked = true;
@@ -59,13 +76,13 @@ bool UYcGameplayAbility::DoesAbilitySatisfyTagRequirements(const UAbilitySystemC
 	AllRequiredTags = ActivationRequiredTags;
 	AllBlockedTags = ActivationBlockedTags;
 	
-	// Expand our ability tags to add additional required/blocked tags
+	// 通过ASC扩展技能标签，添加额外的必需/阻止标签
 	if (ASC)
 	{
 		ASC->GetAdditionalActivationTagRequirements(AbilityTags, AllRequiredTags, AllBlockedTags);
 	}
 	
-	// Check to see the required/blocked tags for this ability
+	// 检查技能的必需/阻止标签
 	if (AllBlockedTags.Num() || AllRequiredTags.Num())
 	{
 		static FGameplayTagContainer AbilitySystemComponentTags;
@@ -75,12 +92,11 @@ bool UYcGameplayAbility::DoesAbilitySatisfyTagRequirements(const UAbilitySystemC
 
 		if (AbilitySystemComponentTags.HasAny(AllBlockedTags))
 		{
-			if (OptionalRelevantTags && AbilitySystemComponentTags.HasTag(YcGameplayTags::Status_Death))
-			{
-				// If player is dead and was rejected due to blocking tags, give that feedback
-				//如果玩家已经死亡，并且由于阻塞标签而被拒绝，给出反馈
-				OptionalRelevantTags->AddTag(YcGameplayTags::Ability_ActivateFail_IsDead);
-			}
+		if (OptionalRelevantTags && AbilitySystemComponentTags.HasTag(YcGameplayTags::Status_Death))
+		{
+			// 如果玩家已死亡且因阻止标签而被拒绝，添加反馈标签
+			OptionalRelevantTags->AddTag(YcGameplayTags::Ability_ActivateFail_IsDead);
+		}
 
 			bBlocked = true;
 		}
@@ -108,7 +124,7 @@ bool UYcGameplayAbility::DoesAbilitySatisfyTagRequirements(const UAbilitySystemC
 		}
 	}
 
-	// 技能作用目标(Avatr?)
+	// 检查技能作用目标（Avatar）的标签
 	if (TargetTags != nullptr)
 	{
 		if (TargetBlockedTags.Num() || TargetRequiredTags.Num())
@@ -180,7 +196,7 @@ void UYcGameplayAbility::GetAbilitySource(FGameplayAbilitySpecHandle Handle, con
 
 	OutEffectCauser = ActorInfo->AvatarActor.Get();
 
-	// If we were added by something that's an ability info source, use it
+	// 如果技能是由实现了IYcAbilitySourceInterface的对象授予的，则使用它作为源
 	UObject* SourceObject = GetSourceObject(Handle, ActorInfo);
 
 	OutAbilitySource = Cast<IYcAbilitySourceInterface>(SourceObject);
@@ -218,6 +234,39 @@ AController* UYcGameplayAbility::GetControllerFromActorInfo() const
 	}
 
 	return nullptr;
+}
+
+bool UYcGameplayAbility::CanActivateAbility(const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags,
+	const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
+{
+	if (!ActorInfo || !ActorInfo->AbilitySystemComponent.IsValid()) return false;
+	
+	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags)) return false;
+	
+	// @TODO 可能在设置标签关系后删除
+	UYcAbilitySystemComponent* YcASC = CastChecked<UYcAbilitySystemComponent>(ActorInfo->AbilitySystemComponent.Get());
+	if (YcASC->IsActivationGroupBlocked(ActivationGroup))
+	{
+		if (OptionalRelevantTags)
+		{
+			OptionalRelevantTags->AddTag(YcGameplayTags::Ability_ActivateFail_ActivationGroup);
+		}
+		return false;
+	}
+	
+	return true;
+}
+
+void UYcGameplayAbility::SetCanBeCanceled(bool bCanBeCanceled)
+{
+	// 如果该能力属于“可被替换”类型，则它不能阻止被取消。
+	if (!bCanBeCanceled && (ActivationGroup == EYcAbilityActivationGroup::Exclusive_Replaceable))
+	{
+		UE_LOG(LogYcAbilitySystem, Error, TEXT("SetCanBeCanceled: Ability [%s] can not block canceling because its activation group is replaceable."), *GetName());
+		return;
+	}
+	Super::SetCanBeCanceled(bCanBeCanceled);
 }
 
 void UYcGameplayAbility::OnPawnAvatarSet()
@@ -261,4 +310,48 @@ void UYcGameplayAbility::ExternalEndAbility()
 	bool bReplicateEndAbility = true;
 	bool bWasCancelled = false;
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, bReplicateEndAbility, bWasCancelled);
+}
+
+bool UYcGameplayAbility::CanChangeActivationGroup(EYcAbilityActivationGroup NewGroup) const
+{
+	if (!IsInstantiated() || !IsActive()) return false;
+	
+	if (ActivationGroup == NewGroup) return true;
+
+	UYcAbilitySystemComponent* YcASC = GetYcAbilitySystemComponentFromActorInfo();
+	check(YcASC);
+	
+	if ((ActivationGroup != EYcAbilityActivationGroup::Exclusive_Blocking) && YcASC->IsActivationGroupBlocked(NewGroup))
+	{
+		// 如果目标分组当前被阻塞，此能力将无法切换分组（除非它自己就是造成阻塞的那个能力）。
+		return false;
+	}
+
+	if ((NewGroup == EYcAbilityActivationGroup::Exclusive_Replaceable) && !CanBeCanceled())
+	{
+		// 如果此能力本身不可被取消，则它不能切换到“可被替换的排他性”分组。
+		return false;
+	}
+
+	return true;
+}
+
+bool UYcGameplayAbility::ChangeActivationGroup(EYcAbilityActivationGroup NewGroup)
+{
+	ENSURE_ABILITY_IS_INSTANTIATED_OR_RETURN(ChangeActivationGroup, false);
+
+	if (!CanChangeActivationGroup(NewGroup)) return false;
+
+	if (ActivationGroup != NewGroup)
+	{
+		UYcAbilitySystemComponent* YcASC = GetYcAbilitySystemComponentFromActorInfo();
+		check(YcASC);
+
+		YcASC->RemoveAbilityFromActivationGroup(ActivationGroup, this);
+		YcASC->AddAbilityToActivationGroup(NewGroup, this);
+
+		ActivationGroup = NewGroup;
+	}
+
+	return true;
 }

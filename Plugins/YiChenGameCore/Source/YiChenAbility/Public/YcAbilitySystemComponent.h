@@ -3,6 +3,7 @@
 #pragma once
 
 #include "AbilitySystemComponent.h"
+#include "Abilities/YcGameplayAbility.h"
 #include "YcAbilitySystemComponent.generated.h"
 
 class UYcGameplayAbility;
@@ -62,13 +63,13 @@ protected:
 	/** 是否启用服务器RPC批处理，启用时可将多个技能相关的RPC合并为一个，减少网络流量 */
 	virtual bool ShouldDoServerAbilityRPCBatch() const override { return true; }
 	
-	// 应用TagRelationshipMapping中配置的Block和Cancel标签
+	/** 应用TagRelationshipMapping中配置的Block和Cancel标签 */
 	virtual void ApplyAbilityBlockAndCancelTags(const FGameplayTagContainer& AbilityTags, UGameplayAbility* RequestingAbility, bool bEnableBlockTags, const FGameplayTagContainer& BlockTags,
 												bool bExecuteCancelTags, const FGameplayTagContainer& CancelTags) override;
-	// 处理技能可取消状态变化时的特殊逻辑
+	/** 处理技能可取消状态变化时的特殊逻辑 */
 	virtual void HandleChangeAbilityCanBeCanceled(const FGameplayTagContainer& AbilityTags, UGameplayAbility* RequestingAbility, bool bCanBeCanceled) override;
 	
-	// 尝试激活所有OnSpawn激活策略的技能
+	/** 尝试激活所有OnSpawn激活策略的技能 */
 	void TryActivateAbilitiesOnSpawn();
 	
 	///////////////// 基于玩家输入+GameplayTag驱动的技能激活/取消功能 /////////////////
@@ -164,8 +165,6 @@ private:
 	 */
 	TArray<FGameplayAbilitySpecHandle> InputHeldSpecHandles;
 	
-	///////////////// ~基于玩家输入+GameplayTag驱动的技能激活/取消功能 /////////////////
-	
 	/**
 	 * 取消由玩家输入激活的所有技能
 	 * 取消所有激活策略为OnInputTriggered或WhileInputActive的已激活技能
@@ -173,6 +172,44 @@ private:
 	 * @param bReplicateCancelAbility 是否复制取消事件到网络
 	 */
 	void CancelInputActivatedAbilities(bool bReplicateCancelAbility);
+	///////////////// ~基于玩家输入+GameplayTag驱动的技能激活/取消功能 /////////////////
+	
+	///////////////// 技能激活策略分组相关 /////////////////
+public:
+	/**
+	 * 检查特定激活组是否处于阻止激活状态
+	 * @param Group 要检查的激活组
+	 * @return 如果该组被阻止则返回true，否则返回false
+	 */
+	bool IsActivationGroupBlocked(EYcAbilityActivationGroup Group) const;
+	
+	/**
+	 * 将技能添加到激活组
+	 * 增加该组的计数，并根据组类型执行相应的逻辑（如取消可替换的排他性技能）
+	 * @param Group 目标激活组
+	 * @param YcAbility 要添加的技能
+	 */
+	void AddAbilityToActivationGroup(EYcAbilityActivationGroup Group, UYcGameplayAbility* YcAbility);
+	
+	/**
+	 * 从激活组中移除技能
+	 * 减少该组的计数
+	 * @param Group 目标激活组
+	 * @param YcAbility 要移除的技能
+	 */
+	void RemoveAbilityFromActivationGroup(EYcAbilityActivationGroup Group, const UYcGameplayAbility* YcAbility);
+	
+	/**
+	 * 取消特定激活组的所有技能
+	 * @param Group 目标激活组
+	 * @param IgnoreAbility 要忽略的技能，不会被取消
+	 * @param bReplicateCancelAbility 是否复制取消事件到网络
+	 */
+	void CancelActivationGroupAbilities(EYcAbilityActivationGroup Group, UYcGameplayAbility* IgnoreAbility, bool bReplicateCancelAbility);
+private:
+	/** 每个激活组中正在运行的技能数量 */
+	int32 ActivationGroupCounts[static_cast<uint8>(EYcAbilityActivationGroup::MAX)];
+	///////////////// ~技能激活策略分组相关 /////////////////
 	
 public:
 	/////////// 增强蓝图使用的函数 ////////////

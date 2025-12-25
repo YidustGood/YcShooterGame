@@ -45,6 +45,25 @@ enum class EYcAbilityActivationPolicy : uint8
 };
 
 /**
+ * 技能激活组枚举
+ * 定义技能激活时与其他技能的关系
+ */
+UENUM(BlueprintType)
+enum class EYcAbilityActivationGroup : uint8
+{
+	/** 技能独立运行，不受其他技能影响 */
+	Independent,
+
+	/** 技能可被其他排他性技能取消并替换 */
+	Exclusive_Replaceable,
+
+	/** 技能会阻止所有其他排他性技能激活 */
+	Exclusive_Blocking,
+
+	MAX UMETA(Hidden)
+};
+
+/**
  * 插件提供的技能基类, 与插件提供的YcAbilitySystemComponent配合使用
  */
 UCLASS(Abstract, HideCategories = Input, Meta = (ShortTooltip = "The base gameplay ability class used by this project."))
@@ -75,7 +94,25 @@ public:
 	
 protected:
 	//~UGameplayAbility interface
-
+	
+	/**
+	 * 检查技能是否可以激活（覆盖父类）
+	 * 在父类检查的基础上，额外检查激活组是否被阻止
+	 * @param Handle 技能规格句柄
+	 * @param ActorInfo Actor信息
+	 * @param SourceTags 源标签容器
+	 * @param TargetTags 目标标签容器
+	 * @param OptionalRelevantTags 可选的输出相关标签容器
+	 * @return 如果技能可以激活则返回true，否则返回false
+	 */
+	virtual bool CanActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags, const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const override;
+	
+	/**
+	 * 设置技能是否可被取消（覆盖父类）
+	 * 如果技能属于Exclusive_Replaceable组，则不能设置为不可取消
+	 * @param bCanBeCanceled 是否可被取消
+	 */
+	virtual void SetCanBeCanceled(bool bCanBeCanceled) override;
 	/** 技能被授予时的回调，触发K2_OnAbilityAdded蓝图事件和尝试在生成时激活技能 */
 	virtual void OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
 	/** 技能被移除时的回调，触发K2_OnAbilityRemoved蓝图事件 */
@@ -86,7 +123,14 @@ protected:
 	virtual FGameplayEffectContextHandle MakeEffectContext(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo) const override;
 	//~End of UGameplayAbility interface
 	
-	// 获取技能的源信息（等级、源对象、效果施加者）
+	/**
+	 * 获取技能的源信息（等级、源对象、效果施加者）
+	 * @param Handle 技能规格句柄
+	 * @param ActorInfo Actor信息
+	 * @param OutSourceLevel 输出：源等级
+	 * @param OutAbilitySource 输出：技能源接口
+	 * @param OutEffectCauser 输出：效果施加者Actor
+	 */
 	virtual void GetAbilitySource(FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, float& OutSourceLevel, const IYcAbilitySourceInterface*& OutAbilitySource, AActor*& OutEffectCauser) const;
 	
 	/**
@@ -141,6 +185,24 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = Ability, DisplayName = "OnPawnAvatarSet")
 	void K2_OnPawnAvatarSet();
 	
+	/**
+	 * 检查是否可以切换到指定的激活组
+	 * 检查技能是否已实例化、是否处于激活状态，以及目标组是否被阻止
+	 * @param NewGroup 目标激活组
+	 * @return 如果可以切换则返回true，否则返回false
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "YcGameCore|Ability", Meta = (ExpandBoolAsExecs = "ReturnValue"))
+	bool CanChangeActivationGroup(EYcAbilityActivationGroup NewGroup) const;
+
+	/**
+	 * 尝试切换激活组
+	 * 从当前组移除技能，然后添加到新组
+	 * @param NewGroup 目标激活组
+	 * @return 如果成功切换则返回true，否则返回false
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "YcGameCore|Ability", Meta = (ExpandBoolAsExecs = "ReturnValue"))
+	bool ChangeActivationGroup(EYcAbilityActivationGroup NewGroup);
+	
 protected:
 	/**
 	 * 技能的激活策略
@@ -150,10 +212,24 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "YcGameCore|Ability Activation", meta=(AllowPrivateAccess="true"))
 	EYcAbilityActivationPolicy ActivationPolicy;
 	
+	/**
+	 * 技能的激活组
+	 * 定义该技能激活时与其他技能的关系（独立、可替换的排他性、阻塞性排他性）
+	 * 在编辑器中可编辑，蓝图只读
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "YcGameCore|Ability Activation")
+	EYcAbilityActivationGroup ActivationGroup;
+	
 public:
 	/**
 	 * 获取技能的激活策略
 	 * @return 该技能的激活策略
 	 */
 	FORCEINLINE EYcAbilityActivationPolicy GetActivationPolicy() const { return ActivationPolicy; }
+	
+	/**
+	 * 获取技能的激活组
+	 * @return 该技能的激活组
+	 */
+	FORCEINLINE EYcAbilityActivationGroup GetActivationGroup() const { return ActivationGroup; }
 };

@@ -168,9 +168,7 @@ void UYcAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGameP
 	
 	// @TODO: 考虑在这些循环中使用FScopedServerAbilityRPCBatcher进行RPC批处理优化
 	
-	//
-	// Process all abilities that activate when the input is held./ 处理持续输入的技能
-	//
+	// 处理持续输入的技能（WhileInputActive策略）
 	for (const FGameplayAbilitySpecHandle& SpecHandle : InputHeldSpecHandles)
 	{
 		FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle);
@@ -184,9 +182,7 @@ void UYcAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGameP
 		}
 	}
 	
-	//
-	// Process all abilities that had their input pressed this frame./ 处理单次按下触发的技能
-	//
+	// 处理单次按下触发的技能（OnInputTriggered策略）
 	for (const FGameplayAbilitySpecHandle& SpecHandle : InputPressedSpecHandles)
 	{
 		FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle);
@@ -198,7 +194,7 @@ void UYcAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGameP
 		// 点击按钮后激活能力,在能力没有结束前再次被点击就会通知WaitInputPress,以供能力响应激活期间的InputPress事件
 		if (AbilitySpec->IsActive())
 		{
-			// Ability is active so pass along the input event.
+			// 技能已激活，传递输入事件
 			AbilitySpecInputPressed(*AbilitySpec);
 			continue;
 		}
@@ -210,12 +206,9 @@ void UYcAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGameP
 		}
 	}
 	
-	//
-	// Try to activate all the abilities that are from presses and holds.
-	// We do it all at once so that held inputs don't activate the ability
-	// and then also send a input event to the ability because of the press.
-	//
-	for (const FGameplayAbilitySpecHandle& AbilitySpecHandle : AbilitiesToActivate) // 遍历激活所有待激活的技能
+	// 统一激活所有待激活的技能（包括按下和持续输入触发的）
+	// 统一处理可以避免持续输入在激活技能后又因为按下事件而再次发送输入事件
+	for (const FGameplayAbilitySpecHandle& AbilitySpecHandle : AbilitiesToActivate)
 	{
 #if WITH_EDITOR // 编辑器下调试用
 		const FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(AbilitySpecHandle);
@@ -228,12 +221,12 @@ void UYcAbilitySystemComponent::ProcessAbilityInput(float DeltaTime, bool bGameP
 		TryActivateAbility(AbilitySpecHandle);
 	}
 	
-	// Process all abilities that had their input released this frame. / 处理所有释放了的Ability
-	for (const FGameplayAbilitySpecHandle& SpecHandle : InputReleasedSpecHandles) // 处理技能按钮释放
+	// 处理所有本帧释放输入的技能
+	for (const FGameplayAbilitySpecHandle& SpecHandle : InputReleasedSpecHandles)
 	{
 		FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle);
 		if (!AbilitySpec || !AbilitySpec->Ability || !AbilitySpec->IsActive()) continue;
-		// Ability is active so pass along the input event.
+		// 技能已激活，传递输入释放事件
 		AbilitySpecInputReleased(*AbilitySpec);
 	}
 	
@@ -290,6 +283,91 @@ void UYcAbilitySystemComponent::CancelInputActivatedAbilities(const bool bReplic
 		return ((ActivationPolicy == EYcAbilityActivationPolicy::OnInputTriggered) || (ActivationPolicy == EYcAbilityActivationPolicy::WhileInputActive));
 	};
 
+	CancelAbilitiesByFunc(ShouldCancelFunc, bReplicateCancelAbility);
+}
+
+bool UYcAbilitySystemComponent::IsActivationGroupBlocked(EYcAbilityActivationGroup Group) const
+{
+	bool bBlocked = false;
+
+	switch (Group)
+	{
+	case EYcAbilityActivationGroup::Independent:
+		// 独立能力分组永远不会被阻塞
+		bBlocked = false;
+		break;
+
+	case EYcAbilityActivationGroup::Exclusive_Replaceable:
+	case EYcAbilityActivationGroup::Exclusive_Blocking:
+		// 排他性能力仅当没有阻塞性排他能力活跃时，才能被激活
+		bBlocked = (ActivationGroupCounts[static_cast<uint8>(EYcAbilityActivationGroup::Exclusive_Blocking)] > 0);
+		break;
+
+	default:
+		// 如果传入无效的枚举值，触发断言并提示错误
+		checkf(false, TEXT("IsActivationGroupBlocked: Invalid ActivationGroup [%d]\n"), static_cast<uint8>(Group));
+		break;
+	}
+
+	return bBlocked;
+}
+
+void UYcAbilitySystemComponent::AddAbilityToActivationGroup(EYcAbilityActivationGroup Group,
+	UYcGameplayAbility* YcAbility)
+{
+	check(YcAbility);
+	check(ActivationGroupCounts[static_cast<uint8>(Group)] < INT32_MAX);
+
+	ActivationGroupCounts[static_cast<uint8>(Group)]++;
+
+	constexpr bool bReplicateCancelAbility = false;
+
+	switch (Group)
+	{
+	case EYcAbilityActivationGroup::Independent:
+		// 独立能力分组永远不会被阻塞
+		break;
+		
+	case EYcAbilityActivationGroup::Exclusive_Replaceable:
+	case EYcAbilityActivationGroup::Exclusive_Blocking:
+		CancelActivationGroupAbilities(EYcAbilityActivationGroup::Exclusive_Replaceable, YcAbility, bReplicateCancelAbility);
+		break;
+		
+	default:
+		checkf(false, TEXT("AddAbilityToActivationGroup: Invalid ActivationGroup [%d]\n"), static_cast<uint8>(Group));
+		break;
+	}
+
+	const int32 ExclusiveCount = 
+		ActivationGroupCounts[static_cast<uint8>(EYcAbilityActivationGroup::Exclusive_Replaceable)] + 
+		ActivationGroupCounts[static_cast<uint8>(EYcAbilityActivationGroup::Exclusive_Blocking)];
+	
+	if (!ensure(ExclusiveCount <= 1))
+	{
+		UE_LOG(LogYcAbilitySystem, Error, TEXT("AddAbilityToActivationGroup: Multiple exclusive abilities are running."));
+	}
+}
+
+void UYcAbilitySystemComponent::RemoveAbilityFromActivationGroup(EYcAbilityActivationGroup Group,
+	const UYcGameplayAbility* YcAbility)
+{
+	check(YcAbility);
+	check(ActivationGroupCounts[static_cast<uint8>(Group)] > 0);
+
+	ActivationGroupCounts[static_cast<uint8>(Group)]--;
+}
+
+void UYcAbilitySystemComponent::CancelActivationGroupAbilities(EYcAbilityActivationGroup Group,
+	UYcGameplayAbility* IgnoreAbility, bool bReplicateCancelAbility)
+{
+	// 创建条件取消函数
+	auto ShouldCancelFunc = [this, Group, IgnoreAbility](const UYcGameplayAbility* YcAbility, FGameplayAbilitySpecHandle Handle)
+	{
+		// Group匹配并且不是需要忽略的技能则满足取消条件
+		return ((YcAbility->GetActivationGroup() == Group) && (YcAbility != IgnoreAbility));
+	};
+	
+	// 取消所有满足条件的技能
 	CancelAbilitiesByFunc(ShouldCancelFunc, bReplicateCancelAbility);
 }
 

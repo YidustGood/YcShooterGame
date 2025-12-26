@@ -352,7 +352,7 @@ void UYcAbilitySystemComponent::RemoveAbilityFromActivationGroup(EYcAbilityActiv
 	const UYcGameplayAbility* YcAbility)
 {
 	check(YcAbility);
-	check(ActivationGroupCounts[static_cast<uint8>(Group)] > 0);
+	if (ActivationGroupCounts[static_cast<uint8>(Group)] <= 0) return;
 
 	ActivationGroupCounts[static_cast<uint8>(Group)]--;
 }

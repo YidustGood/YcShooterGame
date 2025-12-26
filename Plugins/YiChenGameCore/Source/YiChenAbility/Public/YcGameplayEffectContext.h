@@ -15,7 +15,7 @@ class UPhysicalMaterial;
  * 技能效果执行的上下文信息，在整个技能效果执行过程中传递，用于追踪执行的瞬态信息, 支持网络序列化
  */
 USTRUCT()
-struct FYcGameplayEffectContext : public FGameplayEffectContext
+struct YICHENABILITY_API FYcGameplayEffectContext : public FGameplayEffectContext
 {
 	GENERATED_BODY()
 
@@ -33,7 +33,7 @@ struct FYcGameplayEffectContext : public FGameplayEffectContext
 	 * 从句柄中提取FYcGameplayEffectContext
 	 * 如果句柄不存在或类型不匹配则返回nullptr
 	 */
-	static YICHENABILITY_API FYcGameplayEffectContext* ExtractEffectContext(struct FGameplayEffectContextHandle Handle);
+	static FYcGameplayEffectContext* ExtractEffectContext(struct FGameplayEffectContextHandle Handle);
 
 	/**
 	 * 设置技能效果的源对象

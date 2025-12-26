@@ -41,7 +41,8 @@ public class YiChenGameCore : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				"UMG"
+				"UMG", 
+				"GameplayAbilities"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

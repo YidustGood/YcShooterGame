@@ -13,8 +13,6 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcDamageExecution)
 
-UE_DISABLE_OPTIMIZATION
-
 /**
  * 伤害计算的静态数据
  * 用于缓存属性捕获定义，避免重复创建
@@ -156,4 +154,3 @@ void UYcDamageExecution::Execute_Implementation(const FGameplayEffectCustomExecu
 	}
 #endif // #if WITH_SERVER_CODE
 }
-UE_ENABLE_OPTIMIZATION

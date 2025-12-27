@@ -14,6 +14,11 @@ UYcShooterCombatComponent::UYcShooterCombatComponent(const FObjectInitializer& O
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
+float UYcShooterCombatComponent::GetBaseDamage() const
+{
+	return (CombatSet ? CombatSet->GetBaseDamage() : 0.0f);
+}
+
 void UYcShooterCombatComponent::DoInitializeWithAbilitySystem(UYcAbilitySystemComponent* ASC)
 {
 	Super::DoInitializeWithAbilitySystem(ASC);

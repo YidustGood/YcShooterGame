@@ -19,6 +19,13 @@ class YCSHOOTERCORERUNTIME_API UYcShooterCombatComponent : public UYcAbilityComp
 public:
 	UYcShooterCombatComponent(const FObjectInitializer& ObjectInitializer);
 	
+	/**
+	 * 获取当前BaseDamage
+	 * @return 当前BaseDamage值
+	 */
+	UFUNCTION(BlueprintCallable, Category = "YcGameCore|Combat")
+	float GetBaseDamage() const;
+	
 protected:
 	/**
 	 * 与AbilitySystemComponent初始化时的业务逻辑

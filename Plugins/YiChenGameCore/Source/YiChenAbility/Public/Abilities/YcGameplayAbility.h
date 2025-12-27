@@ -183,6 +183,10 @@ protected:
 	 * @param ActivationInfo 技能激活信息
 	 */
 	virtual void ApplyCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const override;
+	
+	/** Call notify callbacks above */
+	
+	
 	//~End of UGameplayAbility interface
 	
 	/**
@@ -265,6 +269,38 @@ protected:
 	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "YcGameCore|Ability", Meta = (ExpandBoolAsExecs = "ReturnValue"))
 	bool ChangeActivationGroup(EYcAbilityActivationGroup NewGroup);
 	
+	/** 
+	 * 当技能激活失败时的事件处理函数
+	 * 由ASC组件在技能激活失败时调用，会通过ClientRPC让这个事件在控制端得到触发
+	 * 会依次调用C++原生实现（NativeOnAbilityFailedToActivate）和蓝图实现（K2_OnAbilityFailedToActivate）
+	 * C++实现会查找FailureTagToUserFacingMessages映射表，如果找到匹配的失败标签则通过GameplayMessageSubsystem广播用户友好的失败消息
+	 * 蓝图实现可用于自定义额外的失败处理逻辑（如播放音效、显示特效等）
+	 * @param FailedReason 导致技能激活失败的标签容器
+	 */
+	void OnAbilityFailedToActivate(const FGameplayTagContainer& FailedReason) const
+	{
+		NativeOnAbilityFailedToActivate(FailedReason);
+		K2_OnAbilityFailedToActivate(FailedReason);
+	}
+	
+	/**
+	 * 技能激活失败时的C++原生实现（覆盖此函数以自定义失败处理逻辑）
+	 * 会遍历FailedReason中的标签，查找FailureTagToUserFacingMessages映射表
+	 * 如果找到匹配的标签，则创建FYcAbilitySimpleFailureMessage消息并通过GameplayMessageSubsystem广播
+	 * 消息会包含PlayerController、FailureTags和UserFacingReason信息，供UI系统显示用户友好的提示
+	 * @param FailedReason 导致技能激活失败的标签容器
+	 */
+	virtual void NativeOnAbilityFailedToActivate(const FGameplayTagContainer& FailedReason) const;
+
+	/**
+	 * 技能激活失败时的蓝图实现事件
+	 * 在NativeOnAbilityFailedToActivate之后调用，允许蓝图响应技能激活失败事件
+	 * 可用于实现自定义的失败处理逻辑，如播放音效、显示特效、更新UI等
+	 * @param FailedReason 导致技能激活失败的标签容器
+	 */
+	UFUNCTION(BlueprintImplementableEvent, DisplayName = "OnAbilityFailedToActivate")
+	void K2_OnAbilityFailedToActivate(const FGameplayTagContainer& FailedReason) const;
+	
 protected:
 	/**
 	 * 技能的激活策略
@@ -290,6 +326,15 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = Costs)
 	TArray<TObjectPtr<UYcAbilityCost>> AdditionalCosts;
+	
+	/**
+	 * 失败标签到用户友好消息的映射表
+	 * 用于将技能激活失败的技术性标签（如Ability.ActivateFail.Cost）映射为面向用户的提示文本（如"弹药不足"）
+	 * 当技能激活失败时，NativeOnAbilityFailedToActivate会查找此映射表，如果找到匹配的标签则通过GameplayMessageSubsystem广播消息
+	 * 在编辑器中可编辑，支持为每个失败标签配置对应的用户提示文本
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Advanced")
+	TMap<FGameplayTag, FText> FailureTagToUserFacingMessages;
 	
 public:
 	/**

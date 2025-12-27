@@ -381,6 +381,73 @@ void UYcAbilitySystemComponent::CancelActivationGroupAbilities(EYcAbilityActivat
 	CancelAbilitiesByFunc(ShouldCancelFunc, bReplicateCancelAbility);
 }
 
+void UYcAbilitySystemComponent::NotifyAbilityActivated(const FGameplayAbilitySpecHandle Handle,
+	UGameplayAbility* Ability)
+{
+	Super::NotifyAbilityActivated(Handle, Ability);
+	
+	if(UYcGameplayAbility* YcAbility = CastChecked<UYcGameplayAbility>(Ability))
+	{
+		AddAbilityToActivationGroup(YcAbility->GetActivationGroup(), YcAbility);
+	}
+}
+
+void UYcAbilitySystemComponent::NotifyAbilityFailed(const FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability,
+	const FGameplayTagContainer& FailureReason)
+{
+	Super::NotifyAbilityFailed(Handle, Ability, FailureReason);
+	
+	// 检查是否需要通过ClientRPC通知客户端
+	if (APawn* Avatar = Cast<APawn>(GetAvatarActor()))
+	{
+		// 如果Avatar不是本地控制且技能支持网络，则通过ClientRPC通知客户端处理失败
+		if (!Avatar->IsLocallyControlled() && Ability->IsSupportedForNetworking())
+		{
+			ClientNotifyAbilityFailed(Ability, FailureReason);
+			return;
+		}
+	}
+
+	// 本地直接处理失败逻辑（本地控制的客户端或服务器）
+	HandleAbilityFailed(Ability, FailureReason);
+}
+
+void UYcAbilitySystemComponent::NotifyAbilityEnded(FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability,
+	bool bWasCancelled)
+{
+	Super::NotifyAbilityEnded(Handle, Ability, bWasCancelled);
+	
+	const UYcGameplayAbility* YcAbility = CastChecked<UYcGameplayAbility>(Ability);
+	RemoveAbilityFromActivationGroup(YcAbility->GetActivationGroup(), YcAbility);
+}
+
+void UYcAbilitySystemComponent::ClientNotifyAbilityFailed_Implementation(const UGameplayAbility* Ability,
+                                                                         const FGameplayTagContainer& FailureReason)
+{
+	UE_LOG(LogYcAbilitySystem, Warning, TEXT("UYcAbilitySystemComponent::ClientNotifyAbilityFailed: Ability %s failed to activate (tags: %s)"), *GetPathNameSafe(Ability), *FailureReason.ToString());
+
+	// 客户端收到服务器通知后，调用技能的失败处理函数
+	// 这会触发失败消息广播（如果配置了映射表）和蓝图事件
+	if (const UYcGameplayAbility* YcAbility = Cast<const UYcGameplayAbility>(Ability))
+	{
+		YcAbility->OnAbilityFailedToActivate(FailureReason);
+	}
+}
+
+void UYcAbilitySystemComponent::HandleAbilityFailed(const UGameplayAbility* Ability,
+	const FGameplayTagContainer& FailureReason)
+{
+	UE_LOG(LogYcAbilitySystem, Warning, TEXT("UYcAbilitySystemComponent::HandleAbilityFailed: Ability %s failed to activate (tags: %s)"), *GetPathNameSafe(Ability), *FailureReason.ToString());
+
+	// 调用技能的失败处理函数
+	// 这会触发失败消息广播（如果技能配置了FailureTagToUserFacingMessages映射表，会通过GameplayMessageSubsystem广播用户友好的失败消息）
+	// 同时也会触发技能的蓝图事件K2_OnAbilityFailedToActivate，允许蓝图实现自定义的失败处理逻辑
+	if (const UYcGameplayAbility* YcAbility = Cast<const UYcGameplayAbility>(Ability))
+	{
+		YcAbility->OnAbilityFailedToActivate(FailureReason);
+	}
+}
+
 FGameplayAbilitySpecHandle UYcAbilitySystemComponent::FindAbilitySpecHandleForClass(
 	const TSubclassOf<UGameplayAbility> AbilityClass, UObject* OptionalSourceObject)
 {

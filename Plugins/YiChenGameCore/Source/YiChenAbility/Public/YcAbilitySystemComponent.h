@@ -219,6 +219,45 @@ private:
 	/** 每个激活组中正在运行的技能数量 */
 	int32 ActivationGroupCounts[static_cast<uint8>(EYcAbilityActivationGroup::MAX)];
 	///////////////// ~技能激活策略分组相关 /////////////////
+
+	///////////////// ~技能激活情况通知相关 /////////////////
+	
+	virtual void NotifyAbilityActivated(const FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability) override;
+	
+	/**
+	 * 通知技能激活失败（覆盖父类）
+	 * 当技能激活失败时调用，会根据网络情况决定处理方式：
+	 *   - 如果Avatar不是本地控制且技能支持网络，则通过ClientRPC通知客户端
+	 *   - 否则直接在本地调用HandleAbilityFailed处理失败逻辑
+	 * 最终会调用技能的OnAbilityFailedToActivate，触发失败消息广播和蓝图事件
+	 * @param Handle 技能规格句柄
+	 * @param Ability 激活失败的技能
+	 * @param FailureReason 导致激活失败的标签容器
+	 */
+	virtual void NotifyAbilityFailed(const FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability, const FGameplayTagContainer& FailureReason) override;
+	
+	virtual void NotifyAbilityEnded(FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability, bool bWasCancelled) override;
+	
+	/**
+	 * 客户端RPC：通知客户端技能激活失败
+	 * 当服务器检测到技能激活失败且Avatar不是本地控制时，通过此RPC通知客户端
+	 * 客户端收到后会调用技能的OnAbilityFailedToActivate，触发失败消息广播和蓝图事件
+	 * @param Ability 激活失败的技能
+	 * @param FailureReason 导致激活失败的标签容器
+	 */
+	UFUNCTION(Client, Unreliable)
+	void ClientNotifyAbilityFailed(const UGameplayAbility* Ability, const FGameplayTagContainer& FailureReason);
+
+	/**
+	 * 处理技能激活失败
+	 * 直接调用技能的OnAbilityFailedToActivate，触发失败消息广播和蓝图事件
+	 * 如果技能配置了FailureTagToUserFacingMessages映射表，会通过GameplayMessageSubsystem广播用户友好的失败消息
+	 * @param Ability 激活失败的技能
+	 * @param FailureReason 导致激活失败的标签容器
+	 */
+	void HandleAbilityFailed(const UGameplayAbility* Ability, const FGameplayTagContainer& FailureReason);
+	
+	///////////////// ~技能激活情况通知相关 /////////////////
 	
 public:
 	/////////// 增强蓝图使用的函数 ////////////

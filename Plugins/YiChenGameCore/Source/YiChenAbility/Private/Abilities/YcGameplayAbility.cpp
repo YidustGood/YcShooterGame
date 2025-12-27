@@ -11,6 +11,8 @@
 #include "YcGameplayTags.h"
 #include "YiChenAbility.h"
 #include "Abilities/YcAbilityCost.h"
+#include "Abilities/YcAbilitySimpleFailureMessage.h"
+#include "GameFramework/GameplayMessageSubsystem.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcGameplayAbility)
 
@@ -429,4 +431,31 @@ bool UYcGameplayAbility::ChangeActivationGroup(EYcAbilityActivationGroup NewGrou
 	}
 
 	return true;
+}
+
+void UYcGameplayAbility::NativeOnAbilityFailedToActivate(const FGameplayTagContainer& FailedReason) const
+{
+	// 遍历失败原因标签，查找映射表中是否有对应的用户友好消息
+	bool bSimpleFailureFound = false;
+	for (FGameplayTag Reason : FailedReason)
+	{
+		// 只处理第一个找到的匹配标签，避免重复广播消息
+		if (!bSimpleFailureFound)
+		{
+			// 在映射表中查找该失败标签对应的用户友好消息
+			if (const FText* pUserFacingMessage = FailureTagToUserFacingMessages.Find(Reason))
+			{
+				// 构建失败消息结构
+				FYcAbilitySimpleFailureMessage Message;
+				Message.PlayerController = GetActorInfo().PlayerController.Get();
+				Message.FailureTags = FailedReason;
+				Message.UserFacingReason = *pUserFacingMessage;
+				
+				// 通过GameplayMessageSubsystem广播技能激活失败消息，供UI系统订阅并显示用户提示
+				UGameplayMessageSubsystem& MessageSystem = UGameplayMessageSubsystem::Get(GetWorld());
+				MessageSystem.BroadcastMessage(TAG_ABILITY_SIMPLE_FAILURE_MESSAGE, Message);
+				bSimpleFailureFound = true;
+			}
+		}
+	}
 }

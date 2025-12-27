@@ -83,6 +83,16 @@ void UYcAbilitySystemComponent::GetAdditionalActivationTagRequirements(const FGa
 	}
 }
 
+void UYcAbilitySystemComponent::GetAbilityTargetData(const FGameplayAbilitySpecHandle AbilityHandle,
+	FGameplayAbilityActivationInfo ActivationInfo, FGameplayAbilityTargetDataHandle& OutTargetDataHandle)
+{
+	TSharedPtr<FAbilityReplicatedDataCache> ReplicatedData = AbilityTargetDataMap.Find(FGameplayAbilitySpecHandleAndPredictionKey(AbilityHandle, ActivationInfo.GetActivationPredictionKey()));
+	if (ReplicatedData.IsValid())
+	{
+		OutTargetDataHandle = ReplicatedData->TargetData;
+	}
+}
+
 void UYcAbilitySystemComponent::TryActivateAbilitiesOnSpawn()
 {
 	ABILITYLIST_SCOPE_LOCK();

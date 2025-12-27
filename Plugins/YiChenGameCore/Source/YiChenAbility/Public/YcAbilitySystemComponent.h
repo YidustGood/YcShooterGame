@@ -58,6 +58,15 @@ public:
 	 */
 	void GetAdditionalActivationTagRequirements(const FGameplayTagContainer& AbilityTags, FGameplayTagContainer& OutActivationRequired, FGameplayTagContainer& OutActivationBlocked) const;
 
+	/**
+	 * 获取与指定技能句柄和激活信息关联的目标数据
+	 * 从技能目标数据缓存映射表中查找对应的目标数据，这些数据通常在技能激活时通过网络复制存储
+	 * 常用于判断技能是否命中目标、获取命中结果等信息
+	 * @param AbilityHandle 技能规格句柄
+	 * @param ActivationInfo 技能激活信息，包含激活预测键等
+	 * @param OutTargetDataHandle 输出：找到的目标数据句柄，如果未找到则为空
+	 */
+	void GetAbilityTargetData(const FGameplayAbilitySpecHandle AbilityHandle, FGameplayAbilityActivationInfo ActivationInfo, FGameplayAbilityTargetDataHandle& OutTargetDataHandle);
 	
 protected:
 	/** 是否启用服务器RPC批处理，启用时可将多个技能相关的RPC合并为一个，减少网络流量 */

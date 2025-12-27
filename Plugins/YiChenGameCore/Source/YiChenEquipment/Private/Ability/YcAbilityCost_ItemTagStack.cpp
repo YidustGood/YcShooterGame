@@ -5,6 +5,7 @@
 #include "NativeGameplayTags.h"
 #include "YcGameplayAbility_FromEquipment.h"
 #include "YcInventoryItemInstance.h"
+#include "YiChenEquipment.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcAbilityCost_ItemTagStack)
 
@@ -23,11 +24,21 @@ bool UYcAbilityCost_ItemTagStack::CheckCost(const UYcGameplayAbility* Ability, c
 {
 	// 检查技能是否是从装备物品授予的技能
 	const UYcGameplayAbility_FromEquipment* EquipmentAbility = Cast<const UYcGameplayAbility_FromEquipment>(Ability);
-	if (!EquipmentAbility) return false;
 	
-	// 获取关联的物品实例
+	if (!EquipmentAbility)
+	{
+		UE_LOG(LogYcEquipment, Error, TEXT("UYcAbilityCost_ItemTagStack技能成本被错误的设置到了非UYcGameplayAbility_FromEquipment子类的技能上!"));
+		return false;
+	}
+	
+	// 尝试获取关联的物品实例
 	const UYcInventoryItemInstance* ItemInstance = EquipmentAbility->GetAssociatedItem();
-	if (!ItemInstance) return false;
+	
+	if (!ItemInstance)
+	{
+		UE_LOG(LogYcEquipment, Warning, TEXT("UYcAbilityCost_ItemTagStack::CheckCost: 检查成本花费未通过, ItemInstance无效."));
+		return false;
+	}
 	
 	// 根据技能等级计算需要消耗的堆栈数量
 	const int32 AbilityLevel = Ability->GetAbilityLevel(Handle, ActorInfo);

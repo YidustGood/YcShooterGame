@@ -15,6 +15,7 @@ public class YiChenAbility : ModuleRules
                 "GameplayAbilities",
                 "GameplayTags",
                 "GameplayTasks",
+                "YiChenGameCore",
             }
         );
 
@@ -25,7 +26,6 @@ public class YiChenAbility : ModuleRules
                 "Engine",
                 "Slate",
                 "SlateCore", 
-                "YiChenGameCore", 
                 "ModularGameplay",
                 "GameplayMessageRuntime"
             }

@@ -6,6 +6,8 @@
 #include "Abilities/GameplayAbility.h"
 #include "YcGameplayAbility.generated.h"
 
+class UYcAbilityCost;
+
 /**
  * 技能激活策略枚举
  * 定义技能的激活时机和方式
@@ -113,14 +115,74 @@ protected:
 	 * @param bCanBeCanceled 是否可被取消
 	 */
 	virtual void SetCanBeCanceled(bool bCanBeCanceled) override;
-	/** 技能被授予时的回调，触发K2_OnAbilityAdded蓝图事件和尝试在生成时激活技能 */
+	/**
+	 * 技能被授予时的回调（覆盖父类）
+	 * 当技能被添加到ASC时调用，会触发K2_OnAbilityAdded蓝图事件
+	 * 如果技能的激活策略为OnSpawn，会尝试在生成时激活技能
+	 * @param ActorInfo 技能所有者的Actor信息
+	 * @param Spec 技能规格
+	 */
 	virtual void OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
-	/** 技能被移除时的回调，触发K2_OnAbilityRemoved蓝图事件 */
+	
+	/**
+	 * 技能被移除时的回调（覆盖父类）
+	 * 当技能从ASC中移除时调用，会触发K2_OnAbilityRemoved蓝图事件
+	 * 注意：蓝图事件在调用父类之前触发，确保在清理前可以访问技能状态
+	 * @param ActorInfo 技能所有者的Actor信息
+	 * @param Spec 技能规格
+	 */
 	virtual void OnRemoveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
-	/** 检查技能是否满足标签要求（无阻挡标签、有所有必需标签） */
+	
+	/**
+	 * 检查技能是否满足标签要求（覆盖父类）
+	 * 通过ASC处理死亡排除和能力标签扩展的专用版本
+	 * 检查流程：
+	 *   1. 检查技能的AssetTags是否被ASC阻止
+	 *   2. 通过ASC扩展技能标签，获取额外的必需/阻止标签（来自TagRelationshipMapping）
+	 *   3. 检查ASC的标签是否包含所有必需标签且不包含任何阻止标签
+	 *   4. 检查源标签（SourceTags）是否满足SourceRequiredTags和SourceBlockedTags要求
+	 *   5. 检查目标标签（TargetTags）是否满足TargetRequiredTags和TargetBlockedTags要求
+	 *   6. 如果玩家已死亡且因阻止标签被拒绝，会添加Ability_ActivateFail_IsDead标签到OptionalRelevantTags
+	 * @param AbilitySystemComponent 技能系统组件
+	 * @param SourceTags 可选的源标签容器（技能释放者的标签）
+	 * @param TargetTags 可选的目标标签容器（技能作用目标的标签）
+	 * @param OptionalRelevantTags 可选的输出相关标签容器，用于添加失败原因标签
+	 * @return 如果技能满足所有标签要求则返回true，否则返回false
+	 */
 	virtual bool DoesAbilitySatisfyTagRequirements(const UAbilitySystemComponent& AbilitySystemComponent, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr, OUT FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
-	/** 重写MakeEffectContext, 用我们自定义版本的, 扩展了SourceObject信息 */
+	
+	/**
+	 * 创建游戏效果上下文（覆盖父类）
+	 * 使用自定义的FYcGameplayEffectContext，扩展了SourceObject信息
+	 * 会设置以下信息：
+	 *   - 技能源（AbilitySource）和源等级（SourceLevel）
+	 *   - 效果施加者（Instigator）和效果原因者（EffectCauser）
+	 *   - 源对象（SourceObject）
+	 * @param Handle 技能规格句柄
+	 * @param ActorInfo Actor信息
+	 * @return 创建的游戏效果上下文句柄
+	 */
 	virtual FGameplayEffectContextHandle MakeEffectContext(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo) const override;
+	/**
+	 * 检查技能成本（覆盖父类）
+	 * 先调用父类的CheckCost检查基础成本，然后遍历AdditionalCosts检查所有额外成本
+	 * 如果任何成本检查失败，则返回false
+	 * @param Handle 技能规格句柄
+	 * @param ActorInfo Actor信息
+	 * @param OptionalRelevantTags 可选的输出相关标签容器，可用于添加失败原因标签
+	 * @return 如果所有成本都可以支付则返回true，否则返回false
+	 */
+	virtual bool CheckCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, OUT FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
+	
+	/**
+	 * 应用技能成本（覆盖父类）
+	 * 先调用父类的ApplyCost应用基础成本，然后遍历AdditionalCosts应用所有额外成本
+	 * 对于标记为bOnlyApplyCostOnHit的成本，只有在技能成功命中目标时才会应用
+	 * @param Handle 技能规格句柄
+	 * @param ActorInfo Actor信息
+	 * @param ActivationInfo 技能激活信息
+	 */
+	virtual void ApplyCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const override;
 	//~End of UGameplayAbility interface
 	
 	/**
@@ -219,6 +281,15 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "YcGameCore|Ability Activation")
 	EYcAbilityActivationGroup ActivationGroup;
+	
+	/**
+	 * 激活此技能时必须支付的额外成本列表
+	 * 在技能激活前会检查所有额外成本，激活后会应用所有额外成本
+	 * 支持多种成本类型（如弹药、充能、体力等），每个成本可以独立配置是否只在命中时应用
+	 * 在编辑器中可编辑，支持内联编辑（EditInlineNew）
+	 */
+	UPROPERTY(EditDefaultsOnly, Instanced, Category = Costs)
+	TArray<TObjectPtr<UYcAbilityCost>> AdditionalCosts;
 	
 public:
 	/**

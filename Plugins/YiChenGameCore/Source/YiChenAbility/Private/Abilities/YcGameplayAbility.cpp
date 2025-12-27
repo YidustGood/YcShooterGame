@@ -2,6 +2,7 @@
 
 #include "Abilities/YcGameplayAbility.h"
 
+#include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemGlobals.h"
 #include "AbilitySystemLog.h"
 #include "YcAbilitySourceInterface.h"
@@ -9,6 +10,7 @@
 #include "YcGameplayEffectContext.h"
 #include "YcGameplayTags.h"
 #include "YiChenAbility.h"
+#include "Abilities/YcAbilityCost.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcGameplayAbility)
 
@@ -185,6 +187,79 @@ FGameplayEffectContextHandle UYcGameplayAbility::MakeEffectContext(const FGamepl
 	EffectContext->AddSourceObject(SourceObject);
 
 	return ContextHandle;
+}
+
+bool UYcGameplayAbility::CheckCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
+	FGameplayTagContainer* OptionalRelevantTags) const
+{
+	if (!Super::CheckCost(Handle, ActorInfo, OptionalRelevantTags) || !ActorInfo)
+	{
+		return false;
+	}
+
+	// 检查我们是否能够承担额外的所有费用(Cost)
+	for (const TObjectPtr<UYcAbilityCost>& AdditionalCost : AdditionalCosts)
+	{
+		if (AdditionalCost != nullptr)
+		{
+			if (!AdditionalCost->CheckCost(this, Handle, ActorInfo, /*inout*/ OptionalRelevantTags))
+			{
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+void UYcGameplayAbility::ApplyCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo) const
+{
+	Super::ApplyCost(Handle, ActorInfo, ActivationInfo);
+	
+	// 用于判断该能力是否确实击中了目标的lambda函数（因为某些费用仅在成功攻击时才会消耗）
+	auto DetermineIfAbilityHitTarget = [&]()
+	{
+		if (!ActorInfo->IsNetAuthority()) return false;
+		UYcAbilitySystemComponent* ASC = Cast<UYcAbilitySystemComponent>(ActorInfo->AbilitySystemComponent.Get());
+		if (ASC == nullptr) return false;
+		
+		FGameplayAbilityTargetDataHandle TargetData;
+		ASC->GetAbilityTargetData(Handle, ActivationInfo, TargetData);
+		for (int32 TargetDataIdx = 0; TargetDataIdx < TargetData.Data.Num(); ++TargetDataIdx)
+		{
+			if (UAbilitySystemBlueprintLibrary::TargetDataHasHitResult(TargetData, TargetDataIdx))
+			{
+				return true;
+			}
+		}
+		
+		return false;
+	};
+	
+	// 处理支付所有的额外费用
+	bool bAbilityHitTarget = false;
+	bool bHasDeterminedIfAbilityHitTarget = false;
+	for (const TObjectPtr<UYcAbilityCost>& AdditionalCost : AdditionalCosts)
+	{
+		if (AdditionalCost == nullptr) continue;
+		
+		if (AdditionalCost->ShouldOnlyApplyCostOnHit())
+		{
+			if (!bHasDeterminedIfAbilityHitTarget)
+			{
+				bAbilityHitTarget = DetermineIfAbilityHitTarget();
+				bHasDeterminedIfAbilityHitTarget = true;
+			}
+
+			if (!bAbilityHitTarget)
+			{
+				continue;
+			}
+		}
+
+		AdditionalCost->ApplyCost(this, Handle, ActorInfo, ActivationInfo);
+	}
 }
 
 void UYcGameplayAbility::GetAbilitySource(FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,

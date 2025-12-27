@@ -40,6 +40,9 @@ void UYcAbilityComponent::OnInitializeWithAbilitySystem(FGameplayTag Channel,
 	const AActor* Owner = GetOwner();
 	check(Owner);
 	
+	// 只关心与自己有关的消息
+	if (Message.Owner != Owner) return;
+	
 	// 防止重复初始化
 	if (AbilitySystemComponent)
 	{
@@ -51,8 +54,8 @@ void UYcAbilityComponent::OnInitializeWithAbilitySystem(FGameplayTag Channel,
 	AbilitySystemComponent = Cast<UYcAbilitySystemComponent>(Message.ASC);
 	check(AbilitySystemComponent);
 	
-	// 创建属性集（子类可以重写CreateAttributeSets()来自定义创建逻辑）
-	CreateAttributeSets();
+	// 调用模板方法，子类重写此方法实现具体业务逻辑
+	DoInitializeWithAbilitySystem(AbilitySystemComponent);
 	
 	// 调用蓝图版本, 以支持蓝图扩展这个事件的响应逻辑
 	K2_OnInitializeWithAbilitySystem();
@@ -61,6 +64,14 @@ void UYcAbilityComponent::OnInitializeWithAbilitySystem(FGameplayTag Channel,
 void UYcAbilityComponent::OnUninitializeFromAbilitySystem(FGameplayTag Channel,
 	const FAbilitySystemLifeCycleMessage& Message)
 {
+	const AActor* Owner = GetOwner();
+	check(Owner);
+	// 只关心与自己有关的消息
+	if (Message.Owner != Owner) return;
+	
+	// 调用模板方法，子类重写此方法实现具体清理逻辑
+	DoUninitializeFromAbilitySystem();
+	
 	// 清空引用
 	AbilitySystemComponent = nullptr;
 	AttributeSets.Empty();
@@ -73,6 +84,20 @@ void UYcAbilityComponent::CreateAttributeSets()
 	// 默认实现：遍历AttributeSetsClasses数组创建所有预设的属性集
 	// 子类可以重写此函数来完全自定义属性集创建逻辑
 	InitializeAllAttributeSets();
+}
+
+void UYcAbilityComponent::DoInitializeWithAbilitySystem(UYcAbilitySystemComponent* ASC)
+{
+	// 默认实现调用现有的 CreateAttributeSets() 逻辑
+	// 子类可以重写此方法以实现其特定的初始化逻辑
+	CreateAttributeSets();
+}
+
+void UYcAbilityComponent::DoUninitializeFromAbilitySystem()
+{
+	// 默认实现为子类提供了一个钩子，以便其能够实现清理逻辑
+	// 基类的清理操作（清除引用）在“OnUninitializeFromAbilitySystem”方法中进行处理
+	// 子类可以重写此方法来实现其特定的清理逻辑
 }
 
 void UYcAbilityComponent::InitializeAllAttributeSets()

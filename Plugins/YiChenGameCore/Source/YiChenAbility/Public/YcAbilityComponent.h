@@ -19,24 +19,36 @@ class UYcAttributeSet;
  * 
  * 设计特点：
  * - 通过GameplayMessageSubsystem监听ASC生命周期消息，实现解耦设计
+ * - 使用模板方法模式，基类处理消息过滤和验证，子类只需实现业务逻辑
  * - 提供模板函数AddAttributeSet<T>()用于类型安全的属性集创建
  * - 支持通过AttributeSetsClasses数组在编辑器中预设属性集
  * - 提供虚函数CreateAttributeSets()供子类重写以自定义属性集创建逻辑
  * - 自动管理属性集的生命周期，防止内存泄漏
  * 
  * 使用方式：
- * 1. 继承此组件并重写OnInitializeWithAbilitySystem()来创建所需的属性集
- * 2. 可以通过AddAttributeSet<T>()模板函数创建属性集
- * 3. 也可以通过AttributeSetsClasses数组在编辑器中预设属性集
- * 4. 蓝图可以通过实现K2_OnInitializeWithAbilitySystem事件来扩展功能
+ * 1. 继承此组件并重写 DoInitializeWithAbilitySystem() 来实现初始化业务逻辑
+ * 2. 重写 DoUninitializeFromAbilitySystem() 来实现清理业务逻辑
+ * 3. 可以通过AddAttributeSet<T>()模板函数创建属性集
+ * 4. 也可以通过AttributeSetsClasses数组在编辑器中预设属性集
+ * 5. 蓝图可以通过实现K2_OnInitializeWithAbilitySystem事件来扩展功能
  * 
  * 示例：
  * @code
- * void UMyComponent::OnInitializeWithAbilitySystem(...)
+ * void UMyComponent::DoInitializeWithAbilitySystem(UYcAbilitySystemComponent* ASC)
  * {
- *     Super::OnInitializeWithAbilitySystem(...);
+ *     Super::DoInitializeWithAbilitySystem(ASC);  // 创建AttributeSetsClasses中的属性集
  *     MyAttributeSet = AddAttributeSet<UMyAttributeSet>();
- *     // 注册属性变化委托等...
+ *     MyAttributeSet->OnSomeAttributeChanged.AddUObject(this, &ThisClass::HandleAttributeChanged);
+ * }
+ * 
+ * void UMyComponent::DoUninitializeFromAbilitySystem()
+ * {
+ *     if (MyAttributeSet)
+ *     {
+ *         MyAttributeSet->OnSomeAttributeChanged.RemoveAll(this);
+ *     }
+ *     MyAttributeSet = nullptr;
+ *     Super::DoUninitializeFromAbilitySystem();
  * }
  * @endcode
  * 更详细的案例可以参考YcShooterCore的UYcShooterHealthComponent.cpp
@@ -112,19 +124,23 @@ public:
 	
 protected:
 	/**
-	 * 使用技能系统组件初始化此组件
+	 * 使用技能系统组件初始化此组件（内部使用）
 	 * 从ASC生命周期消息中获取ASC并设置属性集，注册属性变化委托
+	 * 
+	 * @note 子类不应重写此方法，而应重写 DoInitializeWithAbilitySystem() 来实现具体业务逻辑
 	 * @param Channel 消息通道标签
 	 * @param Message ASC生命周期消息
 	 */
-	virtual void OnInitializeWithAbilitySystem(FGameplayTag Channel, const FAbilitySystemLifeCycleMessage& Message);
+	void OnInitializeWithAbilitySystem(FGameplayTag Channel, const FAbilitySystemLifeCycleMessage& Message);
 	
 	/**
-	 * 取消初始化组件，清除对技能系统的所有引用
+	 * 取消初始化组件，清除对技能系统的所有引用（内部使用）
+	 * 
+	 * @note 子类不应重写此方法，而应重写 DoUninitializeFromAbilitySystem() 来实现具体清理逻辑
 	 * @param Channel 消息通道标签
 	 * @param Message ASC生命周期消息
 	 */
-	virtual void OnUninitializeFromAbilitySystem(FGameplayTag Channel, const FAbilitySystemLifeCycleMessage& Message);
+	void OnUninitializeFromAbilitySystem(FGameplayTag Channel, const FAbilitySystemLifeCycleMessage& Message);
 	
 	/**
 	 * 创建属性集的虚函数钩子
@@ -135,6 +151,50 @@ protected:
 	 * 如果子类只需要在默认行为基础上添加额外的属性集，应该调用Super然后添加自己的属性集
 	 */
 	virtual void CreateAttributeSets();
+
+	/**
+	 * 模板方法：与AbilitySystemComponent初始化时的业务逻辑
+	 * 
+	 * 子类应重写此方法来实现具体的初始化逻辑，无需关心消息过滤和验证
+	 * 基类已经完成了以下工作：
+	 * - 消息关联性检查（确保消息属于当前组件的Owner）
+	 * - 防止重复初始化检查
+	 * - ASC引用的获取和存储
+	 * 
+	 * 默认实现会调用 CreateAttributeSets() 创建属性集
+	 * 
+	 * @param ASC 已验证的、属于当前组件Owner的AbilitySystemComponent
+	 * 
+	 * @code
+	 * void UMyComponent::DoInitializeWithAbilitySystem(UYcAbilitySystemComponent* ASC)
+	 * {
+	 *     Super::DoInitializeWithAbilitySystem(ASC);  // 创建AttributeSetsClasses中的属性集
+	 *     MyAttributeSet = AddAttributeSet<UMyAttributeSet>();
+	 *     MyAttributeSet->OnSomeAttributeChanged.AddUObject(this, &ThisClass::HandleAttributeChanged);
+	 * }
+	 * @endcode
+	 */
+	virtual void DoInitializeWithAbilitySystem(UYcAbilitySystemComponent* ASC);
+
+	/**
+	 * 模板方法：与AbilitySystemComponent解除关联时的清理逻辑
+	 * 
+	 * 子类应重写此方法来实现具体的清理逻辑，无需关心消息过滤和验证
+	 * 基类会在此方法调用后自动清理 AbilitySystemComponent 和 AttributeSets 引用
+	 * 
+	 * @code
+	 * void UMyComponent::DoUninitializeFromAbilitySystem()
+	 * {
+	 *     if (MyAttributeSet)
+	 *     {
+	 *         MyAttributeSet->OnSomeAttributeChanged.RemoveAll(this);
+	 *     }
+	 *     MyAttributeSet = nullptr;
+	 *     Super::DoUninitializeFromAbilitySystem();
+	 * }
+	 * @endcode
+	 */
+	virtual void DoUninitializeFromAbilitySystem();
 	
 	/** 遍历 AttributeSetsClasses 创建所有 AttributeSet */
 	void InitializeAllAttributeSets();

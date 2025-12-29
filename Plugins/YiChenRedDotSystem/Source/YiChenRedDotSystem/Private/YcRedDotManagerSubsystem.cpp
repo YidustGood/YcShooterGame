@@ -116,8 +116,12 @@ void UYcRedDotManagerSubsystem::AddRedDotCount(FGameplayTag RedDotTag, int32 Cou
 	FRedDotInfo& Info = GetOrCreateRedDotInfo(RedDotTag);
 	
 	if (Info.Count == 0 && Count <= 0) return;
+	 
+	// 记录更新前的数量
 	int32 OldCount = Info.Count;
+	// 由于传入的Count可以为负数, 既可以做增加也可以做减少, 但是我们需要限定减少后值最小只能为0不能为负数
 	Info.Count = FMath::Max(Info.Count + Count, 0);
+	// 计算更新差量, 如果当前值为0了, 那么差量就是-OldCount, 否则为新传入的增量Count
 	Info.Delta = Info.Count == 0 ? -OldCount : Count;
 	Info.Tag = RedDotTag;
 	Info.TriggerTime = FDateTime::Now();
@@ -230,12 +234,15 @@ void UYcRedDotManagerSubsystem::BroadcastRedDotChangedForward(FGameplayTag RedDo
 	
 	// 标记是否为初始标签, 因为我们会在循环中向前寻找父标签， 只有在第一次循环才是使用的初始标签
 	bool bOnInitialTag = true;
+	// 本次更新的差量, 用于叠加到父节点进行数量变化的透传
 	int Delta = RedDotInfo->Delta;
 	for (FGameplayTag Tag = RedDotTag; Tag.IsValid(); Tag = Tag.RequestDirectParent())
 	{
 		// 必须用GetOrCreateRedDotInfo(), 以确保ParentTag能被注册在RedDotStates中, 否则会丢失父级节点统计数据
 		FRedDotInfo* ParentRedDotInfo = &GetOrCreateRedDotInfo(Tag);
-		if (ParentRedDotInfo == nullptr) continue;
+		check(ParentRedDotInfo); // 必须保证有效, 否则层级数据就不完整了
+		
+		// 对父节点进行数量变化的透传
 		if (!bOnInitialTag)
 		{
 			ParentRedDotInfo->Count += Delta;
@@ -250,6 +257,7 @@ void UYcRedDotManagerSubsystem::BroadcastRedDotChangedForward(FGameplayTag RedDo
 			// 遍历当前标签的监听列表
 			for (const FYcRedDotStateChangedListenerData& Listener : ListenerArray)
 			{
+				// !bOnInitialTag代表当前标签是发生变化的标签的父标签, 父标签的监听匹配类型需要是PartialMatch才进行调用
 				if (!bOnInitialTag && Listener.MatchType != EYcRedDotTagMatch::PartialMatch) continue;
 				if (!Listener.ReceivedCallback.IsSet()) continue;
 				Listener.ReceivedCallback(RedDotTag, ParentRedDotInfo);
@@ -263,7 +271,7 @@ void UYcRedDotManagerSubsystem::BroadcastRedDotChangedSingle(FGameplayTag RedDot
 {
 	const FYcRedDotListenerList* pList = &ListenerMap.FindOrAdd(RedDotTag);
 	if (pList == nullptr) return;
-	// Copy in case there are removals while handling callbacks
+	// 复制以防在处理回调时出现删除情况
 	TArray<FYcRedDotStateChangedListenerData> ListenerArray(pList->Listeners);
 	// 遍历当前标签的监听列表
 	for (const FYcRedDotStateChangedListenerData& Listener : ListenerArray)
@@ -304,7 +312,14 @@ FYcRedDotDataProviderHandle UYcRedDotManagerSubsystem::RegisterRedDotDataProvide
 
 FRedDotInfo& UYcRedDotManagerSubsystem::GetOrCreateRedDotInfo(const FGameplayTag& RedDotTag)
 {
+	bool bContains = RedDotStates.Contains(RedDotTag);
 	FRedDotInfo* Info = RedDotStates.Find(RedDotTag);
+	if (!bContains)
+	{
+		// 先前不存在, 是新建的, 所以需要清理该标签相关的缓存，确保后续查询能获取最新的子标签
+		InvalidateTagHierarchyCache(RedDotTag);
+	}
+	
 	if (!Info)
 	{
 		Info = &RedDotStates.Add(RedDotTag);
@@ -355,27 +370,18 @@ void UYcRedDotManagerSubsystem::InvalidateTagHierarchyCache(const FGameplayTag& 
 	{
 		return;
 	}
-
-	// 遍历缓存，找出所有包含 NewTag 作为子标签的父标签缓存，并清理它们
-	TArray<FGameplayTag> TagsToRemove;
 	
-	for (const auto& CachePair : TagHierarchyCache)
+	// 使用迭代器遍历缓存，清理所有包含 NewTag 作为子标签的父标签缓存, 以便后续访问时构建新的完整的子标签缓存, 避免丢失新的子标签
+	for (auto It = TagHierarchyCache.CreateIterator(); It; ++It)
 	{
-		const FGameplayTag& CachedParentTag = CachePair.Key;
+		const FGameplayTag& CachedParentTag = It.Key();
 		
 		// 检查 NewTag 是否是 CachedParentTag 的子标签
 		// 如果 NewTag 匹配 CachedParentTag 且不相等，说明 NewTag 是 CachedParentTag 的子标签
 		if (NewTag.MatchesTag(CachedParentTag) && NewTag != CachedParentTag)
 		{
-			// 标记该缓存为需要删除
-			TagsToRemove.Add(CachedParentTag);
+			It.RemoveCurrent();
 		}
-	}
-	
-	// 删除所有需要清理的缓存
-	for (const FGameplayTag& TagToRemove : TagsToRemove)
-	{
-		TagHierarchyCache.Remove(TagToRemove);
 	}
 }
 

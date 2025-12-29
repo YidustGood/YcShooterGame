@@ -239,7 +239,7 @@ protected:
 	/** 单一节点广播红点变化事件, 用于清理子节点红点数据 */
 	void BroadcastRedDotChangedSingle(FGameplayTag RedDotTag, const FRedDotInfo* RedDotInfo);
 	
-	/** 清理目标红点, 内部调用所有相关提供者的清理事件回调函数, 以实现通知提供者者清理数据 */
+	/** 清理目标红点, 内部调用所有相关提供者的清理事件回调函数, 以实现通知提供者清理数据 */
 	void BroadcastRedDotCleared(FGameplayTag RedDotTag);
 	
 	/** 注销红点数据状态监听者 */

@@ -39,7 +39,7 @@ public class YiChenRedDotSystem : ModuleRules
 				"Slate",
 				"SlateCore",
 				"GameplayTags",
-				"UMG", "GameplayMessageRuntime"
+				"UMG"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

@@ -4,8 +4,6 @@
 #include "YcRedDotManagerSubsystem.h"
 
 #include "YiChenRedDotSystem.h"
-#include "GameFramework/GameplayMessageSubsystem.h"
-#include "UObject/ObjectMacros.h"
 
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcRedDotManagerSubsystem)

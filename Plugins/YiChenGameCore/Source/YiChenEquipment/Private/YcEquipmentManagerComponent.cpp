@@ -41,6 +41,8 @@ void FYcEquipmentList::PostReplicatedAdd(const TArrayView<int32> AddedIndices, i
 		{
 			Entry.Instance->SetInstigator(Entry.OwnerItemInstance);
 			Entry.Instance->OnEquipped();
+			// 因为装备可能包含只需要在控制客户端生成的Actor所以需要在这里调用进行一次控制端的本地生成, 内部会处理判断生成逻辑
+			Entry.Instance->SpawnEquipmentActors(Entry.Instance->EquipmentDef->ActorsToSpawn);
 		}
 	}
 }

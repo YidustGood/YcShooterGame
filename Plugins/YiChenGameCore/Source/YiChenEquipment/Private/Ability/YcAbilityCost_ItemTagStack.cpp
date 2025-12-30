@@ -3,9 +3,9 @@
 
 #include "Ability/YcAbilityCost_ItemTagStack.h"
 #include "NativeGameplayTags.h"
-#include "YcGameplayAbility_FromEquipment.h"
 #include "YcInventoryItemInstance.h"
 #include "YiChenEquipment.h"
+#include "Ability/YcGameplayAbility_FromEquipment.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcAbilityCost_ItemTagStack)
 

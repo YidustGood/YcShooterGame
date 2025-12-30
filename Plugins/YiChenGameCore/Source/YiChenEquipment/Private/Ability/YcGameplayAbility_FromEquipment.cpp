@@ -1,7 +1,7 @@
 ﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 
-#include "YcGameplayAbility_FromEquipment.h"
+#include "Ability/YcGameplayAbility_FromEquipment.h"
 
 #include "YcEquipmentInstance.h"
 #include "YcInventoryItemInstance.h"

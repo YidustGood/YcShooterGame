@@ -123,7 +123,7 @@ private:
 	const FYcEquipmentDefinition* EquipmentDef;
 	
 private:
-	AActor* SpawnEquipActorInternal(const TSubclassOf<AActor>& ActorToSpawnClass,const FYcEquipmentActorToSpawn& SpawnInfo, USceneComponent* AttachTarget) const;
+	AActor* SpawnEquipActorInternal(const TSubclassOf<AActor>& ActorToSpawnClass,const FYcEquipmentActorToSpawn& SpawnInfo, USceneComponent* AttachTarget);
 	
 	/** 
 	 * 设置装备实例对应的库存物品实例对象 

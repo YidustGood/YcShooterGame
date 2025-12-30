@@ -2,6 +2,7 @@
 
 #include "YcEquipmentInstance.h"
 
+#include "YcEquipmentActorComponent.h"
 #include "YcInventoryItemInstance.h"
 #include "YiChenEquipment.h"
 #include "Fragments/InventoryFragment_Equippable.h"
@@ -221,7 +222,7 @@ void UYcEquipmentInstance::OnUnequipped()
 	K2_OnUnequipped();
 }
 
-AActor* UYcEquipmentInstance::SpawnEquipActorInternal(const TSubclassOf<AActor>& ActorToSpawnClass,const FYcEquipmentActorToSpawn& SpawnInfo, USceneComponent* AttachTarget) const
+AActor* UYcEquipmentInstance::SpawnEquipActorInternal(const TSubclassOf<AActor>& ActorToSpawnClass,const FYcEquipmentActorToSpawn& SpawnInfo, USceneComponent* AttachTarget)
 {
 	AActor* NewActor = GetWorld()->SpawnActorDeferred<AActor>(ActorToSpawnClass, FTransform::Identity, GetPawn());
 
@@ -234,6 +235,11 @@ AActor* UYcEquipmentInstance::SpawnEquipActorInternal(const TSubclassOf<AActor>&
 	NewActor->SetActorRelativeTransform(SpawnInfo.AttachTransform);
 	NewActor->AttachToComponent(AttachTarget, FAttachmentTransformRules::KeepRelativeTransform, SpawnInfo.AttachSocket);
 	NewActor->Tags.Append(SpawnInfo.ActorTags);
+	
+	// 添加装备Actor组件，用于反向查询所属装备实例
+	UYcEquipmentActorComponent* EquipComp = NewObject<UYcEquipmentActorComponent>(NewActor);
+	EquipComp->OwningEquipment = const_cast<UYcEquipmentInstance*>(this);
+	EquipComp->RegisterComponent();
 	
 	return NewActor;
 }

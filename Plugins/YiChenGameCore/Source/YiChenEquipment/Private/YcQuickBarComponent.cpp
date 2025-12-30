@@ -163,6 +163,12 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 
 		if (Result != nullptr)
 		{
+			// 清理该物品的缓存装备实例（真正销毁Actors）
+			if (UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager())
+			{
+				EquipmentManager->ClearCachedEquipmentForItem(Result);
+			}
+			
 			SetSlotsByIndex_Internal(SlotIndex, nullptr);
 		}
 	}

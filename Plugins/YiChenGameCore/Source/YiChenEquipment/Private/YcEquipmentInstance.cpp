@@ -13,7 +13,7 @@
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcEquipmentInstance)
 
 UYcEquipmentInstance::UYcEquipmentInstance(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer), EquipmentDef()
+	: Super(ObjectInitializer), EquipmentDef(nullptr), bActorsSpawned(false)
 {
 }
 
@@ -82,6 +82,25 @@ void UYcEquipmentInstance::SpawnEquipmentActors(const TArray<FYcEquipmentActorTo
 	APawn* OwningPawn = GetPawn();
 	if (!OwningPawn || OwningPawn->GetLocalRole() == ROLE_SimulatedProxy) return;
 	
+	const bool bIsServer = OwningPawn->HasAuthority();
+	const bool bIsLocallyControlled = OwningPawn->IsLocallyControlled();
+	
+	// 如果已经生成过Actors，尝试复用（显示已隐藏的Actors）
+	if (bActorsSpawned)
+	{
+		if (bIsServer)
+		{
+			// 服务器：显示服务器Actors并通知客户端
+			ShowEquipmentActors();
+		}
+		else if (bIsLocallyControlled)
+		{
+			// 客户端：直接显示本地Actors（服务器Actors通过网络复制自动处理）
+			ShowLocalEquipmentActors();
+		}
+		return;
+	}
+	
 	// 先获取默认的附加组件
 	USceneComponent* AttachTarget = OwningPawn->GetRootComponent();	
 	if (const ACharacter* Char = Cast<ACharacter>(OwningPawn))	
@@ -102,13 +121,13 @@ void UYcEquipmentInstance::SpawnEquipmentActors(const TArray<FYcEquipmentActorTo
 		FString ContextPrefix;
 		TArray<TObjectPtr<AActor>>* TargetArray = nullptr;
     
-		if (SpawnInfo.bReplicateActor && OwningPawn->HasAuthority())
+		if (SpawnInfo.bReplicateActor && bIsServer)
 		{
 			bShouldSpawn = true;
 			ContextPrefix = TEXT("Server");
 			TargetArray = &SpawnedActors;
 		}
-		else if (!SpawnInfo.bReplicateActor && OwningPawn->IsLocallyControlled())
+		else if (!SpawnInfo.bReplicateActor && bIsLocallyControlled)
 		{
 			bShouldSpawn = true;
 			ContextPrefix = TEXT("Locally");
@@ -137,6 +156,9 @@ void UYcEquipmentInstance::SpawnEquipmentActors(const TArray<FYcEquipmentActorTo
     
 		TargetArray->Add(NewActor);
 	}
+	
+	// 标记已生成过Actors
+	bActorsSpawned = true;
 }
 
 void UYcEquipmentInstance::DestroyEquipmentActors()
@@ -145,8 +167,12 @@ void UYcEquipmentInstance::DestroyEquipmentActors()
 	{
 		if (Actor) Actor->Destroy();
 	}
-	//@喜剧BUG效果-注释掉下面一行代码触发武器重叠BUG
+	SpawnedActors.Empty();
+	
 	DestroyEquipmentActorsOnOwnerClient();
+	
+	// 重置标记，允许下次重新生成
+	bActorsSpawned = false;
 }
 
 void UYcEquipmentInstance::DestroyEquipmentActorsOnOwnerClient_Implementation()
@@ -155,6 +181,165 @@ void UYcEquipmentInstance::DestroyEquipmentActorsOnOwnerClient_Implementation()
 	{
 		if (Actor) Actor->Destroy();
 	}
+	OwnerClientSpawnedActors.Empty();
+}
+
+void UYcEquipmentInstance::HideEquipmentActors()
+{
+	if (!GetEquipmentDef()) return;
+	
+	const TArray<FYcEquipmentActorToSpawn>& ActorsToSpawn = EquipmentDef->ActorsToSpawn;
+	
+	// 处理服务器复制的Actors
+	int32 ReplicatedActorIndex = 0;
+	for (int32 i = 0; i < ActorsToSpawn.Num() && ReplicatedActorIndex < SpawnedActors.Num(); ++i)
+	{
+		const FYcEquipmentActorToSpawn& SpawnInfo = ActorsToSpawn[i];
+		if (!SpawnInfo.bReplicateActor) continue; // 跳过非复制的Actor配置
+		
+		AActor* Actor = SpawnedActors[ReplicatedActorIndex];
+		if (IsValid(Actor))
+		{
+			// 隐藏Actor（保持附加状态，显示时无需重新Attach）
+			Actor->SetActorHiddenInGame(true);
+			
+			// 根据配置决定是否进入休眠状态
+			if (SpawnInfo.bDormantOnUnequip)
+			{
+				SetActorDormant(Actor, true);
+			}
+		}
+		++ReplicatedActorIndex;
+	}
+	
+	// 通知客户端处理本地Actors
+	HideEquipmentActorsOnOwnerClient();
+}
+
+void UYcEquipmentInstance::HideEquipmentActorsOnOwnerClient_Implementation()
+{
+	if (!GetEquipmentDef()) return;
+	
+	const TArray<FYcEquipmentActorToSpawn>& ActorsToSpawn = EquipmentDef->ActorsToSpawn;
+	
+	// 找到本地Actor对应的SpawnInfo（非复制的）
+	int32 LocalActorIndex = 0;
+	for (int32 i = 0; i < ActorsToSpawn.Num() && LocalActorIndex < OwnerClientSpawnedActors.Num(); ++i)
+	{
+		const FYcEquipmentActorToSpawn& SpawnInfo = ActorsToSpawn[i];
+		if (SpawnInfo.bReplicateActor) continue; // 跳过复制的Actor配置
+		
+		AActor* Actor = OwnerClientSpawnedActors[LocalActorIndex];
+		if (IsValid(Actor))
+		{
+			Actor->SetActorHiddenInGame(true);
+			
+			if (SpawnInfo.bDormantOnUnequip)
+			{
+				SetActorDormant(Actor, false);
+			}
+		}
+		++LocalActorIndex;
+	}
+}
+
+void UYcEquipmentInstance::ShowEquipmentActors()
+{
+	if (!GetEquipmentDef()) return;
+	
+	const TArray<FYcEquipmentActorToSpawn>& ActorsToSpawn = EquipmentDef->ActorsToSpawn;
+	
+	// 处理服务器复制的Actors
+	int32 ReplicatedActorIndex = 0;
+	for (int32 i = 0; i < ActorsToSpawn.Num() && ReplicatedActorIndex < SpawnedActors.Num(); ++i)
+	{
+		const FYcEquipmentActorToSpawn& SpawnInfo = ActorsToSpawn[i];
+		if (!SpawnInfo.bReplicateActor) continue; // 跳过非复制的Actor配置
+		
+		AActor* Actor = SpawnedActors[ReplicatedActorIndex];
+		if (IsValid(Actor))
+		{
+			// 从休眠状态唤醒
+			if (SpawnInfo.bDormantOnUnequip)
+			{
+				WakeActorFromDormant(Actor, true);
+			}
+			
+			// 显示Actor（保持原有附加状态）
+			Actor->SetActorHiddenInGame(false);
+		}
+		++ReplicatedActorIndex;
+	}
+	
+	// 通知客户端处理本地Actors
+	ShowEquipmentActorsOnOwnerClient();
+}
+
+void UYcEquipmentInstance::ShowEquipmentActorsOnOwnerClient_Implementation()
+{
+	ShowLocalEquipmentActors();
+}
+
+void UYcEquipmentInstance::ShowLocalEquipmentActors()
+{
+	if (!GetEquipmentDef()) return;
+	
+	const TArray<FYcEquipmentActorToSpawn>& ActorsToSpawn = EquipmentDef->ActorsToSpawn;
+	
+	// 找到本地Actor对应的SpawnInfo（非复制的）
+	int32 LocalActorIndex = 0;
+	for (int32 i = 0; i < ActorsToSpawn.Num() && LocalActorIndex < OwnerClientSpawnedActors.Num(); ++i)
+	{
+		const FYcEquipmentActorToSpawn& SpawnInfo = ActorsToSpawn[i];
+		if (SpawnInfo.bReplicateActor) continue;
+		
+		AActor* Actor = OwnerClientSpawnedActors[LocalActorIndex];
+		if (IsValid(Actor))
+		{
+			if (SpawnInfo.bDormantOnUnequip)
+			{
+				WakeActorFromDormant(Actor, false);
+			}
+			
+			Actor->SetActorHiddenInGame(false);
+		}
+		++LocalActorIndex;
+	}
+}
+
+void UYcEquipmentInstance::SetActorDormant(AActor* Actor, bool bReplicated)
+{
+	if (!IsValid(Actor)) return;
+	
+	// 禁用Tick
+	Actor->SetActorTickEnabled(false);
+	
+	// 禁用碰撞
+	Actor->SetActorEnableCollision(false);
+	
+	// 对于网络复制的Actor，设置网络休眠
+	if (bReplicated && Actor->GetIsReplicated())
+	{
+		Actor->SetNetDormancy(DORM_DormantAll);
+	}
+}
+
+void UYcEquipmentInstance::WakeActorFromDormant(AActor* Actor, bool bReplicated)
+{
+	if (!IsValid(Actor)) return;
+	
+	// 对于网络复制的Actor，先唤醒网络
+	if (bReplicated && Actor->GetIsReplicated())
+	{
+		Actor->SetNetDormancy(DORM_Awake);
+		Actor->FlushNetDormancy();
+	}
+	
+	// 恢复Tick
+	Actor->SetActorTickEnabled(true);
+	
+	// 恢复碰撞
+	Actor->SetActorEnableCollision(true);
 }
 
 AActor* UYcEquipmentInstance::FindSpawnedActorByTag(const FName Tag, const bool bReplicateActor)

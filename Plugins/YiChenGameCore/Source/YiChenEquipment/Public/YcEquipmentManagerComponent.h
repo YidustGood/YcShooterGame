@@ -156,7 +156,47 @@ public:
 		return static_cast<T*>(GetFirstInstanceOfType(T::StaticClass()));
 	}
 	
+	/**
+	 * 清理指定物品的缓存装备实例（真正销毁Actors）
+	 * 当物品从QuickBar移除或玩家退出时调用
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
+	void ClearCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance);
+	
+	/**
+	 * 清理所有缓存的装备实例
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
+	void ClearAllCachedEquipment();
+	
 private:
+	friend struct FYcEquipmentList;
+	
+	/**
+	 * 查找指定物品的缓存装备实例
+	 * @return 缓存的装备实例，如果不存在则返回nullptr
+	 */
+	UYcEquipmentInstance* FindCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance) const;
+	
+	/**
+	 * 缓存装备实例（用于复用）
+	 */
+	void CacheEquipmentInstance(UYcInventoryItemInstance* ItemInstance, UYcEquipmentInstance* EquipmentInstance);
+	
+	/**
+	 * 从缓存中移除并返回装备实例（用于复用时取出）
+	 */
+	UYcEquipmentInstance* TakeCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance);
+	
+	/** 当前已装备的装备列表 */
 	UPROPERTY(Replicated, VisibleAnywhere)
 	FYcEquipmentList EquipmentList;
+	
+	/** 
+	 * 缓存的装备实例映射（物品实例 -> 装备实例）
+	 * 用于在卸下装备时保留装备实例和其生成的Actors，以便下次装备时复用
+	 * 不参与网络复制，服务器和客户端各自维护
+	 */
+	UPROPERTY()
+	TMap<TObjectPtr<UYcInventoryItemInstance>, TObjectPtr<UYcEquipmentInstance>> CachedEquipmentInstances;
 };

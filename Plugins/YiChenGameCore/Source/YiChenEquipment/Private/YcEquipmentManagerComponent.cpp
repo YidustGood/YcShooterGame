@@ -72,19 +72,48 @@ UYcEquipmentInstance* FYcEquipmentList::AddEntry(const FYcEquipmentDefinition& E
 	check(OwnerComponent);
 	check(OwnerComponent->GetOwner()->HasAuthority());
 	
-	// 2. 根据EquipmentDef创建对应的EquipmentInst实例对象,并添加到复制的列表中
+	// 2. 尝试从缓存中获取已有的装备实例
+	UYcEquipmentManagerComponent* EquipmentManager = Cast<UYcEquipmentManagerComponent>(OwnerComponent);
+	UYcEquipmentInstance* ExistingInstance = EquipmentManager ? EquipmentManager->FindCachedEquipmentForItem(ItemInstance) : nullptr;
+	
+	if (ExistingInstance)
+	{
+		// 复用缓存的装备实例，从缓存中移除
+		EquipmentManager->TakeCachedEquipmentForItem(ItemInstance);
+		
+		FYcAppliedEquipmentEntry& NewEntry = Equipments.AddDefaulted_GetRef();
+		NewEntry.Instance = ExistingInstance;
+		NewEntry.OwnerItemInstance = ItemInstance;
+		
+		// 重新授予技能
+		if (UYcAbilitySystemComponent* ASC = GetAbilitySystemComponent())
+		{
+			for (const auto AbilitySet : EquipmentDef.AbilitySetsToGrant)
+			{
+				AbilitySet->GiveToAbilitySystem(ASC, /*inout*/ &NewEntry.GrantedHandles, NewEntry.Instance);
+			}
+		}
+		
+		// 显示之前隐藏的Actors（内部会处理复用逻辑）
+		ExistingInstance->SpawnEquipmentActors(EquipmentDef.ActorsToSpawn);
+		
+		MarkItemDirty(NewEntry);
+		return ExistingInstance;
+	}
+	
+	// 3. 没有缓存，创建新的装备实例
 	TSubclassOf<UYcEquipmentInstance> InstanceType = EquipmentDef.InstanceType;
-	if (InstanceType == nullptr) // 如果装备定义中没有指定装备实例对象，那么就使用默认实例对象进行创建添加
+	if (InstanceType == nullptr)
 	{
 		InstanceType = UYcEquipmentInstance::StaticClass();
 	}
 
 	FYcAppliedEquipmentEntry& NewEntry = Equipments.AddDefaulted_GetRef();
-	NewEntry.Instance = NewObject<UYcEquipmentInstance>(OwnerComponent->GetOwner(), InstanceType); //@TODO: Using the actor instead of component as the outer due to UE-127172
+	NewEntry.Instance = NewObject<UYcEquipmentInstance>(OwnerComponent->GetOwner(), InstanceType);
 	NewEntry.Instance->SetInstigator(ItemInstance);
 	NewEntry.OwnerItemInstance = ItemInstance;
 
-	// 3. 把装备附带的AbilitySet应用到目标角色上
+	// 4. 把装备附带的AbilitySet应用到目标角色上
 	if (UYcAbilitySystemComponent* ASC = GetAbilitySystemComponent())
 	{
 		for (const auto AbilitySet : EquipmentDef.AbilitySetsToGrant)
@@ -97,10 +126,10 @@ UYcEquipmentInstance* FYcEquipmentList::AddEntry(const FYcEquipmentDefinition& E
 		UE_LOG(LogYcEquipment, Error, TEXT("装备尝试给玩家应用装备附带的AbilitySet失败，OwnerPawn的AbilitySystemComponent对象无效。"));
 	}
 	
-	// 4. 生成装备附带的Actor并附加到玩家角色身
+	// 5. 生成装备附带的Actor并附加到玩家角色身
 	NewEntry.Instance->SpawnEquipmentActors(EquipmentDef.ActorsToSpawn);
 
-	// 5. 标记为脏，已触发FastArray的网络同步
+	// 6. 标记为脏，已触发FastArray的网络同步
 	MarkItemDirty(NewEntry);
 	return NewEntry.Instance;
 }
@@ -120,6 +149,8 @@ void FYcEquipmentList::RemoveEntry(UYcEquipmentInstance* Instance)
 		return;
 	}
 
+	UYcEquipmentManagerComponent* EquipmentManager = Cast<UYcEquipmentManagerComponent>(OwnerComponent);
+
 	// 2. 遍历当前的装备实例列表，并将其移除
 	for (auto EntryIt = Equipments.CreateIterator(); EntryIt; ++EntryIt)
 	{
@@ -131,7 +162,35 @@ void FYcEquipmentList::RemoveEntry(UYcEquipmentInstance* Instance)
 				Entry.GrantedHandles.RemoveFromAbilitySystem(ASC); // 移除装备所赋予的能力
 			}
 			
-			Instance->DestroyEquipmentActors();
+			// 根据配置决定是销毁还是隐藏装备Actors
+			bool bShouldDestroy = true;
+			if (const FYcEquipmentDefinition* EquipDef = Instance->GetEquipmentDef())
+			{
+				// 检查是否有任何Actor配置为不销毁
+				for (const FYcEquipmentActorToSpawn& SpawnInfo : EquipDef->ActorsToSpawn)
+				{
+					if (!SpawnInfo.bDestroyOnUnequip)
+					{
+						bShouldDestroy = false;
+						break;
+					}
+				}
+			}
+			
+			if (bShouldDestroy)
+			{
+				Instance->DestroyEquipmentActors();
+			}
+			else
+			{
+				// 隐藏Actors并缓存装备实例以便复用
+				Instance->HideEquipmentActors();
+				if (EquipmentManager && Entry.OwnerItemInstance)
+				{
+					EquipmentManager->CacheEquipmentInstance(Entry.OwnerItemInstance, Instance);
+				}
+			}
+			
 			// 移除当前装备实例并进行标记网络同步
 			EntryIt.RemoveCurrent();
 			MarkArrayDirty();
@@ -177,6 +236,9 @@ void UYcEquipmentManagerComponent::UninitializeComponent()
 		{
 			UnequipItem(EquipInstance);
 		}
+		
+		// 清理所有缓存的装备实例
+		ClearAllCachedEquipment();
 	}
 	
 	Super::UninitializeComponent();
@@ -260,4 +322,57 @@ TArray<UYcEquipmentInstance*> UYcEquipmentManagerComponent::GetEquipmentInstance
 		}
 	}
 	return Results;
+}
+
+UYcEquipmentInstance* UYcEquipmentManagerComponent::FindCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance) const
+{
+	if (!ItemInstance) return nullptr;
+	
+	const TObjectPtr<UYcEquipmentInstance>* Found = CachedEquipmentInstances.Find(ItemInstance);
+	return Found ? Found->Get() : nullptr;
+}
+
+void UYcEquipmentManagerComponent::CacheEquipmentInstance(UYcInventoryItemInstance* ItemInstance, UYcEquipmentInstance* EquipmentInstance)
+{
+	if (!ItemInstance || !EquipmentInstance) return;
+	CachedEquipmentInstances.Add(ItemInstance, EquipmentInstance);
+}
+
+UYcEquipmentInstance* UYcEquipmentManagerComponent::TakeCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance)
+{
+	if (!ItemInstance) return nullptr;
+	
+	TObjectPtr<UYcEquipmentInstance> Result;
+	if (CachedEquipmentInstances.RemoveAndCopyValue(ItemInstance, Result))
+	{
+		return Result.Get();
+	}
+	return nullptr;
+}
+
+void UYcEquipmentManagerComponent::ClearCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance)
+{
+	if (!ItemInstance) return;
+	
+	if (TObjectPtr<UYcEquipmentInstance>* Found = CachedEquipmentInstances.Find(ItemInstance))
+	{
+		if (UYcEquipmentInstance* CachedInstance = Found->Get())
+		{
+			// 真正销毁缓存的装备实例的Actors
+			CachedInstance->DestroyEquipmentActors();
+		}
+		CachedEquipmentInstances.Remove(ItemInstance);
+	}
+}
+
+void UYcEquipmentManagerComponent::ClearAllCachedEquipment()
+{
+	for (auto& Pair : CachedEquipmentInstances)
+	{
+		if (UYcEquipmentInstance* CachedInstance = Pair.Value.Get())
+		{
+			CachedInstance->DestroyEquipmentActors();
+		}
+	}
+	CachedEquipmentInstances.Empty();
 }

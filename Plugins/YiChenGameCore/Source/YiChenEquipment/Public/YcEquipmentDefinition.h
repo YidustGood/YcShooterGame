@@ -67,7 +67,10 @@ struct YICHENEQUIPMENT_API FYcEquipmentActorToSpawn
 {
 	GENERATED_BODY()
 
-	FYcEquipmentActorToSpawn() : bReplicateActor(true)
+	FYcEquipmentActorToSpawn()
+		: bReplicateActor(true)
+		, bDestroyOnUnequip(false)
+		, bDormantOnUnequip(true)
 	{
 	}
 
@@ -99,6 +102,25 @@ struct YICHENEQUIPMENT_API FYcEquipmentActorToSpawn
 	/* 是否为复制的Actor，如是则在服务器上生成，否则在本地生成 */
 	UPROPERTY(EditAnywhere, Category=Equipment, BlueprintReadWrite)
 	uint8 bReplicateActor : 1;
+	
+	/** 
+	 * 卸下装备时是否销毁Actor
+	 * false(默认): 卸下时隐藏Actor并保留，再次装备时复用，避免频繁创建销毁
+	 * true: 卸下时立即销毁Actor（传统行为）
+	 */
+	UPROPERTY(EditAnywhere, Category=Equipment, BlueprintReadWrite, meta=(DisplayName="卸下时销毁Actor"))
+	uint8 bDestroyOnUnequip : 1;
+	
+	/**
+	 * 卸下装备时是否让Actor进入休眠状态以降低消耗
+	 * 仅在 bDestroyOnUnequip=false 时生效
+	 * true(默认): 卸下时禁用Tick、设置网络休眠(仅复制Actor)、禁用碰撞等
+	 * false: 卸下时仅隐藏Actor，不做额外优化
+	 */
+	UPROPERTY(EditAnywhere, Category=Equipment, BlueprintReadWrite, meta=(DisplayName="卸下时休眠降低消耗", EditCondition="!bDestroyOnUnequip"))
+	uint8 bDormantOnUnequip : 1;
+	
+	//@TODO 是否需要增加超过一定时间未装备则销毁的机制?
 };
 
 /**

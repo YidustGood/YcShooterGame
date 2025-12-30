@@ -64,6 +64,16 @@ APawn* UYcEquipmentInstance::GetTypedPawn(TSubclassOf<APawn> PawnType) const
 void UYcEquipmentInstance::SetInstigator(UYcInventoryItemInstance* InInstigator)
 {
 	Instigator = InInstigator;
+	UpdateEquipmentDef();
+}
+
+void UYcEquipmentInstance::UpdateEquipmentDef()
+{
+	if (!Instigator || !Instigator->GetItemDef()) return;
+	
+	const FInventoryFragment_Equippable* Equippable = Instigator->GetItemDef()->GetTypedFragment<FInventoryFragment_Equippable>();
+	if (!Equippable) return;
+	EquipmentDef = &Equippable->EquipmentDef;
 }
 
 void UYcEquipmentInstance::SpawnEquipmentActors(const TArray<FYcEquipmentActorToSpawn>& ActorsToSpawn)
@@ -168,11 +178,8 @@ AActor* UYcEquipmentInstance::FindSpawnedActorByTag(const FName Tag, const bool 
 const FYcEquipmentDefinition* UYcEquipmentInstance::GetEquipmentDef()
 {
 	if (EquipmentDef) return EquipmentDef;
-	if (!Instigator || !Instigator->GetItemDef()) return nullptr;
-	
-	const FInventoryFragment_Equippable* Equippable = Instigator->GetItemDef()->GetTypedFragment<FInventoryFragment_Equippable>();
-	if (!Equippable) return nullptr;
-	EquipmentDef = &Equippable->EquipmentDef;
+	// 如果无效尝试更新获取更新一下
+	UpdateEquipmentDef();
 	return EquipmentDef;
 }
 

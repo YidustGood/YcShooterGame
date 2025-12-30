@@ -125,8 +125,16 @@ private:
 private:
 	AActor* SpawnEquipActorInternal(const TSubclassOf<AActor>& ActorToSpawnClass,const FYcEquipmentActorToSpawn& SpawnInfo, USceneComponent* AttachTarget) const;
 	
-	// [Server Only] 设置装备实例对应的库存物品实例对象
+	/** 
+	 * 设置装备实例对应的库存物品实例对象 
+	 * 服务端在FYcEquipmentList::AddEntry()调用
+	 * 客户端通过FYcEquipmentList中FastArray的3个辅助函数中调用
+	 * 如此一来Instigator便无须开启网络复制了
+	 */
 	void SetInstigator(UYcInventoryItemInstance* InInstigator);
+	
+	/** 更新EquipmentDef, 在SetInstigator内调用, 从Instigator获取EquipmentDef并缓存指针 */
+	void UpdateEquipmentDef();
 	
 public:
 	/** 获取装备定义, 内部实际上是通过装备所属的ItemInst获取到FInventoryFragment_Equippable->EquipmentDef */

@@ -41,10 +41,10 @@ void UYcPickupableStatics::AddPickupToInventory(UYcInventoryManagerComponent* In
 	
 	const FYcInventoryPickup& PickupInventory = Pickup->GetPickupInventory();
 
-	// 1. 通过ItemDefRowHandle添加
+	// 1. 通过ItemRegistryId添加（从DataRegistry获取物品定义）
 	for (const FYcPickupTemplate& Template : PickupInventory.Templates)
 	{
-		InventoryComponent->AddItem(Template.ItemDefRowHandle, Template.StackCount);
+		InventoryComponent->AddItem(Template.ItemRegistryId, Template.StackCount);
 	}
 
 	// 2. 通过ItemInstance添加

@@ -1,37 +1,42 @@
 ﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
 
-
 #include "YcInventoryManagerComponent.h"
 
-// 创建UGameplayMessageSubsystem广播信息Tag
+#include "DataRegistrySubsystem.h"
 #include "NativeGameplayTags.h"
 #include "YcInventoryItemInstance.h"
 #include "YiChenInventory.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "Net/UnrealNetwork.h"
+
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_Inventory_Message_StackChanged, "Yc.Inventory.Message.StackChanged");
 
+#include UE_INLINE_GENERATED_CPP_BY_NAME(YcInventoryManagerComponent)
+
 //////////////////////////////////////////////////////////////////////
-// FYcInventoryEntry
+// FYcInventoryItemEntry
+
 FString FYcInventoryItemEntry::GetDebugString() const
 {
-	const FYcInventoryItemDefinition* ItemDef = nullptr;
-	if (Instance != nullptr)
+	if (Instance == nullptr)
 	{
-		ItemDef = Instance->GetItemDef();
+		return FString::Printf(TEXT("(null) x %d"), StackCount);
 	}
 	
-	return FString::Printf(TEXT("%s (%d x %s)"), *GetNameSafe(Instance), StackCount, *GetNameSafe(ItemDef->StaticStruct()));
+	const FYcInventoryItemDefinition* ItemDef = Instance->GetItemDef();
+	const FName ItemId = ItemDef ? ItemDef->ItemId : NAME_None;
+	return FString::Printf(TEXT("%s (%d x %s)"), *GetNameSafe(Instance), StackCount, *ItemId.ToString());
 }
 
 //////////////////////////////////////////////////////////////////////
-// FYcInventoryList
+// FYcInventoryItemList
+
 void FYcInventoryItemList::PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize)
 {
 	for (const int32 Index : RemovedIndices)
 	{
 		FYcInventoryItemEntry& Stack = Items[Index];
-		BroadcastChangeMessage(Stack,Stack.StackCount, 0);
+		BroadcastChangeMessage(Stack, Stack.StackCount, 0);
 		Stack.LastObservedCount = 0;
 		RemoveItemToMap_Internal(Items[Index]);
 	}
@@ -42,11 +47,13 @@ void FYcInventoryItemList::PostReplicatedAdd(const TArrayView<int32> AddedIndice
 	for (const int32 Index : AddedIndices)
 	{
 		FYcInventoryItemEntry& Stack = Items[Index];
-		BroadcastChangeMessage(Stack,0,Stack.StackCount);
+		BroadcastChangeMessage(Stack, 0, Stack.StackCount);
 		Stack.LastObservedCount = Stack.StackCount;
 		AddItemToMap_Internal(Items[Index]);
-		// 如果物品被添加了,但是Outer还不是库存组件的Owner那么进行更新。服务器在添加的时候就会修改outer,但是由于没有网络复制,所以我们借助这里为客户端同步修改Outer
-		if (Stack.Instance.GetOuter() != OwnerComponent->GetOwner())
+		
+		// 如果物品被添加了，但是Outer还不是库存组件的Owner，那么进行更新
+		// 服务器在添加的时候就会修改Outer，但由于没有网络复制，所以借助这里为客户端同步修改Outer
+		if (Stack.Instance && Stack.Instance->GetOuter() != OwnerComponent->GetOwner())
 		{
 			Stack.Instance->Rename(nullptr, OwnerComponent->GetOwner());
 		}
@@ -59,7 +66,7 @@ void FYcInventoryItemList::PostReplicatedChange(const TArrayView<int32> ChangedI
 	{
 		FYcInventoryItemEntry& Stack = Items[Index];
 		check(Stack.LastObservedCount != INDEX_NONE);
-		BroadcastChangeMessage(Stack,Stack.LastObservedCount,Stack.StackCount);
+		BroadcastChangeMessage(Stack, Stack.LastObservedCount, Stack.StackCount);
 		Stack.LastObservedCount = Stack.StackCount;
 		ChangeItemToMap_Internal(Items[Index]);
 	}
@@ -71,52 +78,79 @@ TArray<UYcInventoryItemInstance*> FYcInventoryItemList::GetAllItemInstance() con
 	Results.Reserve(Items.Num());
 	for (const FYcInventoryItemEntry& Entry : Items)
 	{
-		if (Entry.Instance == nullptr) continue;
-		Results.Add(Entry.Instance);
+		if (Entry.Instance != nullptr)
+		{
+			Results.Add(Entry.Instance);
+		}
 	}
 	return Results;
 }
 
-UYcInventoryItemInstance* FYcInventoryItemList::AddItem(const FDataTableRowHandle& ItemDefRowHandle, const int32 StackCount)
+UYcInventoryItemInstance* FYcInventoryItemList::AddItem(const FDataRegistryId& ItemRegistryId, const int32 StackCount)
 {
 	check(OwnerComponent);
 	
 	AActor* OwningActor = OwnerComponent->GetOwner();
 	check(OwningActor->HasAuthority());
 	
-	const FYcInventoryItemDefinition* ItemDef = ItemDefRowHandle.GetRow<FYcInventoryItemDefinition>(TEXT("FYcInventoryItemList::AddItem"));
-	if (ItemDef == nullptr)
+	// 验证ItemRegistryId有效性
+	if (!ItemRegistryId.IsValid())
 	{
-		UE_LOG(LogYcInventory, Error, TEXT("Add item failed, item def is invalid."));
-		return nullptr;
-	}
-
-	FYcInventoryItemEntry& NewItemEntry = Items.AddDefaulted_GetRef(); // 构造一个默认的新元素并返回引用
-	
-	// 创建ItemInstance,如定义中的ItemInstanceType无效则使用默认的ItemInstance类型
-	if (const TSubclassOf<UYcInventoryItemInstance> ItemInstanceClass = ItemDef->ItemInstanceType)
-	{
-		// @TODO: Using the actor instead of component as the outer due to UE-127172
-		NewItemEntry.Instance = NewObject<UYcInventoryItemInstance>(OwningActor, ItemInstanceClass);
-	}
-	else
-	{
-		NewItemEntry.Instance = NewObject<UYcInventoryItemInstance>(OwningActor, UYcInventoryItemInstance::StaticClass());
-	}
-	
-	if (NewItemEntry.Instance == nullptr)
-	{
-		UE_LOG(LogYcInventory, Error, TEXT("Failed to add items to inventory. Invalid Instance object."));
+		UE_LOG(LogYcInventory, Error, TEXT("FYcInventoryItemList::AddItem - ItemRegistryId is invalid."));
 		return nullptr;
 	}
 	
-	NewItemEntry.Instance->SetItemDefRowHandle(ItemDefRowHandle); // 为ItemInst设置ItemDef的DataTableRowHandle以便通过ItemInst解析出ItemDef
-	NewItemEntry.Instance->SetItemInstId(GenerateNextItemId(NewItemEntry)); // 自动生成填充ItemInstId
+	// 从DataRegistry获取物品定义
+	const UDataRegistrySubsystem* Subsystem = UDataRegistrySubsystem::Get();
+	if (!Subsystem)
+	{
+		UE_LOG(LogYcInventory, Error, TEXT("FYcInventoryItemList::AddItem - DataRegistrySubsystem not available."));
+		return nullptr;
+	}
 	
-	// 从ItemDef中获取所有的Fragment,遍历调用Fragment->OnInstanceCreated(ItemInstance)函数通知ItemInstance创建 
+	// 使用模板方法直接获取类型安全的指针
+	const FYcInventoryItemDefinition* ItemDef = Subsystem->GetCachedItem<FYcInventoryItemDefinition>(ItemRegistryId);
+	if (!ItemDef)
+	{
+		UE_LOG(LogYcInventory, Error, TEXT("FYcInventoryItemList::AddItem - Failed to get ItemDef from DataRegistry: %s. Make sure the item is cached/acquired first."),
+			*ItemRegistryId.ToString());
+		return nullptr;
+	}
+	
+	// 检查物品是否启用
+	if (!ItemDef->bEnableItem)
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("FYcInventoryItemList::AddItem - Item is disabled: %s"), *ItemDef->ItemId.ToString());
+		return nullptr;
+	}
+	
+	// 创建ItemEntry
+	FYcInventoryItemEntry& NewItemEntry = Items.AddDefaulted_GetRef();
+	
+	// 创建ItemInstance，如定义中的ItemInstanceType无效则使用默认类型
+	TSubclassOf<UYcInventoryItemInstance> ItemInstanceClass = ItemDef->ItemInstanceType;
+	if (!ItemInstanceClass)
+	{
+		ItemInstanceClass = UYcInventoryItemInstance::StaticClass();
+	}
+	
+	// @TODO: Using the actor instead of component as the outer due to UE-127172
+	NewItemEntry.Instance = NewObject<UYcInventoryItemInstance>(OwningActor, ItemInstanceClass);
+	if (!NewItemEntry.Instance)
+	{
+		UE_LOG(LogYcInventory, Error, TEXT("FYcInventoryItemList::AddItem - Failed to create ItemInstance for: %s"), *ItemRegistryId.ToString());
+		Items.RemoveAt(Items.Num() - 1);
+		return nullptr;
+	}
+	
+	// 设置ItemRegistryId（这会触发缓存物品定义）
+	NewItemEntry.Instance->SetItemRegistryId(ItemRegistryId);
+	NewItemEntry.Instance->SetItemInstId(GenerateNextItemId(NewItemEntry));
+	
+	// 从ItemDef中获取所有的Fragment，遍历调用Fragment->OnInstanceCreated通知
 	for (const auto& Fragment : ItemDef->Fragments)
 	{
-		// 这里一定要使用GetPtr<>(),如果直接使用Get<>()会把存储的派生结构体"按基类类型值拷贝"出来，发生对象切片，丢失派生类型的 vtable,导致无法多态
+		// 使用GetPtr<>()避免对象切片，保持多态
 		if (const FYcInventoryItemFragment* FragPtr = Fragment.GetPtr<FYcInventoryItemFragment>())
 		{
 			FragPtr->OnInstanceCreated(NewItemEntry.Instance);
@@ -127,8 +161,9 @@ UYcInventoryItemInstance* FYcInventoryItemList::AddItem(const FDataTableRowHandl
 	AddItemToMap_Internal(NewItemEntry);
 	MarkItemDirty(NewItemEntry);
 	
-	// 这个函数会在权威端调用,拥有的客户端的这个函数由FastArray的三个辅助函数调用
-	BroadcastChangeMessage(NewItemEntry, /*新添加的old为0*/ 0, NewItemEntry.StackCount);
+	// 广播变化消息（权威端调用，客户端由FastArray辅助函数调用）
+	BroadcastChangeMessage(NewItemEntry, 0, NewItemEntry.StackCount);
+	
 	return NewItemEntry.Instance;
 }
 
@@ -142,22 +177,23 @@ bool FYcInventoryItemList::AddItem(UYcInventoryItemInstance* Instance, const int
 
 	FYcInventoryItemEntry& NewItemEntry = Items.AddDefaulted_GetRef();
 	
-	// 尝试重新指定Outer,例如从别人的库存系统中获取过来的ItemInst它的Outer是需要调整的
-	if (Instance->GetOuter() != OwningActor->GetOuter())
+	// 尝试重新指定Outer（例如从别人的库存系统中获取过来的ItemInst）
+	if (Instance->GetOuter() != OwningActor)
 	{
 		if (!Instance->Rename(nullptr, OwningActor))
 		{
-			UE_LOG(LogYcInventory, Error, TEXT("Rename Item Instance failed!"));
+			UE_LOG(LogYcInventory, Error, TEXT("FYcInventoryItemList::AddItem - Failed to rename ItemInstance outer."));
+			Items.RemoveAt(Items.Num() - 1);
 			return false;
 		}
 	}
-	// @TODO 是否需要通知Fragment其拥有者发生变化了
 	
 	NewItemEntry.Instance = Instance;
 	NewItemEntry.StackCount = StackCount;
 	AddItemToMap_Internal(NewItemEntry);
 	MarkItemDirty(NewItemEntry);
-	BroadcastChangeMessage(NewItemEntry, 0,  NewItemEntry.StackCount);
+	BroadcastChangeMessage(NewItemEntry, 0, NewItemEntry.StackCount);
+	
 	return true;
 }
 
@@ -169,8 +205,7 @@ bool FYcInventoryItemList::RemoveItem(UYcInventoryItemInstance* Instance)
 		if (ItemEntry.Instance == Instance)
 		{
 			RemoveItemToMap_Internal(ItemEntry);
-			// 这个函数会在权威端调用,拥有的客户端的这个函数由FastArray的三个辅助函数调用
-			BroadcastChangeMessage(ItemEntry,ItemEntry.StackCount,0); // NewCount=0代表移除了/消耗完了
+			BroadcastChangeMessage(ItemEntry, ItemEntry.StackCount, 0);
 			ItemEntryIt.RemoveCurrent();
 			MarkArrayDirty();
 			return true;
@@ -185,7 +220,7 @@ void FYcInventoryItemList::BroadcastChangeMessage(const FYcInventoryItemEntry& I
 	Message.InventoryOwner = OwnerComponent;
 	Message.ItemInstance = ItemEntry.Instance;
 	Message.NewCount = NewCount;
-	Message.Delta = NewCount - FMath::Clamp(OldCount, 0, OldCount); // 保持OldCount不小于0,因为默认LastObservedCount = INDEX_NONE的值是-1
+	Message.Delta = NewCount - FMath::Max(OldCount, 0); // 保持OldCount不小于0
 
 	UGameplayMessageSubsystem& MessageSystem = UGameplayMessageSubsystem::Get(OwnerComponent->GetWorld());
 	MessageSystem.BroadcastMessage(TAG_Yc_Inventory_Message_StackChanged, Message);
@@ -193,41 +228,59 @@ void FYcInventoryItemList::BroadcastChangeMessage(const FYcInventoryItemEntry& I
 
 void FYcInventoryItemList::AddItemToMap_Internal(FYcInventoryItemEntry& Item)
 {
-	ItemsMap.Add(Item.Instance->GetItemInstId(), &Item);
+	if (Item.Instance)
+	{
+		ItemsMap.Add(Item.Instance->GetItemInstId(), &Item);
+	}
 }
 
 void FYcInventoryItemList::ChangeItemToMap_Internal(FYcInventoryItemEntry& Item)
 {
-	ItemsMap[Item.Instance->GetItemInstId()] = &Item;
+	if (Item.Instance)
+	{
+		ItemsMap[Item.Instance->GetItemInstId()] = &Item;
+	}
 }
 
 void FYcInventoryItemList::RemoveItemToMap_Internal(const FYcInventoryItemEntry& Item)
 {
-	// 由于TMap不可复制，所以移除Tag的时候，TMap中映射的Tag需要我们收到预删除通知时手动进行清理，以保证与服务器达成同步，后面的添加修改同理，在收到相应同步后，从Stacks列表中取得数据并同步设置到TMap中
-	ItemsMap.Remove(Item.Instance->GetItemInstId());
+	if (Item.Instance)
+	{
+		ItemsMap.Remove(Item.Instance->GetItemInstId());
+	}
 }
 
 FName FYcInventoryItemList::GenerateNextItemId(const FYcInventoryItemEntry& Item) const
 {
-	const FYcInventoryItemDefinition* ItemDef = Item.Instance->GetItemDef();
+	const FYcInventoryItemDefinition* ItemDef = Item.Instance ? Item.Instance->GetItemDef() : nullptr;
 	if (!ItemDef) return NAME_None;
+	
 	FName NextItemId = ItemDef->ItemId;
-	while (true)
+	int32 Attempts = 0;
+	const int32 MaxAttempts = 1000; // 防止无限循环
+	
+	while (Attempts < MaxAttempts)
 	{
-		if (!ItemsMap.Contains(NextItemId)) // 知道找到不重复的ItemId才返回
+		if (!ItemsMap.Contains(NextItemId))
 		{
 			return NextItemId;
 		}
-		const int32 AppendNo = FMath::Rand32();
-		FString NewItemNameStr = FString::Printf(TEXT("%s_%d"), *ItemDef->ItemId.ToString(), AppendNo);
-		NextItemId = FName(*NewItemNameStr);
+		const int32 AppendNo = FMath::Rand();
+		NextItemId = FName(*FString::Printf(TEXT("%s_%d"), *ItemDef->ItemId.ToString(), AppendNo));
+		++Attempts;
 	}
+	
+	UE_LOG(LogYcInventory, Error, TEXT("FYcInventoryItemList::GenerateNextItemId - Failed to generate unique ID after %d attempts for: %s"),
+		MaxAttempts, *ItemDef->ItemId.ToString());
+	return NAME_None;
 }
 
 //////////////////////////////////////////////////////////////////////
 // UYcInventoryManagerComponent
+
 UYcInventoryManagerComponent::UYcInventoryManagerComponent(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer), ItemList(this)
+	: Super(ObjectInitializer)
+	, ItemList(this)
 {
 	// 组件必须被复制才能复制子对象
 	SetIsReplicatedByDefault(true);
@@ -237,23 +290,21 @@ UYcInventoryManagerComponent::UYcInventoryManagerComponent(const FObjectInitiali
 void UYcInventoryManagerComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	
-	DOREPLIFETIME(UYcInventoryManagerComponent, ItemList); // 使用FastArray，不需要使用PushModel
+	DOREPLIFETIME(UYcInventoryManagerComponent, ItemList);	// 使用FastArray，不需要使用PushModel
 }
 
 void UYcInventoryManagerComponent::ReadyForReplication()
 {
 	Super::ReadyForReplication();
+	
 	// 注册现有的ItemInstance到子对象复制列表中
 	if (IsUsingRegisteredSubObjectList())
 	{
 		for (const FYcInventoryItemEntry& ItemEntry : ItemList.Items)
 		{
-			UYcInventoryItemInstance* Instance = ItemEntry.Instance;
-
-			if (IsValid(Instance))
+			if (IsValid(ItemEntry.Instance))
 			{
-				AddReplicatedSubObject(Instance);
+				AddReplicatedSubObject(ItemEntry.Instance);
 			}
 		}
 	}
@@ -261,28 +312,32 @@ void UYcInventoryManagerComponent::ReadyForReplication()
 
 bool UYcInventoryManagerComponent::CanAddItemDefinition_Implementation(const FYcInventoryItemDefinition& ItemDef, int32 StackCount)
 {
-	//@TODO: 可增加条件限制功能
-	return true;
+	// 默认实现：只检查物品是否启用
+	return ItemDef.bEnableItem;
 }
 
-UYcInventoryItemInstance* UYcInventoryManagerComponent::AddItem(const FDataTableRowHandle& ItemDefRowHandle, const int32 StackCount)
+UYcInventoryItemInstance* UYcInventoryManagerComponent::AddItem(const FDataRegistryId& ItemRegistryId, const int32 StackCount)
 {
-	UYcInventoryItemInstance* Result = ItemList.AddItem(ItemDefRowHandle, StackCount);
-	if (IsUsingRegisteredSubObjectList() && IsReadyForReplication() && Result)
+	UYcInventoryItemInstance* Result = ItemList.AddItem(ItemRegistryId, StackCount);
+	
+	if (Result && IsUsingRegisteredSubObjectList() && IsReadyForReplication())
 	{
 		AddReplicatedSubObject(Result);
 	}
+	
 	return Result;
 }
 
 bool UYcInventoryManagerComponent::AddItemInstance(UYcInventoryItemInstance* ItemInstance, const int32 StackCount)
 {
 	const bool bResult = ItemList.AddItem(ItemInstance, StackCount);
-	if (!bResult) return false;
-	if (IsUsingRegisteredSubObjectList() && IsReadyForReplication() && ItemInstance)
+	
+	if (bResult && IsUsingRegisteredSubObjectList() && IsReadyForReplication() && ItemInstance)
 	{
-		AddReplicatedSubObject(ItemInstance); // 添加到子对象复制列表中，以实现ItemInstance对象及其内部的网络复制
+		// 添加到子对象复制列表中，以实现ItemInstance对象及其内部的网络复制
+		AddReplicatedSubObject(ItemInstance);
 	}
+	
 	return bResult;
 }
 
@@ -290,15 +345,18 @@ bool UYcInventoryManagerComponent::RemoveItemInstance(UYcInventoryItemInstance* 
 {
 	if (!IsValid(ItemInstance))
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("The item instance to be removed is invalid. "));
+		UE_LOG(LogYcInventory, Warning, TEXT("UYcInventoryManagerComponent::RemoveItemInstance - ItemInstance is invalid."));
 		return false;
 	}
+	
 	const bool bSuccess = ItemList.RemoveItem(ItemInstance);
 
 	if (bSuccess && IsUsingRegisteredSubObjectList())
 	{
-		RemoveReplicatedSubObject(ItemInstance); // 移除ItemInstance时，将其从子对象复制列表中移除
+		// 移除ItemInstance时，将其从子对象复制列表中移除
+		RemoveReplicatedSubObject(ItemInstance);
 	}
+	
 	return bSuccess;
 }
 
@@ -319,31 +377,33 @@ int32 UYcInventoryManagerComponent::GetTotalItemCountByDefinition(const FYcInven
 	int32 TotalCount = 0;
 	for (const FYcInventoryItemEntry& ItemEntry : ItemList.Items)
 	{
-		UYcInventoryItemInstance* Instance = ItemEntry.Instance;
-
-		if (IsValid(Instance) && Instance->GetItemDef())
+		if (IsValid(ItemEntry.Instance))
 		{
-			if (Instance->GetItemDef()->ItemId.IsEqual(ItemDef.ItemId))
+			const FYcInventoryItemDefinition* EntryItemDef = ItemEntry.Instance->GetItemDef();
+			if (EntryItemDef && EntryItemDef->ItemId == ItemDef.ItemId)
 			{
 				++TotalCount;
 			}
 		}
 	}
-
 	return TotalCount;
 }
 
 bool UYcInventoryManagerComponent::ConsumeItemsByDefinition(const FYcInventoryItemDefinition& ItemDef, const int32 NumToConsume)
 {
 	AActor* OwningActor = GetOwner();
-	if (!OwningActor || !OwningActor->HasAuthority()) return false; //权威权限检查
+	if (!OwningActor || !OwningActor->HasAuthority())
+	{
+		return false;
+	}
 	
 	// @TODO 目前的实现方式并没有去消耗物品的StackCount,而是直接移除了物品
-	// 这里时间复杂度为O(n),因为FindFirstItemStackByDefinition我们使用哈希表优化为了O(1)
+	// 这里时间复杂度为O(n), 因为FindFirstItemStackByDefinition我们使用哈希表优化为了O(1)
 	int32 TotalConsumed = 0;
 	while (TotalConsumed < NumToConsume)
 	{
-		if (UYcInventoryItemInstance* Instance = FindFirstItemInstByDefinition(ItemDef))
+		UYcInventoryItemInstance* Instance = FindFirstItemInstByDefinition(ItemDef);
+		if (Instance)
 		{
 			ItemList.RemoveItem(Instance);
 			++TotalConsumed;

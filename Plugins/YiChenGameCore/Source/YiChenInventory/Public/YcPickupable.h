@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "DataRegistryId.h"
 #include "UObject/Interface.h"
 #include "YcPickupable.generated.h"
 
@@ -18,13 +19,16 @@ struct FYcPickupTemplate
 	GENERATED_BODY()
 
 public:
-	// 这个拾取物的堆叠个数
+	/** 这个拾取物的堆叠个数 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	int32 StackCount = 1;
 	
-	// 这个拾取物的ItemDefRowHandle, 因为ItemDef数据都是在DataTable中集中定义的
+	/** 
+	 * 物品在DataRegistry中的ID
+	 * 通过DataRegistry统一管理物品定义，支持多数据源聚合查询
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	FDataTableRowHandle ItemDefRowHandle;
+	FDataRegistryId ItemRegistryId;
 };
 
 /** 拾取物的物品实例对象 */

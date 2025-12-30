@@ -61,24 +61,31 @@ struct YICHENREDDOTSYSTEM_API FRedDotInfo
         , bIsActive(bInActive)
     {}
     
+    /** 红点路径标签 */
     UPROPERTY(BlueprintReadOnly, Category = "RedDot")
     FGameplayTag Tag;
     
+    /** 红点更新时与上一次的数量差距 */
     UPROPERTY(BlueprintReadOnly, Category = "RedDot")
     int32 Delta;
     
+    /** 红点更新时间 */
     UPROPERTY(BlueprintReadOnly, Category = "RedDot")
     FDateTime TriggerTime;
     
+    /** 红点当前的数量, 如果非叶子节点则数量由子节点透传聚合而来 */
     UPROPERTY(BlueprintReadOnly, Category = "RedDot")
     int32 Count;
     
+    /** 优先级 */
     UPROPERTY(BlueprintReadOnly, Category = "RedDot")
     uint8 Priority;
     
+    /** 红点类型 */
     UPROPERTY(BlueprintReadOnly, Category = "RedDot")
     ERedDotType Type;
     
+    /** 是否激活 */
     UPROPERTY(BlueprintReadOnly, Category = "RedDot")
     bool bIsActive;
     

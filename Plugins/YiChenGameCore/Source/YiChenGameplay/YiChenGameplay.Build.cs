@@ -13,6 +13,8 @@ public class YiChenGameplay : ModuleRules
                 "CommonGame",
                 "GameplayAbilities", 
                 "CommonLoadingScreen",
+                "ModularGameplayActors",
+                "DataRegistry"
             }
         );
 
@@ -27,7 +29,6 @@ public class YiChenGameplay : ModuleRules
                 "YiChenAbility",
                 "YiChenGameCore",
                 "EnhancedInput",
-                "ModularGameplayActors",
                 "ModularGameplay",
                 "GameplayTags", 
                 "GameFeatures",

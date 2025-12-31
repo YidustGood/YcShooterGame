@@ -459,3 +459,148 @@ void UYcGameplayAbility::NativeOnAbilityFailedToActivate(const FGameplayTagConta
 		}
 	}
 }
+
+/**
+ * 获取指定骨骼网格上当前正在播放的蒙太奇
+ * 从CurrentAbilityMeshMontages数组中查找对应Mesh的蒙太奇
+ * @param InMesh 目标骨骼网格
+ * @return 当前正在播放的蒙太奇，如果没有则返回nullptr
+ */
+UAnimMontage* UYcGameplayAbility::GetCurrentMontageForMesh(USkeletalMeshComponent* InMesh)
+{
+	FAbilityMeshMontage AbilityMeshMontage;
+	if (FindAbilityMeshMontage(InMesh, AbilityMeshMontage))
+	{
+		return AbilityMeshMontage.Montage;
+	}
+
+	return nullptr;
+}
+
+/**
+ * 设置指定骨骼网格上当前正在播放的蒙太奇
+ * 由蒙太奇Task（如AbilityTask_PlayMontageForMeshAndWaitForEvent）调用
+ * 用于追踪技能正在播放的蒙太奇，允许将蒙太奇事件与技能事件关联起来
+ * @param InMesh 目标骨骼网格
+ * @param InCurrentMontage 当前蒙太奇，nullptr表示清除
+ */
+void UYcGameplayAbility::SetCurrentMontageForMesh(USkeletalMeshComponent* InMesh, UAnimMontage* InCurrentMontage)
+{
+	ensure(IsInstantiated());
+
+	FAbilityMeshMontage AbilityMeshMontage;
+	if (FindAbilityMeshMontage(InMesh, AbilityMeshMontage))
+	{
+		// 已存在则更新蒙太奇引用
+		AbilityMeshMontage.Montage = InCurrentMontage;
+	}
+	else
+	{
+		// 不存在则添加新的Mesh-Montage映射
+		CurrentAbilityMeshMontages.Add(FAbilityMeshMontage(InMesh, InCurrentMontage));
+	}
+}
+
+/**
+ * 查找指定骨骼网格对应的蒙太奇信息
+ * 遍历CurrentAbilityMeshMontages数组查找匹配的Mesh
+ * @param InMesh 目标骨骼网格
+ * @param InAbilityMontage 输出：找到的蒙太奇信息
+ * @return 如果找到返回true，否则返回false
+ */
+bool UYcGameplayAbility::FindAbilityMeshMontage(USkeletalMeshComponent* InMesh, FAbilityMeshMontage& InAbilityMeshMontage)
+{
+	for (FAbilityMeshMontage& MeshMontage : CurrentAbilityMeshMontages)
+	{
+		if (MeshMontage.Mesh == InMesh)
+		{
+			InAbilityMeshMontage = MeshMontage;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * 立即跳转到指定骨骼网格上蒙太奇的指定Section
+ * 只有当此技能是当前正在播放动画的技能时才会执行跳转
+ * 会通过ASC处理网络同步（服务器更新复制属性，客户端发送ServerRPC）
+ * @param InMesh 目标骨骼网格
+ * @param SectionName 目标Section名称
+ */
+void UYcGameplayAbility::MontageJumpToSectionForMesh(USkeletalMeshComponent* InMesh, FName SectionName)
+{
+	check(CurrentActorInfo);
+
+	UYcAbilitySystemComponent* const AbilitySystemComponent = Cast<UYcAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo_Checked());
+	// 只有当此技能是当前正在播放动画的技能时才执行跳转
+	if (AbilitySystemComponent->IsAnimatingAbilityForAnyMesh(this))
+	{
+		AbilitySystemComponent->CurrentMontageJumpToSectionForMesh(InMesh, SectionName);
+	}
+}
+
+/**
+ * 设置指定骨骼网格上蒙太奇的下一个Section
+ * 用于实现蒙太奇的分支播放，如连击系统
+ * 只有当此技能是当前正在播放动画的技能时才会执行设置
+ * 会通过ASC处理网络同步（服务器更新复制属性，客户端发送ServerRPC）
+ * @param InMesh 目标骨骼网格
+ * @param FromSectionName 当前Section名称
+ * @param ToSectionName 下一个Section名称
+ */
+void UYcGameplayAbility::MontageSetNextSectionNameForMesh(USkeletalMeshComponent* InMesh, FName FromSectionName, FName ToSectionName)
+{
+	check(CurrentActorInfo);
+
+	UYcAbilitySystemComponent* const AbilitySystemComponent = Cast<UYcAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo_Checked());
+	// 只有当此技能是当前正在播放动画的技能时才执行设置
+	if (AbilitySystemComponent->IsAnimatingAbilityForAnyMesh(this))
+	{
+		AbilitySystemComponent->CurrentMontageSetNextSectionNameForMesh(InMesh, FromSectionName, ToSectionName);
+	}
+}
+
+/**
+ * 停止指定骨骼网格上当前播放的蒙太奇
+ * 只有当此技能是当前正在播放动画的技能时才会停止
+ * 会通过ASC处理网络同步（服务器更新复制属性，同步停止状态到模拟客户端）
+ * @param InMesh 目标骨骼网格
+ * @param OverrideBlendOutTime 混出时间覆盖，>=0时覆盖蒙太奇的默认BlendOutTime
+ */
+void UYcGameplayAbility::MontageStopForMesh(USkeletalMeshComponent* InMesh, float OverrideBlendOutTime)
+{
+	check(CurrentActorInfo);
+
+	UYcAbilitySystemComponent* const AbilitySystemComponent = Cast<UYcAbilitySystemComponent>(CurrentActorInfo->AbilitySystemComponent.Get());
+	if (AbilitySystemComponent != nullptr)
+	{
+		// 只有当此技能是当前正在播放动画的技能时才停止蒙太奇
+		if (AbilitySystemComponent->IsAnimatingAbilityForAnyMesh(this))
+		{
+			AbilitySystemComponent->CurrentMontageStopForMesh(InMesh, OverrideBlendOutTime);
+		}
+	}
+}
+
+/**
+ * 停止所有骨骼网格上当前播放的蒙太奇
+ * 只有当此技能是当前正在播放动画的技能时才会停止
+ * 会通过ASC处理网络同步（服务器更新复制属性，同步停止状态到模拟客户端）
+ * @param OverrideBlendOutTime 混出时间覆盖，>=0时覆盖蒙太奇的默认BlendOutTime
+ */
+void UYcGameplayAbility::MontageStopForAllMeshes(float OverrideBlendOutTime)
+{
+	check(CurrentActorInfo);
+
+	UYcAbilitySystemComponent* const AbilitySystemComponent = Cast<UYcAbilitySystemComponent>(CurrentActorInfo->AbilitySystemComponent.Get());
+	if (AbilitySystemComponent != nullptr)
+	{
+		// 只有当此技能是当前正在播放动画的技能时才停止所有蒙太奇
+		if (AbilitySystemComponent->IsAnimatingAbilityForAnyMesh(this))
+		{
+			AbilitySystemComponent->StopAllCurrentMontages(OverrideBlendOutTime);
+		}
+	}
+}

@@ -27,7 +27,7 @@ public class YiChenAbility : ModuleRules
                 "Slate",
                 "SlateCore", 
                 "ModularGameplay",
-                "GameplayMessageRuntime"
+                "GameplayMessageRuntime",
             }
         );
     }

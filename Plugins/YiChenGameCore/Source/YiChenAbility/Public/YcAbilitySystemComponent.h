@@ -8,11 +8,105 @@
 
 class UYcGameplayAbility;
 class UYcAbilityTagRelationshipMapping;
+class USkeletalMeshComponent;
+
+/**
+ * 本地蒙太奇信息结构体（针对特定骨骼网格）
+ * 
+ * 存储在本地发起蒙太奇播放的端（服务器存储所有，客户端存储预测的）
+ * 不进行网络复制，仅用于本地追踪蒙太奇播放状态
+ * 
+ * 使用场景：
+ * - 服务器：追踪所有骨骼网格上播放的蒙太奇
+ * - 客户端：追踪预测播放的蒙太奇，用于服务器拒绝时的回滚
+ */
+USTRUCT()
+struct YICHENABILITY_API FGameplayAbilityLocalAnimMontageForMesh
+{
+	GENERATED_BODY();
+
+public:
+	/** 播放蒙太奇的目标骨骼网格组件 */
+	UPROPERTY()
+	USkeletalMeshComponent* Mesh;
+
+	/** 本地蒙太奇详细信息，包含AnimMontage、AnimatingAbility、PlayInstanceId等 */
+	UPROPERTY()
+	FGameplayAbilityLocalAnimMontage LocalMontageInfo;
+
+	/** 默认构造函数 */
+	FGameplayAbilityLocalAnimMontageForMesh() : Mesh(nullptr), LocalMontageInfo()
+	{
+	}
+
+	/** 
+	 * 带Mesh参数的构造函数
+	 * @param InMesh 目标骨骼网格
+	 */
+	FGameplayAbilityLocalAnimMontageForMesh(USkeletalMeshComponent* InMesh)
+		: Mesh(InMesh), LocalMontageInfo()
+	{
+	}
+
+	/**
+	 * 完整构造函数
+	 * @param InMesh 目标骨骼网格
+	 * @param InLocalMontageInfo 本地蒙太奇信息
+	 */
+	FGameplayAbilityLocalAnimMontageForMesh(USkeletalMeshComponent* InMesh, FGameplayAbilityLocalAnimMontage& InLocalMontageInfo)
+		: Mesh(InMesh), LocalMontageInfo(InLocalMontageInfo)
+	{
+	}
+};
+
+/**
+ * 复制蒙太奇信息结构体（针对特定骨骼网格）
+ * 
+ * 用于将蒙太奇信息从服务器复制到模拟客户端
+ * 包含蒙太奇播放所需的所有同步数据
+ * 
+ * 复制内容（通过FGameplayAbilityRepAnimMontage）：
+ * - Animation: 正在播放的蒙太奇资源
+ * - PlayRate: 播放速率
+ * - Position: 当前播放位置
+ * - BlendTime: 混出时间
+ * - NextSectionID: 下一个Section的ID
+ * - IsStopped: 是否已停止
+ * - PlayInstanceId: 播放实例ID（用于检测是否需要重新播放）
+ */
+USTRUCT()
+struct YICHENABILITY_API FGameplayAbilityRepAnimMontageForMesh
+{
+	GENERATED_BODY();
+
+public:
+	/** 播放蒙太奇的目标骨骼网格组件 */
+	UPROPERTY()
+	USkeletalMeshComponent* Mesh;
+
+	/** 复制的蒙太奇信息，包含所有需要同步的播放状态 */
+	UPROPERTY()
+	FGameplayAbilityRepAnimMontage RepMontageInfo;
+
+	/** 默认构造函数 */
+	FGameplayAbilityRepAnimMontageForMesh() : Mesh(nullptr), RepMontageInfo()
+	{
+	}
+
+	/**
+	 * 带Mesh参数的构造函数
+	 * @param InMesh 目标骨骼网格
+	 */
+	FGameplayAbilityRepAnimMontageForMesh(USkeletalMeshComponent* InMesh)
+		: Mesh(InMesh), RepMontageInfo()
+	{
+	}
+};
 
 /**
  * 插件提供的技能组件基类
  */
-UCLASS(ClassGroup=(YiChenGameCore), meta=(BlueprintSpawnableComponent))
+UCLASS(ClassGroup=(YiChenAbility), meta=(BlueprintSpawnableComponent))
 class YICHENABILITY_API UYcAbilitySystemComponent : public UAbilitySystemComponent
 {
 	GENERATED_BODY()
@@ -22,6 +116,8 @@ public:
 	 * @param ObjectInitializer 对象初始化器
 	 */
 	UYcAbilitySystemComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+	
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
 	/**
 	 * 从Actor中获取UYcAbilitySystemComponent组件
@@ -429,4 +525,316 @@ private:
 	// 标签关系映射表，用于查询技能激活时的标签依赖和阻挡关系
 	UPROPERTY()
 	TObjectPtr<UYcAbilityTagRelationshipMapping> TagRelationshipMapping;
+	
+public:
+	//////////////// 蒙太奇动画播放扩展功能 ////////////////
+	/**
+	 * 以下功能扩展了UAbilitySystemComponent的蒙太奇播放能力，
+	 * 支持在AvatarActor的多个USkeletalMeshComponent上播放蒙太奇动画, 并且支持预测和复制。
+	 * 
+	 * 网络复制机制：
+	 * - LocalAnimMontageInfoForMeshes: 存储本地蒙太奇信息（服务器存储所有，客户端存储预测的）
+	 * - RepAnimMontageInfoForMeshes: 复制属性，服务器更新后自动同步到所有客户端
+	 * 
+	 * 使用场景：
+	 * - 角色有多个骨骼网格（如FPS游戏的第一人称角色Mesh）
+	 * - 需要在特定Mesh上播放动画（如在FPS游戏第一人称角色Mesh上播放动画）
+	 * - 需要网络同步的蒙太奇播放
+	 * 
+	 * 调试：
+	 * - 适用控制台命令 net.Montage.Debug 可以在执行的时候将蒙太奇复制信息打印到日志
+	 */
+	
+	// ----------------------------------------------------------------------------------------------------------------
+	//	多骨骼网格蒙太奇支持 (AnimMontage Support for multiple USkeletalMeshComponents)
+	//  支持在AvatarActor的多个骨骼网格上播放蒙太奇动画
+	//  注意：同一时间只能有一个技能在播放动画
+	// ----------------------------------------------------------------------------------------------------------------	
+
+	/**
+	 * 在指定骨骼网格上播放蒙太奇
+	 * 
+	 * 核心网络复制函数，处理蒙太奇的播放和网络同步：
+	 * - 服务器(Authority)：播放蒙太奇并更新RepAnimMontageInfoForMeshes复制属性
+	 * - 主控端(AutonomousProxy)：本地预测播放，注册PredictionKey拒绝回调
+	 * - 模拟端(SimulatedProxy)：不直接调用，通过OnRep_ReplicatedAnimMontageForMesh接收复制数据
+	 * 
+	 * @param AnimatingAbility 正在播放动画的技能
+	 * @param InMesh 目标骨骼网格，必须属于AvatarActor
+	 * @param ActivationInfo 技能激活信息，包含预测键
+	 * @param Montage 要播放的蒙太奇
+	 * @param InPlayRate 播放速率
+	 * @param StartSectionName 起始Section名称
+	 * @param bReplicateMontage 是否复制到其他客户端
+	 * @return 蒙太奇时长，-1表示播放失败
+	 */
+	virtual float PlayMontageForMesh(UGameplayAbility* AnimatingAbility, class USkeletalMeshComponent* InMesh, FGameplayAbilityActivationInfo ActivationInfo, UAnimMontage* Montage, float InPlayRate, FName StartSectionName = NAME_None, bool bReplicateMontage = true);
+
+	/**
+	 * 在模拟端播放蒙太奇（不更新复制/预测结构）
+	 * 
+	 * 由OnRep_ReplicatedAnimMontageForMesh调用，用于模拟代理接收复制数据后播放蒙太奇
+	 * 不会更新任何复制属性，仅在本地播放动画
+	 * 
+	 * @param InMesh 目标骨骼网格
+	 * @param Montage 要播放的蒙太奇
+	 * @param InPlayRate 播放速率
+	 * @param StartSectionName 起始Section名称
+	 * @return 蒙太奇时长，-1表示播放失败
+	 */
+	virtual float PlayMontageSimulatedForMesh(USkeletalMeshComponent* InMesh, UAnimMontage* Montage, float InPlayRate, FName StartSectionName = NAME_None);
+
+	/**
+	 * 停止指定骨骼网格上当前播放的蒙太奇
+	 * 
+	 * 调用者应确保自己是当前播放动画的技能（或有充分理由不检查）
+	 * 服务器调用时会更新复制属性，同步停止状态到所有客户端
+	 * 
+	 * @param InMesh 目标骨骼网格
+	 * @param OverrideBlendOutTime 混出时间覆盖，-1使用蒙太奇默认值
+	 */
+	virtual void CurrentMontageStopForMesh(USkeletalMeshComponent* InMesh, float OverrideBlendOutTime = -1.0f);
+
+	/**
+	 * 停止所有骨骼网格上当前播放的蒙太奇
+	 * @param OverrideBlendOutTime 混出时间覆盖，-1使用蒙太奇默认值
+	 */
+	virtual void StopAllCurrentMontages(float OverrideBlendOutTime = -1.0f);
+
+	/**
+	 * 如果指定蒙太奇是当前正在播放的，则停止它
+	 * @param InMesh 目标骨骼网格
+	 * @param Montage 要检查并停止的蒙太奇
+	 * @param OverrideBlendOutTime 混出时间覆盖
+	 */
+	virtual void StopMontageIfCurrentForMesh(USkeletalMeshComponent* InMesh, const UAnimMontage& Montage, float OverrideBlendOutTime = -1.0f);
+
+	/**
+	 * 清除所有骨骼网格上指定技能的AnimatingAbility引用
+	 * @param Ability 要清除的技能
+	 */
+	virtual void ClearAnimatingAbilityForAllMeshes(UGameplayAbility* Ability);
+
+	/**
+	 * 跳转到指定骨骼网格上蒙太奇的指定Section
+	 * 
+	 * 网络行为：
+	 * - 服务器：本地跳转并更新复制属性
+	 * - 客户端：本地跳转并发送ServerRPC通知服务器
+	 * 
+	 * @param InMesh 目标骨骼网格
+	 * @param SectionName 目标Section名称
+	 */
+	virtual void CurrentMontageJumpToSectionForMesh(USkeletalMeshComponent* InMesh, FName SectionName);
+
+	/**
+	 * 设置指定骨骼网格上蒙太奇的下一个Section
+	 * 
+	 * 用于实现蒙太奇的分支播放，如连击系统
+	 * 
+	 * @param InMesh 目标骨骼网格
+	 * @param FromSectionName 当前Section名称
+	 * @param ToSectionName 下一个Section名称
+	 */
+	virtual void CurrentMontageSetNextSectionNameForMesh(USkeletalMeshComponent* InMesh, FName FromSectionName, FName ToSectionName);
+
+	/**
+	 * 设置指定骨骼网格上蒙太奇的播放速率
+	 * @param InMesh 目标骨骼网格
+	 * @param InPlayRate 新的播放速率
+	 */
+	virtual void CurrentMontageSetPlayRateForMesh(USkeletalMeshComponent* InMesh, float InPlayRate);
+
+	/**
+	 * 检查指定技能是否正在任意骨骼网格上播放动画
+	 * @param Ability 要检查的技能
+	 * @return 如果技能正在播放动画返回true
+	 */
+	bool IsAnimatingAbilityForAnyMesh(UGameplayAbility* Ability) const;
+
+	/**
+	 * 获取任意骨骼网格上当前正在播放动画的技能
+	 * @return 正在播放动画的技能，如果没有则返回nullptr
+	 */
+	UGameplayAbility* GetAnimatingAbilityFromAnyMesh();
+
+	/**
+	 * 获取所有骨骼网格上当前正在播放的蒙太奇列表
+	 * @return 正在播放的蒙太奇数组
+	 */
+	TArray<UAnimMontage*> GetCurrentMontages() const;
+
+	/**
+	 * 获取指定骨骼网格上当前正在播放的蒙太奇
+	 * @param InMesh 目标骨骼网格
+	 * @return 正在播放的蒙太奇，如果没有则返回nullptr
+	 */
+	UAnimMontage* GetCurrentMontageForMesh(USkeletalMeshComponent* InMesh);
+
+	/**
+	 * 获取指定骨骼网格上当前蒙太奇的Section ID
+	 * @param InMesh 目标骨骼网格
+	 * @return Section ID，INDEX_NONE表示无效
+	 */
+	int32 GetCurrentMontageSectionIDForMesh(USkeletalMeshComponent* InMesh);
+
+	/**
+	 * 获取指定骨骼网格上当前蒙太奇的Section名称
+	 * @param InMesh 目标骨骼网格
+	 * @return Section名称，NAME_None表示无效
+	 */
+	FName GetCurrentMontageSectionNameForMesh(USkeletalMeshComponent* InMesh);
+
+	/**
+	 * 获取指定骨骼网格上当前Section的时长
+	 * @param InMesh 目标骨骼网格
+	 * @return Section时长（秒），0表示无效
+	 */
+	float GetCurrentMontageSectionLengthForMesh(USkeletalMeshComponent* InMesh);
+
+	/**
+	 * 获取指定骨骼网格上当前Section的剩余时间
+	 * @param InMesh 目标骨骼网格
+	 * @return 剩余时间（秒），-1表示无效
+	 */
+	float GetCurrentMontageSectionTimeLeftForMesh(USkeletalMeshComponent* InMesh);
+	
+protected:
+	// ----------------------------------------------------------------------------------------------------------------
+	//	多骨骼网格蒙太奇支持 - 内部实现
+	//  以下是网络复制的核心数据结构和处理函数
+	// ----------------------------------------------------------------------------------------------------------------	
+
+	/**
+	 * 标记是否有待处理的蒙太奇复制数据
+	 * 当收到复制数据但AnimInstance尚未准备好时设为true
+	 * 后续AnimInstance准备好后会重新处理
+	 */
+	UPROPERTY()
+	bool bPendingMontageRepForMesh;
+
+	/**
+	 * 本地蒙太奇信息数组
+	 * 
+	 * 存储本地发起的蒙太奇播放信息：
+	 * - 服务器：存储所有蒙太奇信息
+	 * - 客户端：存储预测播放的蒙太奇信息
+	 * 
+	 * 每个骨骼网格最多一个元素
+	 * 不进行网络复制，仅本地使用
+	 */
+	UPROPERTY()
+	TArray<FGameplayAbilityLocalAnimMontageForMesh> LocalAnimMontageInfoForMeshes;
+
+	/**
+	 * 复制蒙太奇信息数组
+	 * 
+	 * 用于将蒙太奇信息从服务器复制到模拟客户端
+	 * 使用ReplicatedUsing指定复制回调函数
+	 * 
+	 * 每个骨骼网格最多一个元素
+	 * 包含：Animation、PlayRate、Position、IsStopped、NextSectionID等
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_ReplicatedAnimMontageForMesh)
+	TArray<FGameplayAbilityRepAnimMontageForMesh> RepAnimMontageInfoForMeshes;
+
+	/**
+	 * 获取或创建指定骨骼网格的本地蒙太奇信息
+	 * @param InMesh 目标骨骼网格
+	 * @return 本地蒙太奇信息的引用
+	 */
+	FGameplayAbilityLocalAnimMontageForMesh& GetLocalAnimMontageInfoForMesh(USkeletalMeshComponent* InMesh);
+	
+	/**
+	 * 获取或创建指定骨骼网格的复制蒙太奇信息
+	 * @param InMesh 目标骨骼网格
+	 * @return 复制蒙太奇信息的引用
+	 */
+	FGameplayAbilityRepAnimMontageForMesh& GetGameplayAbilityRepAnimMontageForMesh(USkeletalMeshComponent* InMesh);
+
+	/**
+	 * 预测蒙太奇被服务器拒绝时的回调
+	 * 
+	 * 当客户端预测播放的蒙太奇被服务器拒绝时调用
+	 * 停止本地播放的预测蒙太奇，实现回滚
+	 * 
+	 * @param InMesh 目标骨骼网格
+	 * @param PredictiveMontage 被拒绝的预测蒙太奇
+	 */
+	void OnPredictiveMontageRejectedForMesh(USkeletalMeshComponent* InMesh, UAnimMontage* PredictiveMontage);
+
+	/**
+	 * 更新指定骨骼网格的复制蒙太奇数据
+	 * 
+	 * 从LocalAnimMontageInfo复制数据到RepAnimMontageInfo
+	 * 仅在服务器(Authority)上调用
+	 * 
+	 * @param InMesh 目标骨骼网格
+	 */
+	void AnimMontage_UpdateReplicatedDataForMesh(USkeletalMeshComponent* InMesh);
+	
+	/**
+	 * 更新复制蒙太奇数据（重载版本）
+	 * @param OutRepAnimMontageInfo 要更新的复制蒙太奇信息
+	 */
+	void AnimMontage_UpdateReplicatedDataForMesh(FGameplayAbilityRepAnimMontageForMesh& OutRepAnimMontageInfo);
+
+	/**
+	 * 更新复制蒙太奇的强制播放标志
+	 * 用于处理重复动画数据的播放标志复制
+	 * @param OutRepAnimMontageInfo 要更新的复制蒙太奇信息
+	 */
+	void AnimMontage_UpdateForcedPlayFlagsForMesh(FGameplayAbilityRepAnimMontageForMesh& OutRepAnimMontageInfo);	
+
+	/**
+	 * 复制蒙太奇数据的OnRep回调
+	 * 
+	 * 当RepAnimMontageInfoForMeshes被复制到客户端时自动调用
+	 * 负责在模拟客户端上播放/同步蒙太奇：
+	 * 1. 检测是否需要播放新蒙太奇
+	 * 2. 同步播放速率
+	 * 3. 处理停止状态
+	 * 4. 进行位置校正（防止漂移）
+	 */
+	UFUNCTION()
+	virtual void OnRep_ReplicatedAnimMontageForMesh();
+
+	/**
+	 * 检查是否准备好处理复制的蒙太奇数据
+	 * 子类可以覆盖此函数添加额外检查（如"皮肤是否已应用"）
+	 * @return 如果准备好返回true
+	 */
+	virtual bool IsReadyForReplicatedMontageForMesh();
+
+	///////////////// 蒙太奇操作的Server RPC /////////////////
+	// 以下RPC用于客户端通知服务器蒙太奇操作
+	// 服务器执行后会更新复制属性，同步到所有模拟客户端
+
+	/**
+	 * Server RPC：设置蒙太奇的下一个Section
+	 * 从CurrentMontageSetNextSectionName调用，复制到其他客户端
+	 */
+	UFUNCTION(Reliable, Server, WithValidation)
+	void ServerCurrentMontageSetNextSectionNameForMesh(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float ClientPosition, FName SectionName, FName NextSectionName);
+	void ServerCurrentMontageSetNextSectionNameForMesh_Implementation(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float ClientPosition, FName SectionName, FName NextSectionName);
+	bool ServerCurrentMontageSetNextSectionNameForMesh_Validate(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float ClientPosition, FName SectionName, FName NextSectionName);
+
+	/**
+	 * Server RPC：跳转到蒙太奇的指定Section
+	 * 从CurrentMontageJumpToSection调用，复制到其他客户端
+	 */
+	UFUNCTION(Reliable, Server, WithValidation)
+	void ServerCurrentMontageJumpToSectionNameForMesh(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, FName SectionName);
+	void ServerCurrentMontageJumpToSectionNameForMesh_Implementation(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, FName SectionName);
+	bool ServerCurrentMontageJumpToSectionNameForMesh_Validate(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, FName SectionName);
+
+	/**
+	 * Server RPC：设置蒙太奇的播放速率
+	 * 从CurrentMontageSetPlayRate调用，复制到其他客户端
+	 */
+	UFUNCTION(Reliable, Server, WithValidation)
+	void ServerCurrentMontageSetPlayRateForMesh(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float InPlayRate);
+	void ServerCurrentMontageSetPlayRateForMesh_Implementation(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float InPlayRate);
+	bool ServerCurrentMontageSetPlayRateForMesh_Validate(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float InPlayRate);
+	//////////////// ~蒙太奇动画播放扩展功能 ////////////////
 };

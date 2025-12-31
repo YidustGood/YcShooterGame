@@ -9,10 +9,19 @@
 #include "NativeGameplayTags.h"
 #include "YcAbilityTagRelationshipMapping.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Net/UnrealNetwork.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcAbilitySystemComponent)
 
 UE_DEFINE_GAMEPLAY_TAG(TAG_Gameplay_AbilityInputBlocked, "Gameplay.AbilityInputBlocked");
+
+static TAutoConsoleVariable<bool> CVarGasFixClientSideMontageBlendOutTimeSpecAnimInstance(TEXT("AbilitySystem.Fix.ClientSideMontageBlendOutTimeSpecAnimInstance"), true, TEXT("Enable a fix to replicate the Montage BlendOutTime for (recently) stopped Montages"));
+
+static TAutoConsoleVariable<float> CVarReplayMontageErrorThreshold(
+	TEXT("Yc.Replay.MontageErrorThreshold"),
+	0.5f,
+	TEXT("Tolerance level for when montage playback position correction occurs in replays")
+);
 
 UYcAbilitySystemComponent::UYcAbilitySystemComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -20,8 +29,15 @@ UYcAbilitySystemComponent::UYcAbilitySystemComponent(const FObjectInitializer& O
 	
 }
 
+void UYcAbilitySystemComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	
+	DOREPLIFETIME(UYcAbilitySystemComponent, RepAnimMontageInfoForMeshes);
+}
+
 UYcAbilitySystemComponent* UYcAbilitySystemComponent::GetAbilitySystemComponentFromActor(const AActor* Actor,
-	bool LookForComponent)
+                                                                                         bool LookForComponent)
 {
 	return Cast<UYcAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor, LookForComponent));
 }
@@ -646,4 +662,747 @@ void UYcAbilitySystemComponent::CancelAbilitiesByFunc(const TShouldCancelAbility
 			}
 		}
 	}
+}
+
+float UYcAbilitySystemComponent::PlayMontageForMesh(UGameplayAbility* InAnimatingAbility, USkeletalMeshComponent* InMesh, FGameplayAbilityActivationInfo ActivationInfo, UAnimMontage* NewAnimMontage, float InPlayRate, FName StartSectionName, bool bReplicateMontage)
+{
+	UYcGameplayAbility* InAbility = Cast<UYcGameplayAbility>(InAnimatingAbility);
+
+	float Duration = -1.f;
+
+	// 验证Mesh有效性：必须存在且属于AvatarActor
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	if (AnimInstance && NewAnimMontage)
+	{
+		// 步骤1：本地播放蒙太奇
+		Duration = AnimInstance->Montage_Play(NewAnimMontage, InPlayRate);
+		if (Duration > 0.f)
+		{
+			// 步骤2：更新本地蒙太奇追踪信息
+			FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(InMesh);
+
+			// 检查是否有其他技能正在播放动画
+			// 如果有，该技能应该已经收到了'interrupted'回调
+			// 我们期望它在收到回调后自行结束
+			if (AnimMontageInfo.LocalMontageInfo.AnimatingAbility.IsValid() && AnimMontageInfo.LocalMontageInfo.AnimatingAbility != InAnimatingAbility)
+			{
+				// 之前正在播放动画的技能应该已经收到了'interrupted'回调
+				// 可以考虑将此作为全局策略并'取消'该技能
+				// 
+				// 目前，我们期望它在收到回调后自行结束
+			}
+
+			// RootMotion日志记录
+			if (NewAnimMontage->HasRootMotion() && AnimInstance->GetOwningActor())
+			{
+				UE_LOG(LogRootMotion, Log, TEXT("UAbilitySystemComponent::PlayMontage %s, Role: %s")
+					, *GetNameSafe(NewAnimMontage)
+					, *UEnum::GetValueAsString(TEXT("Engine.ENetRole"), AnimInstance->GetOwningActor()->GetLocalRole())
+					);
+			}
+
+			// 更新本地蒙太奇信息
+			AnimMontageInfo.LocalMontageInfo.AnimMontage = NewAnimMontage;
+			AnimMontageInfo.LocalMontageInfo.AnimatingAbility = InAnimatingAbility;
+			// 切换PlayInstanceId，用于检测是否需要重新播放（即使是同一个蒙太奇）
+			AnimMontageInfo.LocalMontageInfo.PlayInstanceId = !AnimMontageInfo.LocalMontageInfo.PlayInstanceId;
+			
+			// 通知技能当前正在播放的蒙太奇
+			if (InAbility)
+			{
+				InAbility->SetCurrentMontageForMesh(InMesh, NewAnimMontage);
+			}
+			
+			// 如果指定了起始Section，跳转到该Section
+			if (StartSectionName != NAME_None)
+			{
+				AnimInstance->Montage_JumpToSection(StartSectionName, NewAnimMontage);
+			}
+
+			// 步骤3：处理网络复制
+			if (IsOwnerActorAuthoritative())
+			{
+				// ===== 服务器逻辑 =====
+				if (bReplicateMontage)
+				{
+					// 获取或创建复制蒙太奇信息
+					// 这些是静态参数，只在蒙太奇开始播放时设置，之后不会改变
+					FGameplayAbilityRepAnimMontageForMesh& AbilityRepMontageInfo = GetGameplayAbilityRepAnimMontageForMesh(InMesh);
+					AbilityRepMontageInfo.RepMontageInfo.Animation = NewAnimMontage;
+					// 切换PlayInstanceId，模拟端通过检测此值变化来判断是否需要重新播放
+					AbilityRepMontageInfo.RepMontageInfo.PlayInstanceId = !bool(AbilityRepMontageInfo.RepMontageInfo.PlayInstanceId);
+
+					// 更新蒙太奇生命周期内会变化的参数（Position、PlayRate、IsStopped等）
+					AnimMontage_UpdateReplicatedDataForMesh(InMesh);
+
+					// 强制网络更新，确保复制属性立即同步到客户端
+					if (AbilityActorInfo->AvatarActor != nullptr)
+					{
+						AbilityActorInfo->AvatarActor->ForceNetUpdate();
+					}
+				}
+			}
+			else
+			{
+				// ===== 客户端预测逻辑 =====
+				// 获取当前预测键，如果服务器拒绝此预测，需要回滚
+				FPredictionKey PredictionKey = GetPredictionKeyForNewAction();
+				if (PredictionKey.IsValidKey())
+				{
+					// 注册拒绝回调：如果服务器拒绝此预测，停止预测播放的蒙太奇
+					PredictionKey.NewRejectedDelegate().BindUObject(this, &UYcAbilitySystemComponent::OnPredictiveMontageRejectedForMesh, InMesh, NewAnimMontage);
+				}
+			}
+		}
+	}
+
+	return Duration;
+}
+
+float UYcAbilitySystemComponent::PlayMontageSimulatedForMesh(USkeletalMeshComponent* InMesh, UAnimMontage* NewAnimMontage, float InPlayRate, FName StartSectionName)
+{
+	float Duration = -1.f;
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	if (AnimInstance && NewAnimMontage)
+	{
+		// 直接播放蒙太奇，不处理网络复制
+		Duration = AnimInstance->Montage_Play(NewAnimMontage, InPlayRate);
+		if (Duration > 0.f)
+		{
+			// 仅更新本地追踪信息
+			FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(InMesh);
+			AnimMontageInfo.LocalMontageInfo.AnimMontage = NewAnimMontage;
+		}
+	}
+
+	return Duration;
+}
+
+void UYcAbilitySystemComponent::CurrentMontageStopForMesh(USkeletalMeshComponent* InMesh, float OverrideBlendOutTime)
+{
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(InMesh);
+	UAnimMontage* MontageToStop = AnimMontageInfo.LocalMontageInfo.AnimMontage;
+	
+	// 检查是否需要停止：AnimInstance有效、蒙太奇存在且未停止
+	bool bShouldStopMontage = AnimInstance && MontageToStop && !AnimInstance->Montage_GetIsStopped(MontageToStop);
+
+	if (bShouldStopMontage)
+	{
+		// 确定混出时间：使用覆盖值或蒙太奇默认值
+		const float BlendOutTime = (OverrideBlendOutTime >= 0.0f ? OverrideBlendOutTime : MontageToStop->BlendOut.GetBlendTime());
+
+		// 停止蒙太奇
+		AnimInstance->Montage_Stop(BlendOutTime, MontageToStop);
+
+		// 服务器：更新复制属性，同步停止状态到模拟客户端
+		if (IsOwnerActorAuthoritative())
+		{
+			AnimMontage_UpdateReplicatedDataForMesh(InMesh);
+		}
+	}
+}
+
+void UYcAbilitySystemComponent::StopAllCurrentMontages(float OverrideBlendOutTime)
+{
+	for (FGameplayAbilityLocalAnimMontageForMesh& GameplayAbilityLocalAnimMontageForMesh : LocalAnimMontageInfoForMeshes)
+	{
+		CurrentMontageStopForMesh(GameplayAbilityLocalAnimMontageForMesh.Mesh, OverrideBlendOutTime);
+	}
+}
+
+void UYcAbilitySystemComponent::StopMontageIfCurrentForMesh(USkeletalMeshComponent* InMesh, const UAnimMontage& Montage, float OverrideBlendOutTime)
+{
+	FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(InMesh);
+	if (&Montage == AnimMontageInfo.LocalMontageInfo.AnimMontage)
+	{
+		CurrentMontageStopForMesh(InMesh, OverrideBlendOutTime);
+	}
+}
+
+void UYcAbilitySystemComponent::ClearAnimatingAbilityForAllMeshes(UGameplayAbility* Ability)
+{
+	UYcGameplayAbility* GSAbility = Cast<UYcGameplayAbility>(Ability);
+	for (FGameplayAbilityLocalAnimMontageForMesh& GameplayAbilityLocalAnimMontageForMesh : LocalAnimMontageInfoForMeshes)
+	{
+		if (GameplayAbilityLocalAnimMontageForMesh.LocalMontageInfo.AnimatingAbility == Ability)
+		{
+			GSAbility->SetCurrentMontageForMesh(GameplayAbilityLocalAnimMontageForMesh.Mesh, nullptr);
+			GameplayAbilityLocalAnimMontageForMesh.LocalMontageInfo.AnimatingAbility = nullptr;
+		}
+	}
+}
+
+void UYcAbilitySystemComponent::CurrentMontageJumpToSectionForMesh(USkeletalMeshComponent* InMesh, FName SectionName)
+{
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(InMesh);
+	if ((SectionName != NAME_None) && AnimInstance && AnimMontageInfo.LocalMontageInfo.AnimMontage)
+	{
+		// 本地立即跳转
+		AnimInstance->Montage_JumpToSection(SectionName, AnimMontageInfo.LocalMontageInfo.AnimMontage);
+		
+		if (IsOwnerActorAuthoritative())
+		{
+			// 服务器：更新复制属性，同步到模拟客户端
+			AnimMontage_UpdateReplicatedDataForMesh(InMesh);
+		}
+		else
+		{
+			// 客户端：发送ServerRPC通知服务器
+			ServerCurrentMontageJumpToSectionNameForMesh(InMesh, AnimMontageInfo.LocalMontageInfo.AnimMontage, SectionName);
+		}
+	}
+}
+
+void UYcAbilitySystemComponent::CurrentMontageSetNextSectionNameForMesh(USkeletalMeshComponent* InMesh, FName FromSectionName, FName ToSectionName)
+{
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(InMesh);
+	if (AnimMontageInfo.LocalMontageInfo.AnimMontage && AnimInstance)
+	{
+		// 本地设置下一个Section
+		AnimInstance->Montage_SetNextSection(FromSectionName, ToSectionName, AnimMontageInfo.LocalMontageInfo.AnimMontage);
+
+		if (IsOwnerActorAuthoritative())
+		{
+			// 服务器：更新复制属性，同步到模拟客户端
+			AnimMontage_UpdateReplicatedDataForMesh(InMesh);
+		}
+		else
+		{
+			// 客户端：发送ServerRPC，包含当前位置用于服务器校正
+			float CurrentPosition = AnimInstance->Montage_GetPosition(AnimMontageInfo.LocalMontageInfo.AnimMontage);
+			ServerCurrentMontageSetNextSectionNameForMesh(InMesh, AnimMontageInfo.LocalMontageInfo.AnimMontage, CurrentPosition, FromSectionName, ToSectionName);
+		}
+	}
+}
+
+void UYcAbilitySystemComponent::CurrentMontageSetPlayRateForMesh(USkeletalMeshComponent* InMesh, float InPlayRate)
+{
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(InMesh);
+	if (AnimMontageInfo.LocalMontageInfo.AnimMontage && AnimInstance)
+	{
+		// 本地设置播放速率
+		AnimInstance->Montage_SetPlayRate(AnimMontageInfo.LocalMontageInfo.AnimMontage, InPlayRate);
+
+		if (IsOwnerActorAuthoritative())
+		{
+			// 服务器：更新复制属性，同步到模拟客户端
+			AnimMontage_UpdateReplicatedDataForMesh(InMesh);
+		}
+		else
+		{
+			// 客户端：发送ServerRPC
+			ServerCurrentMontageSetPlayRateForMesh(InMesh, AnimMontageInfo.LocalMontageInfo.AnimMontage, InPlayRate);
+		}
+	}
+}
+
+bool UYcAbilitySystemComponent::IsAnimatingAbilityForAnyMesh(UGameplayAbility* InAbility) const
+{
+	for (FGameplayAbilityLocalAnimMontageForMesh GameplayAbilityLocalAnimMontageForMesh : LocalAnimMontageInfoForMeshes)
+	{
+		if (GameplayAbilityLocalAnimMontageForMesh.LocalMontageInfo.AnimatingAbility == InAbility)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+UGameplayAbility* UYcAbilitySystemComponent::GetAnimatingAbilityFromAnyMesh()
+{
+	// 同一时间只能有一个技能在所有骨骼网格上播放动画
+	for (FGameplayAbilityLocalAnimMontageForMesh& GameplayAbilityLocalAnimMontageForMesh : LocalAnimMontageInfoForMeshes)
+	{
+		if (GameplayAbilityLocalAnimMontageForMesh.LocalMontageInfo.AnimatingAbility.IsValid())
+		{
+			return GameplayAbilityLocalAnimMontageForMesh.LocalMontageInfo.AnimatingAbility.Get();
+		}
+	}
+
+	return nullptr;
+}
+
+TArray<UAnimMontage*> UYcAbilitySystemComponent::GetCurrentMontages() const
+{
+	TArray<UAnimMontage*> Montages;
+
+	for (FGameplayAbilityLocalAnimMontageForMesh GameplayAbilityLocalAnimMontageForMesh : LocalAnimMontageInfoForMeshes)
+	{
+		UAnimInstance* AnimInstance = IsValid(GameplayAbilityLocalAnimMontageForMesh.Mesh) 
+			&& GameplayAbilityLocalAnimMontageForMesh.Mesh->GetOwner() == AbilityActorInfo->AvatarActor ? GameplayAbilityLocalAnimMontageForMesh.Mesh->GetAnimInstance() : nullptr;
+
+		if (GameplayAbilityLocalAnimMontageForMesh.LocalMontageInfo.AnimMontage && AnimInstance 
+			&& AnimInstance->Montage_IsActive(GameplayAbilityLocalAnimMontageForMesh.LocalMontageInfo.AnimMontage))
+		{
+			Montages.Add(GameplayAbilityLocalAnimMontageForMesh.LocalMontageInfo.AnimMontage);
+		}
+	}
+
+	return Montages;
+}
+
+UAnimMontage* UYcAbilitySystemComponent::GetCurrentMontageForMesh(USkeletalMeshComponent* InMesh)
+{
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(InMesh);
+
+	if (AnimMontageInfo.LocalMontageInfo.AnimMontage && AnimInstance
+		&& AnimInstance->Montage_IsActive(AnimMontageInfo.LocalMontageInfo.AnimMontage))
+	{
+		return AnimMontageInfo.LocalMontageInfo.AnimMontage;
+	}
+
+	return nullptr;
+}
+
+int32 UYcAbilitySystemComponent::GetCurrentMontageSectionIDForMesh(USkeletalMeshComponent* InMesh)
+{
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	UAnimMontage* CurrentAnimMontage = GetCurrentMontageForMesh(InMesh);
+
+	if (CurrentAnimMontage && AnimInstance)
+	{
+		float MontagePosition = AnimInstance->Montage_GetPosition(CurrentAnimMontage);
+		return CurrentAnimMontage->GetSectionIndexFromPosition(MontagePosition);
+	}
+
+	return INDEX_NONE;
+}
+
+FName UYcAbilitySystemComponent::GetCurrentMontageSectionNameForMesh(USkeletalMeshComponent* InMesh)
+{
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	UAnimMontage* CurrentAnimMontage = GetCurrentMontageForMesh(InMesh);
+
+	if (CurrentAnimMontage && AnimInstance)
+	{
+		float MontagePosition = AnimInstance->Montage_GetPosition(CurrentAnimMontage);
+		int32 CurrentSectionID = CurrentAnimMontage->GetSectionIndexFromPosition(MontagePosition);
+
+		return CurrentAnimMontage->GetSectionName(CurrentSectionID);
+	}
+
+	return NAME_None;
+}
+
+float UYcAbilitySystemComponent::GetCurrentMontageSectionLengthForMesh(USkeletalMeshComponent* InMesh)
+{
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	UAnimMontage* CurrentAnimMontage = GetCurrentMontageForMesh(InMesh);
+
+	if (CurrentAnimMontage && AnimInstance)
+	{
+		int32 CurrentSectionID = GetCurrentMontageSectionIDForMesh(InMesh);
+		if (CurrentSectionID != INDEX_NONE)
+		{
+			TArray<FCompositeSection>& CompositeSections = CurrentAnimMontage->CompositeSections;
+
+			// 如果后面还有Section，计算两个Section起始时间的差值
+			if (CurrentSectionID < (CompositeSections.Num() - 1))
+			{
+				return (CompositeSections[CurrentSectionID + 1].GetTime() - CompositeSections[CurrentSectionID].GetTime());
+			}
+			// 如果是最后一个Section，计算到蒙太奇结束的时间
+			else
+			{
+				return (CurrentAnimMontage->GetPlayLength() - CompositeSections[CurrentSectionID].GetTime());
+			}
+		}
+
+		// 如果没有Section，返回整个蒙太奇的时长
+		return CurrentAnimMontage->GetPlayLength();
+	}
+
+	return 0.f;
+}
+
+float UYcAbilitySystemComponent::GetCurrentMontageSectionTimeLeftForMesh(USkeletalMeshComponent* InMesh)
+{
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	UAnimMontage* CurrentAnimMontage = GetCurrentMontageForMesh(InMesh);
+
+	if (CurrentAnimMontage && AnimInstance && AnimInstance->Montage_IsActive(CurrentAnimMontage))
+	{
+		const float CurrentPosition = AnimInstance->Montage_GetPosition(CurrentAnimMontage);
+		return CurrentAnimMontage->GetSectionTimeLeftFromPos(CurrentPosition);
+	}
+
+	return -1.f;
+}
+
+FGameplayAbilityLocalAnimMontageForMesh& UYcAbilitySystemComponent::GetLocalAnimMontageInfoForMesh(USkeletalMeshComponent* InMesh)
+{
+	// 查找已存在的
+	for (FGameplayAbilityLocalAnimMontageForMesh& MontageInfo : LocalAnimMontageInfoForMeshes)
+	{
+		if (MontageInfo.Mesh == InMesh)
+		{
+			return MontageInfo;
+		}
+	}
+
+	// 不存在则创建新的
+	FGameplayAbilityLocalAnimMontageForMesh MontageInfo = FGameplayAbilityLocalAnimMontageForMesh(InMesh);
+	LocalAnimMontageInfoForMeshes.Add(MontageInfo);
+	return LocalAnimMontageInfoForMeshes.Last();
+}
+
+FGameplayAbilityRepAnimMontageForMesh& UYcAbilitySystemComponent::GetGameplayAbilityRepAnimMontageForMesh(USkeletalMeshComponent* InMesh)
+{
+	// 查找已存在的
+	for (FGameplayAbilityRepAnimMontageForMesh& RepMontageInfo : RepAnimMontageInfoForMeshes)
+	{
+		if (RepMontageInfo.Mesh == InMesh)
+		{
+			return RepMontageInfo;
+		}
+	}
+
+	// 不存在则创建新的
+	FGameplayAbilityRepAnimMontageForMesh RepMontageInfo = FGameplayAbilityRepAnimMontageForMesh(InMesh);
+	RepAnimMontageInfoForMeshes.Add(RepMontageInfo);
+	return RepAnimMontageInfoForMeshes.Last();
+}
+
+void UYcAbilitySystemComponent::OnPredictiveMontageRejectedForMesh(USkeletalMeshComponent* InMesh, UAnimMontage* PredictiveMontage)
+{
+	// 预测被拒绝时的淡出时间
+	static const float MONTAGE_PREDICTION_REJECT_FADETIME = 0.25f;
+
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	if (AnimInstance && PredictiveMontage)
+	{
+		// 如果预测的蒙太奇仍在播放，停止它
+		if (AnimInstance->Montage_IsPlaying(PredictiveMontage))
+		{
+			AnimInstance->Montage_Stop(MONTAGE_PREDICTION_REJECT_FADETIME, PredictiveMontage);
+		}
+	}
+}
+
+void UYcAbilitySystemComponent::AnimMontage_UpdateReplicatedDataForMesh(USkeletalMeshComponent* InMesh)
+{
+	check(IsOwnerActorAuthoritative());
+
+	AnimMontage_UpdateReplicatedDataForMesh(GetGameplayAbilityRepAnimMontageForMesh(InMesh));
+}
+
+void UYcAbilitySystemComponent::AnimMontage_UpdateReplicatedDataForMesh(FGameplayAbilityRepAnimMontageForMesh& OutRepAnimMontageInfo)
+{
+	UAnimInstance* AnimInstance = IsValid(OutRepAnimMontageInfo.Mesh) && OutRepAnimMontageInfo.Mesh->GetOwner() 
+		== AbilityActorInfo->AvatarActor ? OutRepAnimMontageInfo.Mesh->GetAnimInstance() : nullptr;
+	FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(OutRepAnimMontageInfo.Mesh);
+
+	if (AnimInstance && AnimMontageInfo.LocalMontageInfo.AnimMontage)
+	{
+		// 复制蒙太奇资源引用
+		OutRepAnimMontageInfo.RepMontageInfo.Animation = AnimMontageInfo.LocalMontageInfo.AnimMontage;
+
+		// 获取停止状态
+		bool bIsStopped = AnimInstance->Montage_GetIsStopped(AnimMontageInfo.LocalMontageInfo.AnimMontage);
+
+		// 如果蒙太奇正在播放，更新动态参数
+		if (!bIsStopped)
+		{
+			OutRepAnimMontageInfo.RepMontageInfo.PlayRate = AnimInstance->Montage_GetPlayRate(AnimMontageInfo.LocalMontageInfo.AnimMontage);
+			OutRepAnimMontageInfo.RepMontageInfo.Position = AnimInstance->Montage_GetPosition(AnimMontageInfo.LocalMontageInfo.AnimMontage);
+			OutRepAnimMontageInfo.RepMontageInfo.BlendTime = AnimInstance->Montage_GetBlendTime(AnimMontageInfo.LocalMontageInfo.AnimMontage);
+		}
+
+		// 如果停止状态发生变化，强制网络更新
+		if (OutRepAnimMontageInfo.RepMontageInfo.IsStopped != bIsStopped)
+		{
+			OutRepAnimMontageInfo.RepMontageInfo.IsStopped = bIsStopped;
+
+			// 动画开始或停止时，立即更新客户端
+			if (AbilityActorInfo->AvatarActor != nullptr)
+			{
+				AbilityActorInfo->AvatarActor->ForceNetUpdate();
+			}
+
+			UpdateShouldTick();
+		}
+
+		// 复制NextSectionID（实际复制NextSectionID+1，以便能表示INDEX_NONE）
+		int32 CurrentSectionID = AnimMontageInfo.LocalMontageInfo.AnimMontage->GetSectionIndexFromPosition(OutRepAnimMontageInfo.RepMontageInfo.Position);
+		if (CurrentSectionID != INDEX_NONE)
+		{
+			int32 NextSectionID = AnimInstance->Montage_GetNextSectionID(AnimMontageInfo.LocalMontageInfo.AnimMontage, CurrentSectionID);
+			if (NextSectionID >= (256 - 1))
+			{
+				ABILITY_LOG(Error, TEXT("AnimMontage_UpdateReplicatedData. NextSectionID = %d.  RepAnimMontageInfo.Position: %.2f, CurrentSectionID: %d. LocalAnimMontageInfo.AnimMontage %s"),
+					NextSectionID, OutRepAnimMontageInfo.RepMontageInfo.Position, CurrentSectionID, *GetNameSafe(AnimMontageInfo.LocalMontageInfo.AnimMontage));
+				ensure(NextSectionID < (256 - 1));
+			}
+			OutRepAnimMontageInfo.RepMontageInfo.NextSectionID = uint8(NextSectionID + 1);
+		}
+		else
+		{
+			OutRepAnimMontageInfo.RepMontageInfo.NextSectionID = 0;
+		}
+	}
+}
+
+void UYcAbilitySystemComponent::AnimMontage_UpdateForcedPlayFlagsForMesh(FGameplayAbilityRepAnimMontageForMesh& OutRepAnimMontageInfo)
+{
+	FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(OutRepAnimMontageInfo.Mesh);
+
+	OutRepAnimMontageInfo.RepMontageInfo.PlayInstanceId = AnimMontageInfo.LocalMontageInfo.PlayInstanceId;
+}
+
+void UYcAbilitySystemComponent::OnRep_ReplicatedAnimMontageForMesh()
+{
+	// 遍历所有复制的蒙太奇信息
+	for (FGameplayAbilityRepAnimMontageForMesh& NewRepMontageInfoForMesh : RepAnimMontageInfoForMeshes)
+	{
+		// 获取对应Mesh的本地蒙太奇信息
+		FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(NewRepMontageInfoForMesh.Mesh);
+
+		UWorld* World = GetWorld();
+
+		// 如果标记跳过PlayRate，使用默认值1.0
+		if (NewRepMontageInfoForMesh.RepMontageInfo.bSkipPlayRate)
+		{
+			NewRepMontageInfoForMesh.RepMontageInfo.PlayRate = 1.f;
+		}
+
+		const bool bIsPlayingReplay = World && World->IsPlayingReplay();
+
+		// 位置校正阈值：回放模式使用更大的容差，正常游戏使用0.1秒
+		const float MONTAGE_REP_POS_ERR_THRESH = bIsPlayingReplay ? CVarReplayMontageErrorThreshold.GetValueOnGameThread() : 0.1f;
+
+		// 获取AnimInstance，验证Mesh有效性
+		UAnimInstance* AnimInstance = IsValid(NewRepMontageInfoForMesh.Mesh) && NewRepMontageInfoForMesh.Mesh->GetOwner()
+			== AbilityActorInfo->AvatarActor ? NewRepMontageInfoForMesh.Mesh->GetAnimInstance() : nullptr;
+		if (AnimInstance == nullptr || !IsReadyForReplicatedMontageForMesh())
+		{
+			// 还不能处理，标记待处理
+			bPendingMontageRep = true;
+			return;
+		}
+		bPendingMontageRep = false;
+
+		// 只在非本地控制的客户端（模拟代理）上处理
+		if (!AbilityActorInfo->IsLocallyControlled())
+		{
+			// 调试日志（通过控制台变量net.Montage.Debug启用）
+			static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("net.Montage.Debug"));
+			bool DebugMontage = (CVar && CVar->GetValueOnGameThread() == 1);
+			if (DebugMontage)
+			{
+				ABILITY_LOG(Warning, TEXT("\n\nOnRep_ReplicatedAnimMontage, %s"), *GetNameSafe(this));
+				ABILITY_LOG(Warning, TEXT("\tAnimMontage: %s\n\tPlayRate: %f\n\tPosition: %f\n\tBlendTime: %f\n\tNextSectionID: %d\n\tIsStopped: %d\n\tForcePlayBit: %d"),
+					*GetNameSafe(NewRepMontageInfoForMesh.RepMontageInfo.GetAnimMontage()),
+					NewRepMontageInfoForMesh.RepMontageInfo.PlayRate,
+					NewRepMontageInfoForMesh.RepMontageInfo.Position,
+					NewRepMontageInfoForMesh.RepMontageInfo.BlendTime,
+					NewRepMontageInfoForMesh.RepMontageInfo.NextSectionID,
+					NewRepMontageInfoForMesh.RepMontageInfo.IsStopped,
+					NewRepMontageInfoForMesh.RepMontageInfo.PlayInstanceId);
+				ABILITY_LOG(Warning, TEXT("\tLocalAnimMontageInfo.AnimMontage: %s\n\tPosition: %f"),
+					*GetNameSafe(AnimMontageInfo.LocalMontageInfo.AnimMontage), AnimInstance->Montage_GetPosition(AnimMontageInfo.LocalMontageInfo.AnimMontage));
+			}
+
+			if (NewRepMontageInfoForMesh.RepMontageInfo.GetAnimMontage())
+			{
+				// ===== 检查是否需要播放新蒙太奇 =====
+				const bool ReplicatedPlayBit = bool(NewRepMontageInfoForMesh.RepMontageInfo.PlayInstanceId);
+				// 蒙太奇变化或PlayInstanceId变化时，需要重新播放
+				if ((AnimMontageInfo.LocalMontageInfo.AnimMontage != NewRepMontageInfoForMesh.RepMontageInfo.GetAnimMontage()) || (bool(AnimMontageInfo.LocalMontageInfo.PlayInstanceId) != ReplicatedPlayBit))
+				{
+					AnimMontageInfo.LocalMontageInfo.PlayInstanceId = ReplicatedPlayBit;
+					// 调用模拟端播放函数（不更新复制属性）
+					PlayMontageSimulatedForMesh(NewRepMontageInfoForMesh.Mesh, NewRepMontageInfoForMesh.RepMontageInfo.GetAnimMontage(), NewRepMontageInfoForMesh.RepMontageInfo.PlayRate);
+				}
+
+				// 播放失败检查
+				if (AnimMontageInfo.LocalMontageInfo.AnimMontage == nullptr)
+				{
+					ABILITY_LOG(Warning, TEXT("OnRep_ReplicatedAnimMontage: PlayMontageSimulated failed. Name: %s, AnimMontage: %s"), *GetNameSafe(this), *GetNameSafe(NewRepMontageInfoForMesh.RepMontageInfo.GetAnimMontage()));
+					return;
+				}
+
+				// ===== 同步播放速率 =====
+				if (AnimInstance->Montage_GetPlayRate(AnimMontageInfo.LocalMontageInfo.AnimMontage) != NewRepMontageInfoForMesh.RepMontageInfo.PlayRate)
+				{
+					AnimInstance->Montage_SetPlayRate(AnimMontageInfo.LocalMontageInfo.AnimMontage, NewRepMontageInfoForMesh.RepMontageInfo.PlayRate);
+				}
+
+				// ===== 处理停止状态 =====
+				const bool bIsStopped = AnimInstance->Montage_GetIsStopped(AnimMontageInfo.LocalMontageInfo.AnimMontage);
+				const bool bReplicatedIsStopped = bool(NewRepMontageInfoForMesh.RepMontageInfo.IsStopped);
+
+				// 优先处理停止，避免Section切换导致混合弹出
+				if (bReplicatedIsStopped)
+				{
+					if (!bIsStopped)
+					{
+						// 服务器已停止，本地也停止
+						CurrentMontageStopForMesh(NewRepMontageInfoForMesh.Mesh, NewRepMontageInfoForMesh.RepMontageInfo.BlendTime);
+					}
+				}
+				else if (!NewRepMontageInfoForMesh.RepMontageInfo.SkipPositionCorrection)
+				{
+					// ===== 位置和Section校正 =====
+					const int32 RepSectionID = AnimMontageInfo.LocalMontageInfo.AnimMontage->GetSectionIndexFromPosition(NewRepMontageInfoForMesh.RepMontageInfo.Position);
+					const int32 RepNextSectionID = int32(NewRepMontageInfoForMesh.RepMontageInfo.NextSectionID) - 1;
+
+					// 同步NextSectionID
+					if (RepSectionID != INDEX_NONE)
+					{
+						const int32 NextSectionID = AnimInstance->Montage_GetNextSectionID(AnimMontageInfo.LocalMontageInfo.AnimMontage, RepSectionID);
+
+						// 如果NextSectionID不同，设置正确的NextSection
+						if (NextSectionID != RepNextSectionID)
+						{
+							AnimInstance->Montage_SetNextSection(AnimMontageInfo.LocalMontageInfo.AnimMontage->GetSectionName(RepSectionID), AnimMontageInfo.LocalMontageInfo.AnimMontage->GetSectionName(RepNextSectionID), AnimMontageInfo.LocalMontageInfo.AnimMontage);
+						}
+
+						// 检查客户端是否在错误的Section
+						const int32 CurrentSectionID = AnimMontageInfo.LocalMontageInfo.AnimMontage->GetSectionIndexFromPosition(AnimInstance->Montage_GetPosition(AnimMontageInfo.LocalMontageInfo.AnimMontage));
+						if ((CurrentSectionID != RepSectionID) && (CurrentSectionID != RepNextSectionID))
+						{
+							// 客户端在错误的Section，传送到正确Section的开始位置
+							const float SectionStartTime = AnimMontageInfo.LocalMontageInfo.AnimMontage->GetAnimCompositeSection(RepSectionID).GetTime();
+							AnimInstance->Montage_SetPosition(AnimMontageInfo.LocalMontageInfo.AnimMontage, SectionStartTime);
+						}
+					}
+
+					// ===== 位置校正 =====
+					const float CurrentPosition = AnimInstance->Montage_GetPosition(AnimMontageInfo.LocalMontageInfo.AnimMontage);
+					const int32 CurrentSectionID = AnimMontageInfo.LocalMontageInfo.AnimMontage->GetSectionIndexFromPosition(CurrentPosition);
+					const float DeltaPosition = NewRepMontageInfoForMesh.RepMontageInfo.Position - CurrentPosition;
+
+					// 只在同一Section内检查阈值（不同Section的位置差计算更复杂）
+					if ((CurrentSectionID == RepSectionID) && (FMath::Abs(DeltaPosition) > MONTAGE_REP_POS_ERR_THRESH) && (NewRepMontageInfoForMesh.RepMontageInfo.IsStopped == 0))
+					{
+						// 快进到服务器位置并触发通知
+						if (FAnimMontageInstance* MontageInstance = AnimInstance->GetActiveInstanceForMontage(NewRepMontageInfoForMesh.RepMontageInfo.GetAnimMontage()))
+						{
+							// 如果是向后跳转，跳过触发通知（已经触发过了）
+							const float DeltaTime = !FMath::IsNearlyZero(NewRepMontageInfoForMesh.RepMontageInfo.PlayRate) ? (DeltaPosition / NewRepMontageInfoForMesh.RepMontageInfo.PlayRate) : 0.f;
+							if (DeltaTime >= 0.f)
+							{
+								MontageInstance->UpdateWeight(DeltaTime);
+								MontageInstance->HandleEvents(CurrentPosition, NewRepMontageInfoForMesh.RepMontageInfo.Position, nullptr);
+								AnimInstance->TriggerAnimNotifies(DeltaTime);
+							}
+						}
+						// 跳转到服务器位置
+						AnimInstance->Montage_SetPosition(AnimMontageInfo.LocalMontageInfo.AnimMontage, NewRepMontageInfoForMesh.RepMontageInfo.Position);
+					}
+				}
+			}
+		}
+	}
+}
+
+bool UYcAbilitySystemComponent::IsReadyForReplicatedMontageForMesh()
+{
+	/** 子类可以覆盖此函数添加额外检查（如"皮肤是否已应用"） */
+	return true;
+}
+
+void UYcAbilitySystemComponent::ServerCurrentMontageSetNextSectionNameForMesh_Implementation(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float ClientPosition, FName SectionName, FName NextSectionName)
+{
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(InMesh);
+
+	if (AnimInstance)
+	{
+		UAnimMontage* CurrentAnimMontage = AnimMontageInfo.LocalMontageInfo.AnimMontage;
+		// 验证客户端蒙太奇与服务器一致
+		if (ClientAnimMontage == CurrentAnimMontage)
+		{
+			// 设置NextSection
+			AnimInstance->Montage_SetNextSection(SectionName, NextSectionName, CurrentAnimMontage);
+
+			// 位置校正：检查服务器是否在正确的Section
+			float CurrentPosition = AnimInstance->Montage_GetPosition(CurrentAnimMontage);
+			int32 CurrentSectionID = CurrentAnimMontage->GetSectionIndexFromPosition(CurrentPosition);
+			FName CurrentSectionName = CurrentAnimMontage->GetSectionName(CurrentSectionID);
+
+			int32 ClientSectionID = CurrentAnimMontage->GetSectionIndexFromPosition(ClientPosition);
+			FName ClientCurrentSectionName = CurrentAnimMontage->GetSectionName(ClientSectionID);
+			
+			// 如果服务器Section与客户端不一致，跳转到客户端位置
+			if ((CurrentSectionName != ClientCurrentSectionName) || (CurrentSectionName != SectionName))
+			{
+				// 服务器在错误的Section，跳转到客户端位置
+				AnimInstance->Montage_SetPosition(CurrentAnimMontage, ClientPosition);
+			}
+
+			// 更新复制属性，同步到模拟代理
+			if (IsOwnerActorAuthoritative())
+			{
+				AnimMontage_UpdateReplicatedDataForMesh(InMesh);
+			}
+		}
+	}
+}
+
+bool UYcAbilitySystemComponent::ServerCurrentMontageSetNextSectionNameForMesh_Validate(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float ClientPosition, FName SectionName, FName NextSectionName)
+{
+	return true;
+}
+
+void UYcAbilitySystemComponent::ServerCurrentMontageJumpToSectionNameForMesh_Implementation(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, FName SectionName)
+{
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(InMesh);
+
+	if (AnimInstance)
+	{
+		UAnimMontage* CurrentAnimMontage = AnimMontageInfo.LocalMontageInfo.AnimMontage;
+		// 验证客户端蒙太奇与服务器一致
+		if (ClientAnimMontage == CurrentAnimMontage)
+		{
+			// 执行Section跳转
+			AnimInstance->Montage_JumpToSection(SectionName, CurrentAnimMontage);
+
+			// 更新复制属性，同步到模拟代理
+			if (IsOwnerActorAuthoritative())
+			{
+				AnimMontage_UpdateReplicatedDataForMesh(InMesh);
+			}
+		}
+	}
+}
+
+bool UYcAbilitySystemComponent::ServerCurrentMontageJumpToSectionNameForMesh_Validate(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, FName SectionName)
+{
+	return true;
+}
+
+void UYcAbilitySystemComponent::ServerCurrentMontageSetPlayRateForMesh_Implementation(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float InPlayRate)
+{
+	UAnimInstance* AnimInstance = IsValid(InMesh) && InMesh->GetOwner() == AbilityActorInfo->AvatarActor ? InMesh->GetAnimInstance() : nullptr;
+	FGameplayAbilityLocalAnimMontageForMesh& AnimMontageInfo = GetLocalAnimMontageInfoForMesh(InMesh);
+
+	if (AnimInstance)
+	{
+		UAnimMontage* CurrentAnimMontage = AnimMontageInfo.LocalMontageInfo.AnimMontage;
+		// 验证客户端蒙太奇与服务器一致
+		if (ClientAnimMontage == CurrentAnimMontage)
+		{
+			// 设置播放速率
+			AnimInstance->Montage_SetPlayRate(AnimMontageInfo.LocalMontageInfo.AnimMontage, InPlayRate);
+
+			// 更新复制属性，同步到模拟代理
+			if (IsOwnerActorAuthoritative())
+			{
+				AnimMontage_UpdateReplicatedDataForMesh(InMesh);
+			}
+		}
+	}
+}
+
+bool UYcAbilitySystemComponent::ServerCurrentMontageSetPlayRateForMesh_Validate(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float InPlayRate)
+{
+	return true;
 }

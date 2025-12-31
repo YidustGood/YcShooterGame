@@ -7,6 +7,8 @@
 #include "YcGameplayAbility.generated.h"
 
 class UYcAbilityCost;
+class USkeletalMeshComponent;
+class UAnimMontage;
 
 /**
  * 技能激活策略枚举
@@ -64,6 +66,29 @@ enum class EYcAbilityActivationGroup : uint8
 
 	MAX UMETA(Hidden)
 };
+
+USTRUCT()
+struct YICHENABILITY_API FAbilityMeshMontage
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY()
+	USkeletalMeshComponent* Mesh;
+
+	UPROPERTY()
+	UAnimMontage* Montage;
+
+	FAbilityMeshMontage() : Mesh(nullptr), Montage(nullptr)
+	{
+	}
+
+	FAbilityMeshMontage(USkeletalMeshComponent* InMesh, UAnimMontage* InMontage) 
+		: Mesh(InMesh), Montage(InMontage)
+	{
+	}
+};
+
 
 /**
  * 插件提供的技能基类, 与插件提供的YcAbilitySystemComponent配合使用
@@ -348,4 +373,85 @@ public:
 	 * @return 该技能的激活组
 	 */
 	FORCEINLINE EYcAbilityActivationGroup GetActivationGroup() const { return ActivationGroup; }
+	
+public:
+	//////////////// 蒙太奇动画播放扩展功能 ////////////////
+	// ----------------------------------------------------------------------------------------------------------------
+	//	多骨骼网格蒙太奇支持
+	//  支持在AvatarActor的多个USkeletalMeshComponent上播放蒙太奇动画
+	//  与UYcAbilitySystemComponent配合使用，实现网络同步的蒙太奇播放
+	// ----------------------------------------------------------------------------------------------------------------
+	
+	/**
+	 * 获取指定骨骼网格上当前正在播放的蒙太奇
+	 * @param InMesh 目标骨骼网格
+	 * @return 当前正在播放的蒙太奇，如果没有则返回nullptr
+	 */
+	UFUNCTION(BlueprintCallable, Category = Animation)
+	UAnimMontage* GetCurrentMontageForMesh(USkeletalMeshComponent* InMesh);
+
+	/**
+	 * 设置指定骨骼网格上当前正在播放的蒙太奇
+	 * 由蒙太奇Task调用，用于追踪技能正在播放的蒙太奇
+	 * 允许将蒙太奇事件与技能事件关联起来
+	 * @param InMesh 目标骨骼网格
+	 * @param InCurrentMontage 当前蒙太奇，nullptr表示清除
+	 */
+	virtual void SetCurrentMontageForMesh(USkeletalMeshComponent* InMesh, class UAnimMontage* InCurrentMontage);
+protected:
+	/**
+	 * 当前技能正在播放的蒙太奇列表
+	 * 每个元素包含骨骼网格和对应的蒙太奇
+	 * 用于追踪多Mesh场景下的蒙太奇播放状态
+	 */
+	UPROPERTY()
+	TArray<FAbilityMeshMontage> CurrentAbilityMeshMontages;
+
+	/**
+	 * 查找指定骨骼网格对应的蒙太奇信息
+	 * @param InMesh 目标骨骼网格
+	 * @param InAbilityMontage 输出：找到的蒙太奇信息
+	 * @return 如果找到返回true，否则返回false
+	 */
+	bool FindAbilityMeshMontage(USkeletalMeshComponent* InMesh, FAbilityMeshMontage& InAbilityMontage);
+
+	/**
+	 * 立即跳转到指定骨骼网格上蒙太奇的指定Section
+	 * 会通过ASC处理网络同步
+	 * @param InMesh 目标骨骼网格
+	 * @param SectionName 目标Section名称
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Ability|Animation")
+	void MontageJumpToSectionForMesh(USkeletalMeshComponent* InMesh, FName SectionName);
+
+	/**
+	 * 设置指定骨骼网格上蒙太奇的下一个Section
+	 * 用于实现蒙太奇的分支播放，如连击系统
+	 * 会通过ASC处理网络同步
+	 * @param InMesh 目标骨骼网格
+	 * @param FromSectionName 当前Section名称
+	 * @param ToSectionName 下一个Section名称
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Ability|Animation")
+	void MontageSetNextSectionNameForMesh(USkeletalMeshComponent* InMesh, FName FromSectionName, FName ToSectionName);
+
+	/**
+	 * 停止指定骨骼网格上当前播放的蒙太奇
+	 * 只有当此技能是当前正在播放动画的技能时才会停止
+	 * 会通过ASC处理网络同步
+	 * @param InMesh 目标骨骼网格
+	 * @param OverrideBlendOutTime 混出时间覆盖，>=0时覆盖蒙太奇的默认BlendOutTime
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Ability|Animation", Meta = (AdvancedDisplay = "OverrideBlendOutTime"))
+	void MontageStopForMesh(USkeletalMeshComponent* InMesh, float OverrideBlendOutTime = -1.0f);
+
+	/**
+	 * 停止所有骨骼网格上当前播放的蒙太奇
+	 * 只有当此技能是当前正在播放动画的技能时才会停止
+	 * 会通过ASC处理网络同步
+	 * @param OverrideBlendOutTime 混出时间覆盖，>=0时覆盖蒙太奇的默认BlendOutTime
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Ability|Animation", Meta = (AdvancedDisplay = "OverrideBlendOutTime"))
+	void MontageStopForAllMeshes(float OverrideBlendOutTime = -1.0f);
+	//////////////// ~蒙太奇动画播放扩展功能 ////////////////
 };

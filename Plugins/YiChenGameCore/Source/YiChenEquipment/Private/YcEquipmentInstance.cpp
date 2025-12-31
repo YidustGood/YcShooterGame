@@ -200,8 +200,8 @@ void UYcEquipmentInstance::HideEquipmentActors()
 		AActor* Actor = SpawnedActors[ReplicatedActorIndex];
 		if (IsValid(Actor))
 		{
-			// 隐藏Actor（保持附加状态，显示时无需重新Attach）
-			Actor->SetActorHiddenInGame(true);
+			// 使用组件可见性而不是 Actor 隐藏，避免网络复制覆盖客户端预测状态
+			SetActorVisualVisibility(Actor, false);
 			
 			// 根据配置决定是否进入休眠状态
 			if (SpawnInfo.bDormantOnUnequip)
@@ -212,11 +212,16 @@ void UYcEquipmentInstance::HideEquipmentActors()
 		++ReplicatedActorIndex;
 	}
 	
-	// 通知客户端处理本地Actors
-	HideEquipmentActorsOnOwnerClient();
+	// 通知控制客户端隐藏非网络复制的本地Actors
+	// HideEquipmentActorsOnOwnerClient(); // QuickBar中做了客户端预测了, 展示不走ClientRPC
 }
 
 void UYcEquipmentInstance::HideEquipmentActorsOnOwnerClient_Implementation()
+{
+	HideLocalEquipmentActors();
+}
+
+void UYcEquipmentInstance::HideLocalEquipmentActors()
 {
 	if (!GetEquipmentDef()) return;
 	
@@ -227,12 +232,13 @@ void UYcEquipmentInstance::HideEquipmentActorsOnOwnerClient_Implementation()
 	for (int32 i = 0; i < ActorsToSpawn.Num() && LocalActorIndex < OwnerClientSpawnedActors.Num(); ++i)
 	{
 		const FYcEquipmentActorToSpawn& SpawnInfo = ActorsToSpawn[i];
-		if (SpawnInfo.bReplicateActor) continue; // 跳过复制的Actor配置
+		if (SpawnInfo.bReplicateActor) continue;
 		
 		AActor* Actor = OwnerClientSpawnedActors[LocalActorIndex];
 		if (IsValid(Actor))
 		{
-			Actor->SetActorHiddenInGame(true);
+			// 使用组件可见性而不是 Actor 隐藏，避免网络复制问题
+			SetActorVisualVisibility(Actor, false);
 			
 			if (SpawnInfo.bDormantOnUnequip)
 			{
@@ -265,14 +271,14 @@ void UYcEquipmentInstance::ShowEquipmentActors()
 				WakeActorFromDormant(Actor, true);
 			}
 			
-			// 显示Actor（保持原有附加状态）
-			Actor->SetActorHiddenInGame(false);
+			// 使用组件可见性显示 Actor
+			SetActorVisualVisibility(Actor, true);
 		}
 		++ReplicatedActorIndex;
 	}
 	
 	// 通知客户端处理本地Actors
-	ShowEquipmentActorsOnOwnerClient();
+	// ShowEquipmentActorsOnOwnerClient(); // QuickBar中做了客户端预测了, 展示不走ClientRPC
 }
 
 void UYcEquipmentInstance::ShowEquipmentActorsOnOwnerClient_Implementation()
@@ -301,7 +307,8 @@ void UYcEquipmentInstance::ShowLocalEquipmentActors()
 				WakeActorFromDormant(Actor, false);
 			}
 			
-			Actor->SetActorHiddenInGame(false);
+			// 使用组件可见性显示 Actor
+			SetActorVisualVisibility(Actor, true);
 		}
 		++LocalActorIndex;
 	}
@@ -427,4 +434,15 @@ AActor* UYcEquipmentInstance::SpawnEquipActorInternal(const TSubclassOf<AActor>&
 	EquipComp->RegisterComponent();
 	
 	return NewActor;
+}
+
+void UYcEquipmentInstance::SetActorVisualVisibility(const AActor* Actor, const bool bVisible)
+{
+	if (!IsValid(Actor)) return;
+	
+	if (USceneComponent* RootComp = Actor->GetRootComponent())
+	{
+		// 设置根组件及所有子组件的可见性
+		RootComp->SetVisibility(bVisible, true);
+	}
 }

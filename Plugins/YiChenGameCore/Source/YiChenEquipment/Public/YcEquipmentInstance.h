@@ -139,6 +139,13 @@ public:
 	void ShowLocalEquipmentActors();
 	
 	/**
+	 * 仅隐藏本地客户端的装备Actors（不通过RPC）
+	 * 用于客户端在 PreReplicatedRemove 中隐藏本地Actors
+	 * @note 此函数供内部使用，通常不需要手动调用
+	 */
+	void HideLocalEquipmentActors();
+	
+	/**
 	 * 检查是否已经生成过装备Actors
 	 * @return true表示已生成过（可能处于隐藏状态），false表示从未生成
 	 */
@@ -224,7 +231,7 @@ protected:
 	UFUNCTION(Client, Reliable)
 	void DestroyEquipmentActorsOnOwnerClient();
 	
-	/** 通知控制客户端隐藏本地Actors */
+	/** 通知控制客户端隐藏非网络复制的本地Actors */
 	UFUNCTION(Client, Reliable)
 	void HideEquipmentActorsOnOwnerClient();
 	
@@ -317,4 +324,14 @@ private:
 	 * 在SetInstigator内调用，从Instigator获取EquipmentDef并缓存指针
 	 */
 	void UpdateEquipmentDef();
+	
+	/**
+	 * 设置 Actor 的视觉可见性（不使用 SetActorHiddenInGame）
+	 * 
+	 * 原因：AActor::bHidden 会通过网络复制，服务器设置后会同步到客户端，
+	 * 这会覆盖客户端的预测状态导致闪烁。
+	 * 
+	 * 解决方案：使用组件的 SetVisibility，这个不会自动复制。
+	 */
+	void SetActorVisualVisibility(const AActor* Actor, const bool bVisible);
 };

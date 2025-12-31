@@ -23,10 +23,32 @@ FString FYcAppliedEquipmentEntry::GetDebugString() const
 // FYcEquipmentList
 void FYcEquipmentList::PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize)
 {
+	UYcEquipmentManagerComponent* EquipmentManager = Cast<UYcEquipmentManagerComponent>(OwnerComponent);
+	
 	for (const int32 Index : RemovedIndices)
 	{
 		if (const FYcAppliedEquipmentEntry& Entry = Equipments[Index]; Entry.Instance != nullptr)
 		{
+			// 检查是否配置为不销毁（可复用）
+			bool bShouldCache = false;
+			if (const FYcEquipmentDefinition* EquipDef = Entry.Instance->GetEquipmentDef())
+			{
+				for (const FYcEquipmentActorToSpawn& SpawnInfo : EquipDef->ActorsToSpawn)
+				{
+					if (!SpawnInfo.bDestroyOnUnequip)
+					{
+						bShouldCache = true;
+						break;
+					}
+				}
+			}
+			
+			if (bShouldCache && EquipmentManager && Entry.OwnerItemInstance)
+			{
+				// 客户端缓存装备实例，用于主控端做预测显示
+				EquipmentManager->CacheEquipmentInstance(Entry.OwnerItemInstance, Entry.Instance);
+			}
+			
 			Entry.Instance->OnUnequipped();
 		}
 	}
@@ -335,7 +357,16 @@ UYcEquipmentInstance* UYcEquipmentManagerComponent::FindCachedEquipmentForItem(U
 void UYcEquipmentManagerComponent::CacheEquipmentInstance(UYcInventoryItemInstance* ItemInstance, UYcEquipmentInstance* EquipmentInstance)
 {
 	if (!ItemInstance || !EquipmentInstance) return;
+ 	
+	// 避免重复缓存
+	if (CachedEquipmentInstances.Contains(ItemInstance))
+	{
+		return;
+	}
+	
 	CachedEquipmentInstances.Add(ItemInstance, EquipmentInstance);
+	UE_LOG(LogYcEquipment, Verbose, TEXT("CacheEquipmentInstance: 缓存装备实例 %s 用于物品 %s"), 
+		*GetNameSafe(EquipmentInstance), *GetNameSafe(ItemInstance));
 }
 
 UYcEquipmentInstance* UYcEquipmentManagerComponent::TakeCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance)

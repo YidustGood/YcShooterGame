@@ -169,14 +169,17 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
 	void ClearAllCachedEquipment();
 	
-private:
-	friend struct FYcEquipmentList;
-	
 	/**
 	 * 查找指定物品的缓存装备实例
+	 * 用于客户端预测时复用已有的装备实例进行显示
+	 * @param ItemInstance 物品实例
 	 * @return 缓存的装备实例，如果不存在则返回nullptr
 	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure)
 	UYcEquipmentInstance* FindCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance) const;
+	
+private:
+	friend struct FYcEquipmentList;
 	
 	/**
 	 * 缓存装备实例（用于复用）
@@ -196,6 +199,7 @@ private:
 	 * 缓存的装备实例映射（物品实例 -> 装备实例）
 	 * 用于在卸下装备时保留装备实例和其生成的Actors，以便下次装备时复用
 	 * 不参与网络复制，服务器和客户端各自维护
+	 * 服务器先在FYcEquipmentList::RemoveEntry()中缓存, 然后客户端在FYcEquipmentList::PreReplicatedRemove()中缓存
 	 */
 	UPROPERTY()
 	TMap<TObjectPtr<UYcInventoryItemInstance>, TObjectPtr<UYcEquipmentInstance>> CachedEquipmentInstances;

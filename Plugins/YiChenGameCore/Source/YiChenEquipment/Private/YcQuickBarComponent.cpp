@@ -342,7 +342,7 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 
 void UYcQuickBarComponent::ExecuteLocalPrediction(const int32 NewIndex)
 {
-	UE_LOG(LogYcEquipment, Log, TEXT("ExecuteLocalPrediction: 预测切换到插槽 %d (当前预测: %d, 服务器确认: %d)"), 
+	UE_LOG(LogYcEquipment, Verbose, TEXT("ExecuteLocalPrediction: 预测切换到插槽 %d (当前预测: %d, 服务器确认: %d)"), 
 		NewIndex, PendingSlotIndex, ActiveSlotIndex);
 	
 	// ========================================================================
@@ -385,7 +385,7 @@ void UYcQuickBarComponent::ExecuteLocalPrediction(const int32 NewIndex)
 
 void UYcQuickBarComponent::ExecuteLocalPredictionDeactivate(int32 NewIndex)
 {
-	UE_LOG(LogYcEquipment, Log, TEXT("ExecuteLocalPredictionDeactivate: 预测取消激活插槽 %d"), NewIndex);
+	UE_LOG(LogYcEquipment, Verbose, TEXT("ExecuteLocalPredictionDeactivate: 预测取消激活插槽 %d"), NewIndex);
 	
 	// 设置预测状态
 	bHasPendingSlotChange = true;
@@ -417,7 +417,7 @@ void UYcQuickBarComponent::ReconcilePrediction(int32 ServerIndex)
 		return;
 	}
 	
-	UE_LOG(LogYcEquipment, Log, TEXT("ReconcilePrediction: 服务器索引=%d, 预测索引=%d, 剩余请求=%d"), 
+	UE_LOG(LogYcEquipment, Verbose, TEXT("ReconcilePrediction: 服务器索引=%d, 预测索引=%d, 剩余请求=%d"), 
 		ServerIndex, PendingSlotIndex, PendingRequestCount);
 	
 	// ========================================================================
@@ -428,7 +428,7 @@ void UYcQuickBarComponent::ReconcilePrediction(int32 ServerIndex)
 	if (PendingRequestCount > 0)
 	{
 		// 还有请求在路上，忽略这次中间状态的确认
-		UE_LOG(LogYcEquipment, Log, TEXT("ReconcilePrediction: 还有 %d 个请求待确认，忽略中间状态"), PendingRequestCount);
+		UE_LOG(LogYcEquipment, Verbose, TEXT("ReconcilePrediction: 还有 %d 个请求待确认，忽略中间状态"), PendingRequestCount);
 		return;
 	}
 	
@@ -436,7 +436,7 @@ void UYcQuickBarComponent::ReconcilePrediction(int32 ServerIndex)
 	if (ServerIndex == PendingSlotIndex)
 	{
 		// 预测成功！服务器确认了我们的预测
-		UE_LOG(LogYcEquipment, Log, TEXT("ReconcilePrediction: 预测成功，清除预测状态"));
+		UE_LOG(LogYcEquipment, Verbose, TEXT("ReconcilePrediction: 预测成功，清除预测状态"));
 		
 		// 清除预测状态
 		bHasPendingSlotChange = false;
@@ -518,14 +518,14 @@ void UYcQuickBarComponent::EquipItemInSlot_Predicted(const int32 SlotIndex)
 		// 预测失败时会在 RollbackPrediction 中清理
 		EquippedInst = CachedInstance;
 		
-		UE_LOG(LogYcEquipment, Log, TEXT("EquipItemInSlot_Predicted: 从缓存中找到装备实例，显示它"));
+		UE_LOG(LogYcEquipment, Verbose, TEXT("EquipItemInSlot_Predicted: 从缓存中找到装备实例，显示它"));
 	}
 	else
 	{
 		// 没有缓存（第一次装备该物品）
 		// 客户端无法预测显示武器模型，但 UI 状态已经更新
 		// 新武器的显示由服务器通过 EquipmentList 复制来完成
-		UE_LOG(LogYcEquipment, Log, TEXT("EquipItemInSlot_Predicted: 未找到缓存，等待服务器创建装备实例"));
+		UE_LOG(LogYcEquipment, Verbose, TEXT("EquipItemInSlot_Predicted: 未找到缓存，等待服务器创建装备实例"));
 	}
 }
 
@@ -575,7 +575,7 @@ void UYcQuickBarComponent::UnequipItemInSlot_Predicted()
 			ExistingInst->HideEquipmentActors();
 			// 设置 EquippedInst，下次就不用再查找了
 			EquippedInst = ExistingInst;
-			UE_LOG(LogYcEquipment, Log, TEXT("UnequipItemInSlot_Predicted: 从装备列表中找到并隐藏装备实例"));
+			UE_LOG(LogYcEquipment, Verbose, TEXT("UnequipItemInSlot_Predicted: 从装备列表中找到并隐藏装备实例"));
 			return;
 		}
 	}

@@ -25,6 +25,9 @@ void FYcEquipmentList::PreReplicatedRemove(const TArrayView<int32> RemovedIndice
 {
 	UYcEquipmentManagerComponent* EquipmentManager = Cast<UYcEquipmentManagerComponent>(OwnerComponent);
 	
+	// 获取并输出当前装备管理组件拥有者的本地角色(一般是拥有者是玩家控制的角色对象)
+	ENetRole LocalRole = EquipmentManager->GetOwner()->GetLocalRole();
+	
 	for (const int32 Index : RemovedIndices)
 	{
 		if (const FYcAppliedEquipmentEntry& Entry = Equipments[Index]; Entry.Instance != nullptr)
@@ -42,11 +45,20 @@ void FYcEquipmentList::PreReplicatedRemove(const TArrayView<int32> RemovedIndice
 					}
 				}
 			}
-			
-			if (bShouldCache && EquipmentManager && Entry.OwnerItemInstance)
+			// 只需要主控端缓存, 模拟客户端用不上
+			if (bShouldCache && EquipmentManager && Entry.OwnerItemInstance && LocalRole == ROLE_AutonomousProxy)
 			{
 				// 客户端缓存装备实例，用于主控端做预测显示
 				EquipmentManager->CacheEquipmentInstance(Entry.OwnerItemInstance, Entry.Instance);
+			}
+			
+			/**
+			 * 由于装备的附加Actor的显示和隐藏需要配合主控客户端做预测所以服务端也不通过SetActorHiddenInGame()了,
+			 * 而是直接设置组件可视性这不会自动同步给模拟客户端, 所以我们要在移除装备实例同步到客户端时额外处理模拟客户端对于装备附加Actor的隐藏
+			 */
+			if (LocalRole == ROLE_SimulatedProxy)
+			{
+				Entry.Instance->HideEquipmentActors();
 			}
 			
 			Entry.Instance->OnUnequipped();
@@ -56,6 +68,11 @@ void FYcEquipmentList::PreReplicatedRemove(const TArrayView<int32> RemovedIndice
 
 void FYcEquipmentList::PostReplicatedAdd(const TArrayView<int32> AddedIndices, int32 FinalSize)
 {
+	UYcEquipmentManagerComponent* EquipmentManager = Cast<UYcEquipmentManagerComponent>(OwnerComponent);
+	
+	// 获取并输出当前装备管理组件拥有者的本地角色(一般是拥有者是玩家控制的角色对象)
+	ENetRole LocalRole = EquipmentManager->GetOwner()->GetLocalRole();
+	
 	for (int32 Index : AddedIndices)
 	{
 		const FYcAppliedEquipmentEntry& Entry = Equipments[Index];
@@ -65,6 +82,15 @@ void FYcEquipmentList::PostReplicatedAdd(const TArrayView<int32> AddedIndices, i
 			Entry.Instance->OnEquipped();
 			// 因为装备可能包含只需要在控制客户端生成的Actor所以需要在这里调用进行一次控制端的本地生成, 内部会处理判断生成逻辑
 			Entry.Instance->SpawnEquipmentActors(Entry.Instance->EquipmentDef->ActorsToSpawn);
+			
+			/**
+			 * 由于装备的附加Actor的显示和隐藏需要配合主控客户端做预测所以服务端也不通过SetActorHiddenInGame()了,
+			 * 而是直接设置组件可视性这不会自动同步给模拟客户端, 所以我们要在添加的装备实例同步到客户端时额外处理模拟客户端对于装备附加Actor的显示
+			 */
+			if (LocalRole == ROLE_SimulatedProxy)
+			{
+				Entry.Instance->ShowEquipmentActors();
+			}
 		}
 	}
 }

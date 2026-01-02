@@ -406,12 +406,20 @@ TInstancedStruct<FYcEquipmentFragment> UYcEquipmentInstance::FindEquipmentFragme
 
 void UYcEquipmentInstance::OnEquipped()
 {
+	// 显示装备附加的Actor
+	ShowEquipmentActors();
+	if (GetPawn() && GetPawn()->IsLocallyControlled())
+	{
+		ShowLocalEquipmentActors();
+	}
+	// 调用蓝图实现的装备函数, 例如在蓝图中扩展播放装备动画等
 	K2_OnEquipped();
 }
 
 void UYcEquipmentInstance::OnUnequipped()
 {
 	K2_OnUnequipped();
+	// 这里注意要在蓝图中调用隐藏装备附加Actor, 因为需要播放卸下装备的动画所以不能先隐藏
 }
 
 AActor* UYcEquipmentInstance::SpawnEquipActorInternal(const TSubclassOf<AActor>& ActorToSpawnClass,const FYcEquipmentActorToSpawn& SpawnInfo, USceneComponent* AttachTarget)

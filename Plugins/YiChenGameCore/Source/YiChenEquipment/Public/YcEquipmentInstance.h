@@ -160,19 +160,43 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Equipment")
 	AActor* FindSpawnedActorByTag(FName Tag, bool bReplicateActor);
+	
+	/**
+	 * 获取装备状态标记
+	 * @return true 表示当前处于装备状态，false 表示已卸下
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Equipment")
+	bool IsEquipped() const;
 
 	//~=============================================================================
 	// 装备/卸载回调
 	
 	/**
 	 * 装备时的回调（服务器和客户端都会触发）
-	 * 可在子类中重写以处理装备后的逻辑，如生成第一人称武器模型
+	 * 
+	 * 内部会自动处理：
+	 * - 显示装备附加的 Actors（调用 ShowEquipmentActors）
+	 * - 对于本地控制的 Pawn，还会显示本地 Actors（调用 ShowLocalEquipmentActors）
+	 * - 调用蓝图实现的 K2_OnEquipped 事件
+	 * 
+	 * 使用 bEquipped 标记避免重复调用
+	 * 
+	 * 可在子类中重写以扩展装备后的逻辑，如播放装备动画
 	 */
 	virtual void OnEquipped();
 	
 	/**
 	 * 卸载时的回调（服务器和客户端都会触发）
-	 * 可在子类中重写以处理卸载后的逻辑
+	 * 
+	 * 内部会自动处理：
+	 * - 调用蓝图实现的 K2_OnUnequipped 事件
+	 * 
+	 * 注意：隐藏装备 Actors 的逻辑需要在蓝图中调用 HideEquipmentActors，
+	 * 因为可能需要先播放卸下装备的动画，动画结束后再隐藏
+	 * 
+	 * 使用 bEquipped 标记避免重复调用
+	 * 
+	 * 可在子类中重写以扩展卸载后的逻辑
 	 */
 	virtual void OnUnequipped();
 
@@ -293,6 +317,13 @@ private:
 	 * 用于SpawnEquipmentActors中判断是否需要复用已有Actor
 	 */
 	uint8 bActorsSpawned : 1;
+	
+	/** 
+	 * 标记当前是否处于装备状态
+	 * 用于 OnEquipped/OnUnequipped 中避免重复调用
+	 * true = 已装备，false = 已卸下
+	 */
+	uint8 bEquipped : 1;
 	
 	//~=============================================================================
 	// 内部函数

@@ -368,6 +368,11 @@ AActor* UYcEquipmentInstance::FindSpawnedActorByTag(const FName Tag, const bool 
 	return nullptr;
 }
 
+bool UYcEquipmentInstance::IsEquipped() const
+{
+	return bEquipped;
+}
+
 const FYcEquipmentDefinition* UYcEquipmentInstance::GetEquipmentDef()
 {
 	if (EquipmentDef) return EquipmentDef;
@@ -406,6 +411,8 @@ TInstancedStruct<FYcEquipmentFragment> UYcEquipmentInstance::FindEquipmentFragme
 
 void UYcEquipmentInstance::OnEquipped()
 {
+	if (bEquipped) return; // 避免重复调用
+	bEquipped = true;
 	// 显示装备附加的Actor
 	ShowEquipmentActors();
 	if (GetPawn() && GetPawn()->IsLocallyControlled())
@@ -418,6 +425,8 @@ void UYcEquipmentInstance::OnEquipped()
 
 void UYcEquipmentInstance::OnUnequipped()
 {
+	if (bEquipped == false) return; // 避免重复调用
+	bEquipped = false;
 	K2_OnUnequipped();
 	// 这里注意要在蓝图中调用隐藏装备附加Actor, 因为需要播放卸下装备的动画所以不能先隐藏
 }

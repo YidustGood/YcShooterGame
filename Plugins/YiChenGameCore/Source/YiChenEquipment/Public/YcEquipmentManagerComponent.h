@@ -73,7 +73,7 @@ struct FYcEquipmentList : public FFastArraySerializer
 	}
 
 	/**
-	 * 添加指定装备，同时授予装备的能力、附加装备的Actors
+	 * [Server Only] 添加指定装备，同时授予装备的能力、附加装备的Actors
 	 * 根据指定类型的装备创建一个装备实例，并记录进Entries列表中
 	 * 
 	 * @param EquipmentDef 要添加的装备定义
@@ -83,7 +83,7 @@ struct FYcEquipmentList : public FFastArraySerializer
 	UYcEquipmentInstance* AddEntry(const FYcEquipmentDefinition& EquipmentDef, UYcInventoryItemInstance* ItemInstance);
 	
 	/**
-	 * 移除指定装备实例(同时移除掉装备所赋予的能力和附加的Actors)
+	 * [Server Only] 移除指定装备实例(同时移除掉装备所赋予的能力和附加的Actors)
 	 * @param Instance 要移除的实例对象
 	 */
 	void RemoveEntry(UYcEquipmentInstance* Instance);
@@ -182,14 +182,22 @@ private:
 	friend struct FYcEquipmentList;
 	
 	/**
-	 * 缓存装备实例（用于复用）
+	 * 缓存装备实例
+	 * 
+	 * CachedEquipmentInstances 不参与网络复制，由每个端各自维护，策略统一：
+	 * 
+	 * 【统一策略】"首次创建时缓存"
+	 * - 缓存时机：
+	 *   - 服务端：AddEntry() 首次创建装备实例时
+	 *   - 客户端：PostReplicatedAdd() 收到服务器同步时
+	 * - 移除时机：物品从 QuickBar 移除时统一清理
+	 *   - 服务端：调用 ClearCachedEquipmentForItem
+	 *   - 客户端：通过 ClientClearCachedEquipmentForItem RPC
+	 * - 目的：
+	 *   - 服务端：避免重复创建 UObject，复用已有的 EquipmentInstance
+	 *   - 客户端：用于客户端预测显示，快速切换时复用
 	 */
 	void CacheEquipmentInstance(UYcInventoryItemInstance* ItemInstance, UYcEquipmentInstance* EquipmentInstance);
-	
-	/**
-	 * 从缓存中移除并返回装备实例（用于复用时取出）
-	 */
-	UYcEquipmentInstance* TakeCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance);
 	
 	/** 当前已装备的装备列表 */
 	UPROPERTY(Replicated, VisibleAnywhere)
@@ -197,10 +205,13 @@ private:
 	
 	/** 
 	 * 缓存的装备实例映射（物品实例 -> 装备实例）
-	 * 用于在卸下装备时保留装备实例和其生成的Actors，以便下次装备时复用
-	 * 不参与网络复制，服务器和客户端各自维护
-	 * 服务器先在FYcEquipmentList::RemoveEntry()中缓存, 然后客户端在FYcEquipmentList::PreReplicatedRemove()中缓存
+	 * 
+	 * 不参与网络复制，服务器和客户端各自维护，策略统一为"首次创建时缓存"：
+	 * - 缓存时机：服务端在 AddEntry 首次创建时，客户端在 PostReplicatedAdd 时
+	 * - 清理时机：物品从 QuickBar 移除时统一清理
+	 * 
+	 * @see CacheEquipmentInstance 详细说明
 	 */
-	UPROPERTY()
+	UPROPERTY(VisibleInstanceOnly)
 	TMap<TObjectPtr<UYcInventoryItemInstance>, TObjectPtr<UYcEquipmentInstance>> CachedEquipmentInstances;
 };

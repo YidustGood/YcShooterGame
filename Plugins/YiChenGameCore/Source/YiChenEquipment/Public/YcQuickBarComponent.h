@@ -206,6 +206,9 @@ public:
 	/** 移除指定插槽中的物品，返回值是被移除的物品 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
 	UYcInventoryItemInstance* RemoveItemFromSlot(int32 SlotIndex);
+	
+	UFUNCTION(Client, Reliable)
+	void ClientClearCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance);
 
 private:
 	// ========================================================================

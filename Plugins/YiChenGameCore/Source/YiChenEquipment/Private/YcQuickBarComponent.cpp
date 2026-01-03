@@ -308,11 +308,10 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 	{
 		bHasPendingSlotChange = false;
 		PendingSlotIndex = -1;
-		// 如果有预测显示的装备，隐藏它
+		// 如果有预测显示的装备，卸下它
 		if (PredictedEquippedInst)
 		{
-			PredictedEquippedInst->HideEquipmentActors();
-			PredictedEquippedInst->HideLocalEquipmentActors();
+			PredictedEquippedInst->OnUnequipped();
 			PredictedEquippedInst = nullptr;
 		}
 	}
@@ -323,7 +322,10 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 
 		if (Result != nullptr)
 		{
-			// 清理该物品的缓存装备实例（真正销毁 Actors）
+			// 通知客户端清理缓存的装备实例
+			ClientClearCachedEquipmentForItem(Result);
+			
+			// 服务端清理缓存装备实例（真正销毁 Actors）
 			if (UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager())
 			{
 				EquipmentManager->ClearCachedEquipmentForItem(Result);
@@ -334,6 +336,14 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 	}
 
 	return Result;
+}
+
+void UYcQuickBarComponent::ClientClearCachedEquipmentForItem_Implementation(UYcInventoryItemInstance* ItemInstance)
+{
+	if (UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager())
+	{
+		EquipmentManager->ClearCachedEquipmentForItem(ItemInstance);
+	}
 }
 
 // ============================================================================
@@ -352,19 +362,20 @@ void UYcQuickBarComponent::ExecuteLocalPrediction(const int32 NewIndex)
 	// 2. 服务器确认的装备 (EquippedInst)
 	// ========================================================================
 	
-	// 隐藏预测显示的装备
+	// 卸下上一次预测显示的装备(玩家快速切换导致上一次预测的装备还未经服务器确认, 所以需要在这这里直接取消装备)
 	if (PredictedEquippedInst)
 	{
-		PredictedEquippedInst->HideEquipmentActors();
-		PredictedEquippedInst->HideLocalEquipmentActors();
+		PredictedEquippedInst->OnUnequipped();
 		PredictedEquippedInst = nullptr;
 	}
 	
-	// 隐藏服务器确认的装备
-	if (EquippedInst)
+	// 获得当前插槽缓存的EquipmentInst
+	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	UYcEquipmentInstance* CachedInstance = EquipmentManager->FindCachedEquipmentForItem(Slots[NewIndex]);
+	// 如果服务器确认的装备EquippedInst不是我们当前预测激活的EquipmentInstance就卸下它, 一般发生在从武器1直接切换到武器2的时候
+	if (EquippedInst && EquippedInst != CachedInstance)
 	{
-		EquippedInst->HideEquipmentActors();
-		EquippedInst->HideLocalEquipmentActors();
+		EquippedInst->OnUnequipped();
 	}
 	
 	// 设置新的预测状态
@@ -442,6 +453,14 @@ void UYcQuickBarComponent::ReconcilePrediction(int32 ServerIndex)
 		bHasPendingSlotChange = false;
 		PendingSlotIndex = -1;
 		PredictedEquippedInst = nullptr;
+		
+		// 客户端第一次装备没办法在本地预测设置EquippedInst, 需要服务器同步后在这里设置
+		if (EquippedInst == nullptr && ServerIndex != -1)
+		{
+			const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+			UYcEquipmentInstance* CachedInstance = EquipmentManager->FindCachedEquipmentForItem(Slots[ServerIndex]);
+			EquippedInst = CachedInstance;
+		}
 	}
 	else
 	{
@@ -456,8 +475,9 @@ void UYcQuickBarComponent::RollbackPrediction(int32 ServerIndex)
 	// 隐藏预测显示的装备
 	if (PredictedEquippedInst)
 	{
-		PredictedEquippedInst->HideEquipmentActors();
-		PredictedEquippedInst->HideLocalEquipmentActors();
+		// PredictedEquippedInst->HideEquipmentActors();
+		// PredictedEquippedInst->HideLocalEquipmentActors();
+		PredictedEquippedInst->OnUnequipped();
 		PredictedEquippedInst = nullptr;
 	}
 	
@@ -509,9 +529,8 @@ void UYcQuickBarComponent::EquipItemInSlot_Predicted(const int32 SlotIndex)
 	UYcEquipmentInstance* CachedInstance = EquipmentManager->FindCachedEquipmentForItem(SlotItem);
 	if (CachedInstance)
 	{
-		// 找到缓存的装备实例，显示它
-		CachedInstance->ShowEquipmentActors();
-		CachedInstance->ShowLocalEquipmentActors();
+		// 找到缓存的装备实例，调用装备事件
+		CachedInstance->OnEquipped();
 		PredictedEquippedInst = CachedInstance;
 		
 		// 同时设置 EquippedInst，这样卸载预测时可以直接使用
@@ -531,19 +550,17 @@ void UYcQuickBarComponent::EquipItemInSlot_Predicted(const int32 SlotIndex)
 
 void UYcQuickBarComponent::UnequipItemInSlot_Predicted()
 {
-	// 隐藏预测显示的装备
+	// 卸下上一次预测显示的装备(玩家快速切换导致上一次预测的装备还未经服务器确认, 所以需要在这这里直接取消装备)
 	if (PredictedEquippedInst)
 	{
-		PredictedEquippedInst->HideEquipmentActors();
-		PredictedEquippedInst->HideLocalEquipmentActors();
+		PredictedEquippedInst->OnUnequipped();
 		PredictedEquippedInst = nullptr;
 	}
 	
-	// 隐藏当前装备的实例（可能是服务器复制过来的）
+	// 卸下当前经服务器确认装备的实例
 	if (EquippedInst)
 	{
-		EquippedInst->HideEquipmentActors();
-		EquippedInst->HideLocalEquipmentActors();
+		EquippedInst->OnUnequipped();
 		// 不清空 EquippedInst，因为它可能还需要用于后续操作
 		return;
 	}
@@ -572,7 +589,7 @@ void UYcQuickBarComponent::UnequipItemInSlot_Predicted()
 	{
 		if (ExistingInst && ExistingInst->GetAssociatedItem() == CurrentSlotItem)
 		{
-			ExistingInst->HideEquipmentActors();
+			ExistingInst->OnUnequipped();
 			// 设置 EquippedInst，下次就不用再查找了
 			EquippedInst = ExistingInst;
 			UE_LOG(LogYcEquipment, Verbose, TEXT("UnequipItemInSlot_Predicted: 从装备列表中找到并隐藏装备实例"));

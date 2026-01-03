@@ -32,36 +32,14 @@ void FYcEquipmentList::PreReplicatedRemove(const TArrayView<int32> RemovedIndice
 	{
 		if (const FYcAppliedEquipmentEntry& Entry = Equipments[Index]; Entry.Instance != nullptr)
 		{
-			// 检查是否配置为不销毁（可复用）
-			bool bShouldCache = false;
-			if (const FYcEquipmentDefinition* EquipDef = Entry.Instance->GetEquipmentDef())
-			{
-				for (const FYcEquipmentActorToSpawn& SpawnInfo : EquipDef->ActorsToSpawn)
-				{
-					if (!SpawnInfo.bDestroyOnUnequip)
-					{
-						bShouldCache = true;
-						break;
-					}
-				}
-			}
-			// 只需要主控端缓存, 模拟客户端用不上
-			if (bShouldCache && EquipmentManager && Entry.OwnerItemInstance && LocalRole == ROLE_AutonomousProxy)
-			{
-				// 客户端缓存装备实例，用于主控端做预测显示
-				EquipmentManager->CacheEquipmentInstance(Entry.OwnerItemInstance, Entry.Instance);
-			}
-			
 			/**
 			 * 由于装备的附加Actor的显示和隐藏需要配合主控客户端做预测所以服务端也不通过SetActorHiddenInGame()了,
 			 * 而是直接设置组件可视性这不会自动同步给模拟客户端, 所以我们要在移除装备实例同步到客户端时额外处理模拟客户端对于装备附加Actor的隐藏
 			 */
 			if (LocalRole == ROLE_SimulatedProxy)
 			{
-				Entry.Instance->HideEquipmentActors();
+				Entry.Instance->OnUnequipped();
 			}
-			
-			Entry.Instance->OnUnequipped();
 		}
 	}
 }
@@ -76,21 +54,40 @@ void FYcEquipmentList::PostReplicatedAdd(const TArrayView<int32> AddedIndices, i
 	for (int32 Index : AddedIndices)
 	{
 		const FYcAppliedEquipmentEntry& Entry = Equipments[Index];
-		if (Entry.Instance != nullptr)
+		if (Entry.Instance == nullptr) continue;
+		
+		Entry.Instance->SetInstigator(Entry.OwnerItemInstance);
+		
+		// 因为装备可能包含只需要在控制客户端生成的本地Actor, 所以需要在这里调用进行一次控制端的本地生成, 内部会处理判断生成逻辑
+		Entry.Instance->SpawnEquipmentActors(Entry.Instance->EquipmentDef->ActorsToSpawn);
+		
+		/**
+		 * 由于装备的附加Actor的显示和隐藏需要配合主控客户端做预测所以服务端也不通过SetActorHiddenInGame()了,
+		 * 而是直接设置组件可视性这不会自动同步给模拟客户端, 所以我们要在添加的装备实例同步到客户端时额外处理模拟客户端对于装备附加Actor的显示
+		 */
+		if (LocalRole == ROLE_SimulatedProxy || !EquipmentManager->FindCachedEquipmentForItem(Entry.Instance->GetAssociatedItem()))
 		{
-			Entry.Instance->SetInstigator(Entry.OwnerItemInstance);
 			Entry.Instance->OnEquipped();
-			// 因为装备可能包含只需要在控制客户端生成的Actor所以需要在这里调用进行一次控制端的本地生成, 内部会处理判断生成逻辑
-			Entry.Instance->SpawnEquipmentActors(Entry.Instance->EquipmentDef->ActorsToSpawn);
-			
-			/**
-			 * 由于装备的附加Actor的显示和隐藏需要配合主控客户端做预测所以服务端也不通过SetActorHiddenInGame()了,
-			 * 而是直接设置组件可视性这不会自动同步给模拟客户端, 所以我们要在添加的装备实例同步到客户端时额外处理模拟客户端对于装备附加Actor的显示
-			 */
-			if (LocalRole == ROLE_SimulatedProxy)
+		}
+		
+		// 检查是否配置为不销毁（可复用）
+		bool bShouldCache = false;
+		if (const FYcEquipmentDefinition* EquipDef = Entry.Instance->GetEquipmentDef())
+		{
+			for (const FYcEquipmentActorToSpawn& SpawnInfo : EquipDef->ActorsToSpawn)
 			{
-				Entry.Instance->ShowEquipmentActors();
+				if (!SpawnInfo.bDestroyOnUnequip)
+				{
+					bShouldCache = true;
+					break;
+				}
 			}
+		}
+		// 只需要主控端缓存, 模拟客户端用不上
+		if (bShouldCache && EquipmentManager && Entry.OwnerItemInstance && LocalRole == ROLE_AutonomousProxy)
+		{
+			// 客户端缓存装备实例，用于主控端做预测显示
+			EquipmentManager->CacheEquipmentInstance(Entry.OwnerItemInstance, Entry.Instance);
 		}
 	}
 }
@@ -120,15 +117,12 @@ UYcEquipmentInstance* FYcEquipmentList::AddEntry(const FYcEquipmentDefinition& E
 	check(OwnerComponent);
 	check(OwnerComponent->GetOwner()->HasAuthority());
 	
-	// 2. 尝试从缓存中获取已有的装备实例
+	// 2. 尝试从缓存中获取已有的装备实例（不移除，保持"一直缓存"策略）
 	UYcEquipmentManagerComponent* EquipmentManager = Cast<UYcEquipmentManagerComponent>(OwnerComponent);
 	UYcEquipmentInstance* ExistingInstance = EquipmentManager ? EquipmentManager->FindCachedEquipmentForItem(ItemInstance) : nullptr;
 	
 	if (ExistingInstance)
 	{
-		// 复用缓存的装备实例，从缓存中移除
-		EquipmentManager->TakeCachedEquipmentForItem(ItemInstance);
-		
 		FYcAppliedEquipmentEntry& NewEntry = Equipments.AddDefaulted_GetRef();
 		NewEntry.Instance = ExistingInstance;
 		NewEntry.OwnerItemInstance = ItemInstance;
@@ -142,7 +136,7 @@ UYcEquipmentInstance* FYcEquipmentList::AddEntry(const FYcEquipmentDefinition& E
 			}
 		}
 		
-		// 显示之前隐藏的Actors（内部会处理复用逻辑）
+		// 处理装备附加Actors（内部会处理复用逻辑）
 		ExistingInstance->SpawnEquipmentActors(EquipmentDef.ActorsToSpawn);
 		
 		MarkItemDirty(NewEntry);
@@ -176,8 +170,23 @@ UYcEquipmentInstance* FYcEquipmentList::AddEntry(const FYcEquipmentDefinition& E
 	
 	// 5. 生成装备附带的Actor并附加到玩家角色身
 	NewEntry.Instance->SpawnEquipmentActors(EquipmentDef.ActorsToSpawn);
+	
+	// 6. 检查是否需要缓存（用于后续复用）
+	bool bShouldCache = false;
+	for (const FYcEquipmentActorToSpawn& SpawnInfo : EquipmentDef.ActorsToSpawn)
+	{
+		if (!SpawnInfo.bDestroyOnUnequip)
+		{
+			bShouldCache = true;
+			break;
+		}
+	}
+	if (bShouldCache)
+	{
+		EquipmentManager->CacheEquipmentInstance(ItemInstance, NewEntry.Instance);
+	}
 
-	// 6. 标记为脏，已触发FastArray的网络同步
+	// 7. 标记为脏，触发FastArray的网络同步
 	MarkItemDirty(NewEntry);
 	return NewEntry.Instance;
 }
@@ -197,8 +206,6 @@ void FYcEquipmentList::RemoveEntry(UYcEquipmentInstance* Instance)
 		return;
 	}
 
-	UYcEquipmentManagerComponent* EquipmentManager = Cast<UYcEquipmentManagerComponent>(OwnerComponent);
-
 	// 2. 遍历当前的装备实例列表，并将其移除
 	for (auto EntryIt = Equipments.CreateIterator(); EntryIt; ++EntryIt)
 	{
@@ -211,6 +218,7 @@ void FYcEquipmentList::RemoveEntry(UYcEquipmentInstance* Instance)
 			}
 			
 			// 根据配置决定是销毁还是隐藏装备Actors
+			// 注意：缓存已在 AddEntry 时完成，这里只需要判断是否销毁 Actors
 			bool bShouldDestroy = true;
 			if (const FYcEquipmentDefinition* EquipDef = Instance->GetEquipmentDef())
 			{
@@ -229,15 +237,7 @@ void FYcEquipmentList::RemoveEntry(UYcEquipmentInstance* Instance)
 			{
 				Instance->DestroyEquipmentActors();
 			}
-			else
-			{
-				// 隐藏Actors并缓存装备实例以便复用
-				Instance->HideEquipmentActors();
-				if (EquipmentManager && Entry.OwnerItemInstance)
-				{
-					EquipmentManager->CacheEquipmentInstance(Entry.OwnerItemInstance, Instance);
-				}
-			}
+			// 不销毁时，Actors 保持隐藏状态，等待下次装备时复用
 			
 			// 移除当前装备实例并进行标记网络同步
 			EntryIt.RemoveCurrent();
@@ -393,18 +393,6 @@ void UYcEquipmentManagerComponent::CacheEquipmentInstance(UYcInventoryItemInstan
 	CachedEquipmentInstances.Add(ItemInstance, EquipmentInstance);
 	UE_LOG(LogYcEquipment, Verbose, TEXT("CacheEquipmentInstance: 缓存装备实例 %s 用于物品 %s"), 
 		*GetNameSafe(EquipmentInstance), *GetNameSafe(ItemInstance));
-}
-
-UYcEquipmentInstance* UYcEquipmentManagerComponent::TakeCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance)
-{
-	if (!ItemInstance) return nullptr;
-	
-	TObjectPtr<UYcEquipmentInstance> Result;
-	if (CachedEquipmentInstances.RemoveAndCopyValue(ItemInstance, Result))
-	{
-		return Result.Get();
-	}
-	return nullptr;
 }
 
 void UYcEquipmentManagerComponent::ClearCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance)

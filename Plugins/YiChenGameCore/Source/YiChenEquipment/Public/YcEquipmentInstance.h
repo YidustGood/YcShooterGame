@@ -158,8 +158,8 @@ public:
 	 * @param bReplicateActor true查找服务器复制的Actor，false查找本地Actor
 	 * @return 找到的Actor，如果不存在则返回nullptr
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Equipment")
-	AActor* FindSpawnedActorByTag(FName Tag, bool bReplicateActor);
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Equipment")
+	AActor* FindSpawnedActorByTag(FName Tag, bool bReplicateActor = true);
 	
 	/**
 	 * 获取装备状态标记

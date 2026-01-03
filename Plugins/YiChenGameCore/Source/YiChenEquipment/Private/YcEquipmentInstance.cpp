@@ -351,19 +351,20 @@ void UYcEquipmentInstance::WakeActorFromDormant(AActor* Actor, bool bReplicated)
 
 AActor* UYcEquipmentInstance::FindSpawnedActorByTag(const FName Tag, const bool bReplicateActor)
 {
-	if(bReplicateActor)
+	const TArray<TObjectPtr<AActor>>& TargetArray = bReplicateActor ? SpawnedActors : OwnerClientSpawnedActors;
+	
+	for (AActor* Actor : TargetArray)
 	{
-		for (const auto& SpawnedActor : SpawnedActors)
+		if (!IsValid(Actor)) continue;
+		
+		// 优先检查 EquipmentActorComponent 中的 Tags（服务器和客户端都有效）
+		if (UYcEquipmentActorComponent* EquipComp = Actor->FindComponentByClass<UYcEquipmentActorComponent>())
 		{
-			if(IsValid(SpawnedActor) && SpawnedActor->ActorHasTag(Tag)) return SpawnedActor;
+			if (EquipComp->HasEquipmentTag(Tag)) return Actor;
 		}
-	}
-	else
-	{
-		for (const auto& OwnerClientSpawnedActor : OwnerClientSpawnedActors)
-		{
-			if(IsValid(OwnerClientSpawnedActor) && OwnerClientSpawnedActor->ActorHasTag(Tag)) return OwnerClientSpawnedActor;
-		}
+		
+		// 备选：检查 Actor 原生 Tags（仅服务器端有效）
+		if (Actor->ActorHasTag(Tag)) return Actor;
 	}
 	return nullptr;
 }
@@ -440,15 +441,23 @@ AActor* UYcEquipmentInstance::SpawnEquipActorInternal(const TSubclassOf<AActor>&
 		UE_LOG(LogYcEquipment, Error, TEXT("UYcEquipmentInstance::SpawnEquipActorInternal: Spawn equip actor failed."));
 		return nullptr;
 	}
+	
 	NewActor->FinishSpawning(FTransform::Identity, /*bIsDefaultTransform=*/ true);
 	NewActor->SetActorRelativeTransform(SpawnInfo.AttachTransform);
 	NewActor->AttachToComponent(AttachTarget, FAttachmentTransformRules::KeepRelativeTransform, SpawnInfo.AttachSocket);
-	NewActor->Tags.Append(SpawnInfo.ActorTags);
+	NewActor->Tags.Append(SpawnInfo.ActorTags);  // 服务器端仍然设置 Actor Tags（兼容性）
 	
-	// 添加装备Actor组件，用于反向查询所属装备实例
-	UYcEquipmentActorComponent* EquipComp = NewObject<UYcEquipmentActorComponent>(NewActor);
-	EquipComp->OwningEquipment = const_cast<UYcEquipmentInstance*>(this);
-	EquipComp->RegisterComponent();
+	// 设置装备Actor组件数据，用于反向查询所属装备实例和存储 Tags, 如果没有则打印错误日志提示开发者添加
+	if (UYcEquipmentActorComponent* EquipComp = NewActor->FindComponentByClass<UYcEquipmentActorComponent>())
+	{
+		EquipComp->SetIsReplicated(NewActor->GetIsReplicated());
+		EquipComp->EquipmentInst = this;
+		EquipComp->EquipmentTags = SpawnInfo.ActorTags;  // 设置 Tags，会通过组件复制到客户端
+		EquipComp->OnRep_EquipmentInst(); // 服务端手动触发委托, 客户端网络同步到达自动触发
+	}else
+	{
+		UE_LOG(LogYcEquipment, Error, TEXT("UYcEquipmentInstance::SpawnEquipActorInternal: %s 这个装备生成的Actor没有添加UYcEquipmentActorComponent组件, 请添加!"), *GetNameSafe(NewActor->GetClass()));
+	}
 	
 	return NewActor;
 }

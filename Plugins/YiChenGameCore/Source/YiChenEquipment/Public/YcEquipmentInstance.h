@@ -9,6 +9,13 @@
 class UYcInventoryItemInstance;
 class UYcEquipmentManagerComponent;
 
+/** 
+ * 装备事件委托
+ * 用于通知外部系统装备状态变化，支持蓝图绑定
+ * @param EquipmentInst 触发事件的装备实例
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FEquipmentDelegete, UYcEquipmentInstance*, EquipmentInst);
+
 /**
  * 装备实例基类
  * 
@@ -199,6 +206,46 @@ public:
 	 * 可在子类中重写以扩展卸载后的逻辑
 	 */
 	virtual void OnUnequipped();
+	
+	/** 
+	 * 装备完成事件
+	 * 在 OnEquipped 流程中通过 BroadcastEquippedEvent 广播
+	 * 可用于：播放装备动画完成后的后续逻辑、UI 更新等
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Equipment")
+	FEquipmentDelegete OnEquippedEvent;
+	
+	/** 
+	 * 卸下完成事件
+	 * 在 OnUnequipped 流程中通过 BroadcastUnequippedEvent 广播
+	 * 可用于：播放卸下动画完成后触发下一把武器的装备、UI 更新等
+	 * 
+	 * 典型用法：武器切换时，监听当前武器的 OnUnequippedEvent，
+	 * 在卸下动画播放完成后调用 BroadcastUnequippedEvent，
+	 * 然后在回调中触发新武器的装备流程
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Equipment")
+	FEquipmentDelegete OnUnequippedEvent;
+	
+	/**
+	 * 广播装备完成事件
+	 * 通常在装备动画播放完成后由蓝图调用
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Equipment")
+	void BroadcastEquippedEvent();
+	
+	/**
+	 * 广播卸下完成事件
+	 * 通常在卸下动画播放完成后由蓝图调用
+	 * 
+	 * 武器切换流程示例：
+	 * 1. 玩家按键切换武器 → QuickBar 调用当前武器的 OnUnequipped
+	 * 2. OnUnequipped 播放卸下动画
+	 * 3. 动画结束时调用 BroadcastUnequippedEvent
+	 * 4. 切换武器装备技能中监听该事件，收到后开始装备新武器
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Equipment")
+	void BroadcastUnequippedEvent();
 
 	//~=============================================================================
 	// Fragment查询接口

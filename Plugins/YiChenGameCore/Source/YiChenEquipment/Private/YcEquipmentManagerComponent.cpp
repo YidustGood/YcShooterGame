@@ -84,7 +84,7 @@ void FYcEquipmentList::PostReplicatedAdd(const TArrayView<int32> AddedIndices, i
 			}
 		}
 		// 只需要主控端缓存, 模拟客户端用不上
-		if (bShouldCache && EquipmentManager && Entry.OwnerItemInstance && LocalRole == ROLE_AutonomousProxy)
+		if (bShouldCache && EquipmentManager && Entry.OwnerItemInstance)
 		{
 			// 客户端缓存装备实例，用于主控端做预测显示
 			EquipmentManager->CacheEquipmentInstance(Entry.OwnerItemInstance, Entry.Instance);

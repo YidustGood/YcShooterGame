@@ -432,6 +432,16 @@ void UYcEquipmentInstance::OnUnequipped()
 	// 这里注意要在蓝图中调用隐藏装备附加Actor, 因为需要播放卸下装备的动画所以不能先隐藏
 }
 
+void UYcEquipmentInstance::BroadcastEquippedEvent()
+{
+	OnEquippedEvent.Broadcast(this);
+}
+
+void UYcEquipmentInstance::BroadcastUnequippedEvent()
+{
+	OnUnequippedEvent.Broadcast(this);
+}
+
 AActor* UYcEquipmentInstance::SpawnEquipActorInternal(const TSubclassOf<AActor>& ActorToSpawnClass,const FYcEquipmentActorToSpawn& SpawnInfo, USceneComponent* AttachTarget)
 {
 	AActor* NewActor = GetWorld()->SpawnActorDeferred<AActor>(ActorToSpawnClass, FTransform::Identity, GetPawn());

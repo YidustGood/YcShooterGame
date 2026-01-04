@@ -276,6 +276,20 @@ UYcInventoryItemInstance* UYcQuickBarComponent::GetSlotItem(const int32 ItemInde
 	return Slots.IsValidIndex(ItemIndex) ? Slots[ItemIndex] : nullptr;
 }
 
+UYcEquipmentInstance* UYcQuickBarComponent::GetSlotEquipmentInstance(int32 ItemIndex) const
+{
+	if (!Slots.IsValidIndex(ItemIndex)) return nullptr;
+	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	if (!EquipmentManager) return nullptr;
+	
+	return EquipmentManager->FindCachedEquipmentForItem(Slots[ItemIndex]);
+}
+
+UYcEquipmentInstance* UYcQuickBarComponent::GetActiveEquipmentInstance() const
+{
+	return GetSlotEquipmentInstance(ActiveSlotIndex);
+}
+
 bool UYcQuickBarComponent::AddItemToSlot(const int32 SlotIndex, UYcInventoryItemInstance* Item)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority())
@@ -717,6 +731,14 @@ void UYcQuickBarComponent::OnRep_ActiveSlotIndex(int32 InLastActiveSlotIndex)
 	if (IsLocallyControlled() && !GetOwner()->HasAuthority())
 	{
 		ReconcilePrediction(ActiveSlotIndex);
+	}
+	
+	// 设置模拟客户端的EquippedInst引用
+	if (GetOwner()->GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+		UYcEquipmentInstance* CachedInstance = EquipmentManager->FindCachedEquipmentForItem(Slots[ActiveSlotIndex]);
+		EquippedInst = CachedInstance;
 	}
 	
 	// 如果没有待确认的预测，或者预测已经被校正，广播消息

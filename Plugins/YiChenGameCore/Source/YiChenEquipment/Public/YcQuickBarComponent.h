@@ -162,7 +162,7 @@ public:
 	// ========================================================================
 	
 	/** 获取当前所有的插槽物品对象 */
-	UFUNCTION(BlueprintCallable, BlueprintPure=false)
+	UFUNCTION(BlueprintCallable, BlueprintPure)
 	TArray<UYcInventoryItemInstance*> GetSlots() const
 	{
 		return Slots;
@@ -172,24 +172,41 @@ public:
 	 * 获取当前激活的插槽序号
 	 * 注意：如果有待确认的预测切换，返回预测的索引以保持 UI 一致性
 	 */
-	UFUNCTION(BlueprintCallable, BlueprintPure=false)
+	UFUNCTION(BlueprintCallable, BlueprintPure)
 	int32 GetActiveSlotIndex() const;
 	
 	/** 获取服务器确认的激活插槽序号（不考虑预测状态） */
-	UFUNCTION(BlueprintCallable, BlueprintPure=false)
+	UFUNCTION(BlueprintCallable, BlueprintPure)
 	int32 GetConfirmedActiveSlotIndex() const { return ActiveSlotIndex; }
 
 	/** 获取当前激活的插槽中的库存物品 */
-	UFUNCTION(BlueprintCallable, BlueprintPure = false)
+	UFUNCTION(BlueprintCallable, BlueprintPure)
 	UYcInventoryItemInstance* GetActiveSlotItem() const;
 
 	/** 获取下一个空闲的插槽 */
-	UFUNCTION(BlueprintCallable, BlueprintPure=false)
+	UFUNCTION(BlueprintCallable, BlueprintPure)
 	int32 GetNextFreeItemSlot() const;
 
 	/** 获取指定插槽中的物品 */
-	UFUNCTION(BlueprintCallable, BlueprintPure=false)
+	UFUNCTION(BlueprintCallable, BlueprintPure)
 	UYcInventoryItemInstance* GetSlotItem(int32 ItemIndex) const;
+	
+	/** 
+	 * 获取指定插槽中物品对应的装备实例
+	 * 会从 EquipmentManager 的缓存中查找
+	 * @param ItemIndex 插槽索引
+	 * @return 装备实例，如果不存在则返回 nullptr
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure)
+	UYcEquipmentInstance* GetSlotEquipmentInstance(int32 ItemIndex) const;
+	
+	/** 
+	 * 获取当前激活插槽中物品对应的装备实例
+	 * 会从 EquipmentManager 的缓存中查找
+	 * @return 装备实例，如果不存在则返回 nullptr
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure)
+	UYcEquipmentInstance* GetActiveEquipmentInstance() const;
 	
 	// ========================================================================
 	// 物品管理接口（仅服务器）
@@ -320,11 +337,11 @@ private:
 	 * 待确认的预测插槽索引
 	 * 当客户端发起切换请求但尚未收到服务器确认时，存储预测的目标索引
 	 */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = "QuickBar", meta=(AllowPrivateAccess = "true"))
 	int32 PendingSlotIndex = -1;
 	
 	/** 是否有待确认的预测切换 */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = "QuickBar", meta=(AllowPrivateAccess = "true"))
 	bool bHasPendingSlotChange = false;
 	
 	/**
@@ -334,14 +351,14 @@ private:
 	 * - 每次收到服务器确认（OnRep_ActiveSlotIndex）时 -1
 	 * - 只有当计数为 0 时，才真正清除预测状态
 	 */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = "QuickBar", meta=(AllowPrivateAccess = "true"))
 	int32 PendingRequestCount = 0;
 	
 	/** 
 	 * 预测装备的实例对象（用于客户端预测显示）
 	 * 当预测失败需要回滚时，需要隐藏这个预测显示的装备
 	 */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadOnly, Category = "QuickBar", meta=(AllowPrivateAccess = "true"))
 	TObjectPtr<UYcEquipmentInstance> PredictedEquippedInst;
 	
 public:

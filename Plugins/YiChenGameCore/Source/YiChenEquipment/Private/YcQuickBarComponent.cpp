@@ -8,32 +8,16 @@
  * 本文件实现了带客户端预测的快捷物品栏切换机制。
  * 
  * 【核心设计理念】
- * 1. 服务器权威：所有实际的装备/卸载逻辑由服务器执行
- * 2. 客户端预测：主控客户端立即显示切换效果，无需等待服务器响应
- * 3. 状态校正：服务器响应后，客户端校正预测状态（如有差异则回滚）
- * 
- * 【预测机制详解】
- * 
- * 场景1：正常切换（预测成功）
- * ─────────────────────────────────────────────────────────────────────────
- * 时间线:  T0          T1              T2              T3
- *          │           │               │               │
- * 客户端:  输入切换 → 本地预测执行 → (等待中...) → 收到确认，清除预测状态
- *          │           │               │               │
- * 服务器:  (等待中) → 收到RPC → 验证&执行 → 复制属性
- * 
- * 场景2：预测失败（物品被移除）
- * ─────────────────────────────────────────────────────────────────────────
- * 时间线:  T0          T1              T2              T3
- *          │           │               │               │
- * 客户端:  输入切换 → 本地预测执行 → (等待中...) → 收到拒绝，回滚状态
- *          │           │               │               │
- * 服务器:  (等待中) → 收到RPC → 验证失败 → 复制原状态
+ * 1. 预创建：物品加入QuickBar时就创建装备实例，消除首次装备延迟
+ * 2. 状态驱动：通过 EquipmentState 控制装备的激活/停用
+ * 3. 客户端预测：主控客户端立即显示切换效果，无需等待服务器响应
+ * 4. 状态校正：服务器响应后，客户端校正预测状态
  * 
  * ============================================================================
  */
 
 #include "YcQuickBarComponent.h"
+
 #include "NativeGameplayTags.h"
 #include "YcEquipmentInstance.h"
 #include "YcEquipmentManagerComponent.h"
@@ -47,9 +31,9 @@
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcQuickBarComponent)
 
 // ============================================================================
-// Gameplay Tags 定义
+// Gameplay Tags
 // ============================================================================
-// 用于 UGameplayMessageSubsystem 进行消息广播
+
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_QuickBar_Message_SlotsChanged, "Yc.QuickBar.Message.SlotsChanged");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_QuickBar_Message_ActiveIndexChanged, "Yc.QuickBar.Message.ActiveIndexChanged");
 
@@ -67,7 +51,6 @@ void UYcQuickBarComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	// 使用 PushModel 方式进行网络复制，只在属性变化时才发送
 	FDoRepLifetimeParams SharedParams;
 	SharedParams.bIsPushBased = true;
 
@@ -88,12 +71,11 @@ void UYcQuickBarComponent::BeginPlay()
 }
 
 // ============================================================================
-// 客户端预测接口实现
+// 客户端预测接口
 // ============================================================================
 
 void UYcQuickBarComponent::SetActiveSlotIndex_WithPrediction(const int32 NewIndex)
 {
-	// 验证索引有效性（使用当前有效索引，考虑预测状态）
 	const int32 CurrentEffectiveIndex = GetActiveSlotIndex();
 	if (!Slots.IsValidIndex(NewIndex) || CurrentEffectiveIndex == NewIndex)
 	{
@@ -103,18 +85,39 @@ void UYcQuickBarComponent::SetActiveSlotIndex_WithPrediction(const int32 NewInde
 	// 主控客户端：执行本地预测
 	if (IsLocallyControlled() && !GetOwner()->HasAuthority())
 	{
+		// ========================================================================
+		// 边界情况处理：装备实例尚未同步到客户端
+		// ========================================================================
+		// 场景：玩家拾取物品后立即按键装备，但由于网络延迟（如300ms），
+		// EquipmentInstance 还在传输中，尚未到达客户端。
+		// 
+		// 处理策略：
+		// - 如果目标装备实例不存在，跳过本次请求（不预测，不发RPC）
+		// - 玩家发现没有响应会自然地再次按键
+		// - 等装备实例到达后，下次按键就能正常工作
+		// 
+		// 这种设计的优势：
+		// - 代码简洁，不需要复杂的"等待队列"或"延迟重试"机制
+		// - 高延迟是极端情况，为此增加复杂度不值得
+		// - 符合用户直觉：按键没反应就再按一次
+		// ========================================================================
+		if (!CanExecutePrediction(NewIndex))
+		{
+			UE_LOG(LogYcEquipment, Verbose, 
+				TEXT("SetActiveSlotIndex_WithPrediction: Equipment not yet replicated for slot %d, skipping"), NewIndex);
+			return;
+		}
+		
 		ExecuteLocalPrediction(NewIndex);
-		// 增加待确认请求计数
 		PendingRequestCount++;
 	}
 	
-	// 发送 Server RPC（所有端都需要发送，包括 Listen Server 的主机玩家）
+	// 发送 Server RPC
 	ServerSetActiveSlotIndex(NewIndex);
 }
 
 void UYcQuickBarComponent::DeactivateSlotIndex_WithPrediction(const int32 NewIndex)
 {
-	// 验证：只能取消当前激活的插槽（使用当前有效索引）
 	const int32 CurrentEffectiveIndex = GetActiveSlotIndex();
 	if (!Slots.IsValidIndex(NewIndex) || CurrentEffectiveIndex != NewIndex)
 	{
@@ -124,8 +127,16 @@ void UYcQuickBarComponent::DeactivateSlotIndex_WithPrediction(const int32 NewInd
 	// 主控客户端：执行本地预测
 	if (IsLocallyControlled() && !GetOwner()->HasAuthority())
 	{
+		// 同 SetActiveSlotIndex_WithPrediction 的边界情况处理
+		// 如果当前装备实例不存在，跳过预测
+		if (!CanExecutePrediction(NewIndex))
+		{
+			UE_LOG(LogYcEquipment, Verbose, 
+				TEXT("DeactivateSlotIndex_WithPrediction: Equipment not yet replicated for slot %d, skipping"), NewIndex);
+			return;
+		}
+		
 		ExecuteLocalPredictionDeactivate(NewIndex);
-		// 增加待确认请求计数
 		PendingRequestCount++;
 	}
 	
@@ -134,74 +145,53 @@ void UYcQuickBarComponent::DeactivateSlotIndex_WithPrediction(const int32 NewInd
 }
 
 // ============================================================================
-// Server RPC 实现
+// Server RPC
 // ============================================================================
 
 void UYcQuickBarComponent::ServerSetActiveSlotIndex_Implementation(int32 NewIndex)
 {
-	// 服务器验证和执行
-	if (Slots.IsValidIndex(NewIndex) && (ActiveSlotIndex != NewIndex))
+	if (!Slots.IsValidIndex(NewIndex) || ActiveSlotIndex == NewIndex)
 	{
-		// 取消装备当前插槽的物品
-		UnequipItemInSlot();
-
-		// 修改当前激活的 SlotIndex
-		SetActiveSlotIndex_Internal(NewIndex);
-
-		// 装备新激活的插槽
-		EquipItemInSlot();
+		return;
 	}
-	// @TODO ActiveSlotIndex在预测激活装备流程中似乎没有修改也不会触发OnRep, 导致主控端无法收到验证失败回滚的消息吧
-	// 如果验证失败，不做任何操作
-	// 客户端会在收到复制的 ActiveSlotIndex 后自动回滚
+	
+	// 停用当前装备
+	if (Slots.IsValidIndex(ActiveSlotIndex))
+	{
+		DeactivateSlotEquipment(ActiveSlotIndex);
+	}
+	
+	// 更新索引
+	SetActiveSlotIndex_Internal(NewIndex);
+	
+	// 激活新装备
+	ActivateSlotEquipment(NewIndex);
 }
 
 void UYcQuickBarComponent::ServerDeactivateSlotIndex_Implementation(int32 NewIndex)
 {
-	if (Slots.IsValidIndex(NewIndex) && (ActiveSlotIndex == NewIndex))
+	if (!Slots.IsValidIndex(NewIndex) || ActiveSlotIndex != NewIndex)
 	{
-		// 取消装备当前插槽的物品
-		UnequipItemInSlot();
-
-		// 修改当前激活的 SlotIndex 为 -1
-		SetActiveSlotIndex_Internal(-1);
+		return;
 	}
+	
+	// 停用当前装备
+	DeactivateSlotEquipment(NewIndex);
+	
+	// 更新索引
+	SetActiveSlotIndex_Internal(-1);
 }
 
 // ============================================================================
-// 兼容接口实现（保留原有行为）
-// ============================================================================
-
-void UYcQuickBarComponent::SetActiveSlotIndex_Implementation(const int32 NewIndex)
-{
-	if (Slots.IsValidIndex(NewIndex) && (ActiveSlotIndex != NewIndex))
-	{
-		UnequipItemInSlot();
-		SetActiveSlotIndex_Internal(NewIndex);
-		EquipItemInSlot();
-	}
-}
-
-void UYcQuickBarComponent::DeactivateSlotIndex_Implementation(const int32 NewIndex)
-{
-	if (Slots.IsValidIndex(NewIndex) && (ActiveSlotIndex == NewIndex))
-	{
-		UnequipItemInSlot();
-		SetActiveSlotIndex_Internal(-1);
-	}
-}
-
-// ============================================================================
-// 循环切换实现
+// 循环切换
 // ============================================================================
 
 void UYcQuickBarComponent::CycleActiveSlotForward()
 {
 	if (Slots.Num() < 2) return;
 	
-	// 使用当前有效的索引（考虑预测状态）
 	const int32 CurrentIndex = GetActiveSlotIndex();
-	const int32 OldIndex = (CurrentIndex < 0 ? Slots.Num() - 1 : CurrentIndex);
+	const int32 StartIndex = (CurrentIndex < 0 ? Slots.Num() - 1 : CurrentIndex);
 	int32 NewIndex = CurrentIndex;
 	
 	do
@@ -209,21 +199,19 @@ void UYcQuickBarComponent::CycleActiveSlotForward()
 		NewIndex = (NewIndex + 1) % Slots.Num();
 		if (Slots[NewIndex] != nullptr)
 		{
-			// 使用带预测的版本
 			SetActiveSlotIndex_WithPrediction(NewIndex);
 			return;
 		}
 	}
-	while (NewIndex != OldIndex);
+	while (NewIndex != StartIndex);
 }
 
 void UYcQuickBarComponent::CycleActiveSlotBackward()
 {
 	if (Slots.Num() < 2) return;
 
-	// 使用当前有效的索引（考虑预测状态）
 	const int32 CurrentIndex = GetActiveSlotIndex();
-	const int32 OldIndex = (CurrentIndex < 0 ? Slots.Num() - 1 : CurrentIndex);
+	const int32 StartIndex = (CurrentIndex < 0 ? Slots.Num() - 1 : CurrentIndex);
 	int32 NewIndex = CurrentIndex;
 	
 	do
@@ -231,21 +219,19 @@ void UYcQuickBarComponent::CycleActiveSlotBackward()
 		NewIndex = (NewIndex - 1 + Slots.Num()) % Slots.Num();
 		if (Slots[NewIndex] != nullptr)
 		{
-			// 使用带预测的版本
 			SetActiveSlotIndex_WithPrediction(NewIndex);
 			return;
 		}
 	}
-	while (NewIndex != OldIndex);
+	while (NewIndex != StartIndex);
 }
 
 // ============================================================================
-// 查询接口实现
+// 查询接口
 // ============================================================================
 
 int32 UYcQuickBarComponent::GetActiveSlotIndex() const
 {
-	// 如果有待确认的预测切换，返回预测的索引以保持 UI 一致性
 	if (bHasPendingSlotChange)
 	{
 		return PendingSlotIndex;
@@ -261,13 +247,13 @@ UYcInventoryItemInstance* UYcQuickBarComponent::GetActiveSlotItem() const
 
 int32 UYcQuickBarComponent::GetNextFreeItemSlot() const
 {
-	int32 SlotIndex = 0;
-	for (TObjectPtr<UYcInventoryItemInstance> ItemPtr : Slots)
+	for (int32 i = 0; i < Slots.Num(); ++i)
 	{
-		if (ItemPtr == nullptr) return SlotIndex;
-		++SlotIndex;
+		if (Slots[i] == nullptr)
+		{
+			return i;
+		}
 	}
-
 	return INDEX_NONE;
 }
 
@@ -278,128 +264,133 @@ UYcInventoryItemInstance* UYcQuickBarComponent::GetSlotItem(const int32 ItemInde
 
 UYcEquipmentInstance* UYcQuickBarComponent::GetSlotEquipmentInstance(int32 ItemIndex) const
 {
-	if (!Slots.IsValidIndex(ItemIndex)) return nullptr;
-	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
-	if (!EquipmentManager) return nullptr;
+	if (!Slots.IsValidIndex(ItemIndex) || !Slots[ItemIndex])
+	{
+		return nullptr;
+	}
 	
-	return EquipmentManager->FindCachedEquipmentForItem(Slots[ItemIndex]);
+	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	if (!EquipmentManager)
+	{
+		return nullptr;
+	}
+	
+	return EquipmentManager->FindEquipmentByItem(Slots[ItemIndex]);
 }
 
 UYcEquipmentInstance* UYcQuickBarComponent::GetActiveEquipmentInstance() const
 {
-	return GetSlotEquipmentInstance(ActiveSlotIndex);
+	return GetSlotEquipmentInstance(GetActiveSlotIndex());
 }
+
+// ============================================================================
+// 物品管理接口
+// ============================================================================
 
 bool UYcQuickBarComponent::AddItemToSlot(const int32 SlotIndex, UYcInventoryItemInstance* Item)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority())
 	{
-		UE_LOG(LogYcEquipment, Warning, TEXT("请在权威服务器上调用AddItemToSlot()函数向QuickBar添加物品."));
+		UE_LOG(LogYcEquipment, Warning, TEXT("AddItemToSlot: Must be called on server"));
 		return false;
 	}
 
-	if (Slots.IsValidIndex(SlotIndex) && Item != nullptr && Slots[SlotIndex] == nullptr)
+	if (!Slots.IsValidIndex(SlotIndex) || !Item || Slots[SlotIndex] != nullptr)
 	{
-		SetSlotsByIndex_Internal(SlotIndex, Item);
-		return true;
+		return false;
 	}
-	return false;
+	
+	// 设置插槽物品
+	SetSlotItem_Internal(SlotIndex, Item);
+	
+	// 预创建装备实例（如果物品可装备）
+	CreateSlotEquipment(SlotIndex);
+	
+	return true;
 }
 
 UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotIndex)
 {
-	UYcInventoryItemInstance* Result = nullptr;
-
-	// 如果要移除的是目前激活的插槽，先将该插槽的物品取消装备，并重置 ActiveSlotIndex
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		UE_LOG(LogYcEquipment, Warning, TEXT("RemoveItemFromSlot: Must be called on server"));
+		return nullptr;
+	}
+	
+	if (!Slots.IsValidIndex(SlotIndex))
+	{
+		return nullptr;
+	}
+	
+	UYcInventoryItemInstance* RemovedItem = Slots[SlotIndex];
+	if (!RemovedItem)
+	{
+		return nullptr;
+	}
+	
+	// 如果是当前激活的插槽，先停用
 	if (ActiveSlotIndex == SlotIndex)
 	{
-		UnequipItemInSlot();
+		DeactivateSlotEquipment(SlotIndex);
 		SetActiveSlotIndex_Internal(-1);
 	}
 	
-	// 如果客户端正在预测切换到这个插槽，清除预测状态
+	// 销毁装备实例
+	DestroySlotEquipment(SlotIndex);
+	
+	// 清除插槽
+	SetSlotItem_Internal(SlotIndex, nullptr);
+	
+	// 清除客户端预测状态（如果有）
 	if (bHasPendingSlotChange && PendingSlotIndex == SlotIndex)
 	{
 		bHasPendingSlotChange = false;
 		PendingSlotIndex = -1;
-		// 如果有预测显示的装备，卸下它
-		if (PredictedEquippedInst)
-		{
-			PredictedEquippedInst->OnUnequipped();
-			PredictedEquippedInst = nullptr;
-		}
 	}
-
-	if (Slots.IsValidIndex(SlotIndex))
-	{
-		Result = Slots[SlotIndex];
-
-		if (Result != nullptr)
-		{
-			// 通知客户端清理缓存的装备实例
-			ClientClearCachedEquipmentForItem(Result);
-			
-			// 服务端清理缓存装备实例（真正销毁 Actors）
-			if (UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager())
-			{
-				EquipmentManager->ClearCachedEquipmentForItem(Result);
-			}
-			
-			SetSlotsByIndex_Internal(SlotIndex, nullptr);
-		}
-	}
-
-	return Result;
-}
-
-void UYcQuickBarComponent::ClientClearCachedEquipmentForItem_Implementation(UYcInventoryItemInstance* ItemInstance)
-{
-	if (UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager())
-	{
-		EquipmentManager->ClearCachedEquipmentForItem(ItemInstance);
-	}
+	
+	return RemovedItem;
 }
 
 // ============================================================================
-// 客户端预测核心实现
+// 客户端预测实现
 // ============================================================================
 
 void UYcQuickBarComponent::ExecuteLocalPrediction(const int32 NewIndex)
 {
-	UE_LOG(LogYcEquipment, Verbose, TEXT("ExecuteLocalPrediction: 预测切换到插槽 %d (当前预测: %d, 服务器确认: %d)"), 
-		NewIndex, PendingSlotIndex, ActiveSlotIndex);
+	UE_LOG(LogYcEquipment, Verbose, TEXT("ExecuteLocalPrediction: %d -> %d"), GetActiveSlotIndex(), NewIndex);
 	
-	// ========================================================================
-	// 关键：先隐藏当前显示的装备
-	// 需要隐藏的是"当前实际显示的"装备，可能是：
-	// 1. 上一次预测显示的装备 (PredictedEquippedInst)
-	// 2. 服务器确认的装备 (EquippedInst)
-	// ========================================================================
-	
-	// 卸下上一次预测显示的装备(玩家快速切换导致上一次预测的装备还未经服务器确认, 所以需要在这这里直接取消装备)
-	if (PredictedEquippedInst)
-	{
-		PredictedEquippedInst->OnUnequipped();
-		PredictedEquippedInst = nullptr;
-	}
-	
-	// 获得当前插槽缓存的EquipmentInst
 	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
-	UYcEquipmentInstance* CachedInstance = EquipmentManager->FindCachedEquipmentForItem(Slots[NewIndex]);
-	// 如果服务器确认的装备EquippedInst不是我们当前预测激活的EquipmentInstance就卸下它, 一般发生在从武器1直接切换到武器2的时候
-	if (EquippedInst && EquippedInst != CachedInstance)
+	if (!EquipmentManager)
 	{
-		EquippedInst->OnUnequipped();
+		return;
 	}
 	
-	// 设置新的预测状态
+	// 隐藏当前装备
+	const int32 CurrentIndex = bHasPendingSlotChange ? PendingSlotIndex : ActiveSlotIndex;
+	if (Slots.IsValidIndex(CurrentIndex) && Slots[CurrentIndex])
+	{
+		if (UYcEquipmentInstance* CurrentEquipment = EquipmentManager->FindEquipmentByItem(Slots[CurrentIndex]))
+		{
+			// 设置状态为未装备（会触发 OnRep 和 OnUnequipped）
+			CurrentEquipment->SetEquipmentState(EYcEquipmentState::Unequipped);
+		}
+	}
+	
+	// 显示新装备
+	if (Slots.IsValidIndex(NewIndex) && Slots[NewIndex])
+	{
+		if (UYcEquipmentInstance* NewEquipment = EquipmentManager->FindEquipmentByItem(Slots[NewIndex]))
+		{
+			// 设置状态为已装备（会触发 OnRep 和 OnEquipped）
+			NewEquipment->SetEquipmentState(EYcEquipmentState::Equipped);
+		}
+	}
+	
+	// 设置预测状态
 	bHasPendingSlotChange = true;
 	PendingSlotIndex = NewIndex;
 	
-	// 执行本地预测装备（只处理视觉效果）
-	EquipItemInSlot_Predicted(NewIndex);
-	
-	// 广播消息，让 UI 立即响应
+	// 广播消息让 UI 立即响应
 	FYcQuickBarActiveIndexChangedMessage Message;
 	Message.Owner = GetOwner();
 	Message.ActiveIndex = NewIndex;
@@ -410,14 +401,27 @@ void UYcQuickBarComponent::ExecuteLocalPrediction(const int32 NewIndex)
 
 void UYcQuickBarComponent::ExecuteLocalPredictionDeactivate(int32 NewIndex)
 {
-	UE_LOG(LogYcEquipment, Verbose, TEXT("ExecuteLocalPredictionDeactivate: 预测取消激活插槽 %d"), NewIndex);
+	UE_LOG(LogYcEquipment, Verbose, TEXT("ExecuteLocalPredictionDeactivate: %d"), NewIndex);
+	
+	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	if (!EquipmentManager)
+	{
+		return;
+	}
+	
+	// 隐藏当前装备
+	if (Slots.IsValidIndex(NewIndex) && Slots[NewIndex])
+	{
+		if (UYcEquipmentInstance* Equipment = EquipmentManager->FindEquipmentByItem(Slots[NewIndex]))
+		{
+			// 设置状态为已装备（会触发 OnRep 和 OnEquipped）
+			Equipment->SetEquipmentState(EYcEquipmentState::Unequipped);
+		}
+	}
 	
 	// 设置预测状态
 	bHasPendingSlotChange = true;
 	PendingSlotIndex = -1;
-	
-	// 执行本地预测卸载
-	UnequipItemInSlot_Predicted();
 	
 	// 广播消息
 	FYcQuickBarActiveIndexChangedMessage Message;
@@ -430,7 +434,6 @@ void UYcQuickBarComponent::ExecuteLocalPredictionDeactivate(int32 NewIndex)
 
 void UYcQuickBarComponent::ReconcilePrediction(int32 ServerIndex)
 {
-	// 减少待确认请求计数
 	if (PendingRequestCount > 0)
 	{
 		PendingRequestCount--;
@@ -438,73 +441,68 @@ void UYcQuickBarComponent::ReconcilePrediction(int32 ServerIndex)
 	
 	if (!bHasPendingSlotChange)
 	{
-		// 没有待确认的预测，直接返回
 		return;
 	}
 	
-	UE_LOG(LogYcEquipment, Verbose, TEXT("ReconcilePrediction: 服务器索引=%d, 预测索引=%d, 剩余请求=%d"), 
+	UE_LOG(LogYcEquipment, Verbose, TEXT("ReconcilePrediction: Server=%d, Pending=%d, Remaining=%d"), 
 		ServerIndex, PendingSlotIndex, PendingRequestCount);
 	
-	// ========================================================================
-	// 快速连续切换装备处理：
-	// 如果还有待确认的请求，说明服务器返回的是中间状态，不是最终状态
-	// 此时不应该回滚，继续等待后续确认
-	// ========================================================================
+	// 快速连续切换：等待最终状态
 	if (PendingRequestCount > 0)
 	{
-		// 还有请求在路上，忽略这次中间状态的确认
-		UE_LOG(LogYcEquipment, Verbose, TEXT("ReconcilePrediction: 还有 %d 个请求待确认，忽略中间状态"), PendingRequestCount);
 		return;
 	}
 	
-	// 所有请求都已确认，检查最终状态是否与预测一致
+	// 检查预测是否成功
 	if (ServerIndex == PendingSlotIndex)
 	{
-		// 预测成功！服务器确认了我们的预测
-		UE_LOG(LogYcEquipment, Verbose, TEXT("ReconcilePrediction: 预测成功，清除预测状态"));
-		
-		// 清除预测状态
+		// 预测成功，清除预测状态
+		UE_LOG(LogYcEquipment, Verbose, TEXT("ReconcilePrediction: Prediction confirmed"));
 		bHasPendingSlotChange = false;
 		PendingSlotIndex = -1;
-		PredictedEquippedInst = nullptr;
-		
-		// 客户端第一次装备没办法在本地预测设置EquippedInst, 需要服务器同步后在这里设置
-		if (EquippedInst == nullptr && ServerIndex != -1)
-		{
-			const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
-			UYcEquipmentInstance* CachedInstance = EquipmentManager->FindCachedEquipmentForItem(Slots[ServerIndex]);
-			EquippedInst = CachedInstance;
-		}
 	}
 	else
 	{
-		// 预测失败！需要回滚
-		UE_LOG(LogYcEquipment, Warning, TEXT("ReconcilePrediction: 预测失败，回滚到服务器状态 %d"), ServerIndex);
+		// 预测失败，回滚
+		UE_LOG(LogYcEquipment, Warning, TEXT("ReconcilePrediction: Prediction failed, rolling back"));
 		RollbackPrediction(ServerIndex);
 	}
 }
 
 void UYcQuickBarComponent::RollbackPrediction(int32 ServerIndex)
 {
-	// 隐藏预测显示的装备
-	if (PredictedEquippedInst)
+	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	if (!EquipmentManager)
 	{
-		// PredictedEquippedInst->HideEquipmentActors();
-		// PredictedEquippedInst->HideLocalEquipmentActors();
-		PredictedEquippedInst->OnUnequipped();
-		PredictedEquippedInst = nullptr;
+		return;
 	}
 	
-	// 清理预测时设置的 EquippedInst
-	// 服务器会通过 EquipmentList 复制来设置正确的装备状态
-	EquippedInst = nullptr;
+	// 隐藏预测显示的装备
+	if (Slots.IsValidIndex(PendingSlotIndex) && Slots[PendingSlotIndex])
+	{
+		if (UYcEquipmentInstance* PredictedEquipment = EquipmentManager->FindEquipmentByItem(Slots[PendingSlotIndex]))
+		{
+			// 设置状态为未装备（会触发 OnRep 和 OnUnequipped）
+			PredictedEquipment->SetEquipmentState(EYcEquipmentState::Unequipped);
+		}
+	}
+	
+	// 显示服务器确认的装备
+	if (Slots.IsValidIndex(ServerIndex) && Slots[ServerIndex])
+	{
+		if (UYcEquipmentInstance* ServerEquipment = EquipmentManager->FindEquipmentByItem(Slots[ServerIndex]))
+		{
+			// 设置状态为已装备（会触发 OnRep 和 OnEquipped）
+			ServerEquipment->SetEquipmentState(EYcEquipmentState::Equipped);
+		}
+	}
 	
 	// 清除预测状态
 	bHasPendingSlotChange = false;
 	PendingSlotIndex = -1;
-	PendingRequestCount = 0;  // 重置请求计数
+	PendingRequestCount = 0;
 	
-	// 广播正确的状态，让 UI 回滚
+	// 广播正确的状态
 	FYcQuickBarActiveIndexChangedMessage Message;
 	Message.Owner = GetOwner();
 	Message.ActiveIndex = ServerIndex;
@@ -513,166 +511,131 @@ void UYcQuickBarComponent::RollbackPrediction(int32 ServerIndex)
 	MessageSystem.BroadcastMessage(TAG_Yc_QuickBar_Message_ActiveIndexChanged, Message);
 }
 
-void UYcQuickBarComponent::EquipItemInSlot_Predicted(const int32 SlotIndex)
-{
-	if (!Slots.IsValidIndex(SlotIndex))
-	{
-		return;
-	}
-	
-	UYcInventoryItemInstance* SlotItem = Slots[SlotIndex];
-	if (!IsValid(SlotItem))
-	{
-		return;
-	}
-
-	// 获得装备管理组件
-	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
-	if (!EquipmentManager)
-	{
-		return;
-	}
-	
-	// ========================================================================
-	// 客户端预测策略：
-	// 1. 尝试从客户端缓存中获取之前卸载的装备实例
-	// 2. 如果找到，显示它并设置 EquippedInst（用于后续卸载预测）
-	// 3. 如果没找到（第一次装备），只更新 UI，等待服务器创建装备实例对象同步到客户端
-	// ========================================================================
-	
-	UYcEquipmentInstance* CachedInstance = EquipmentManager->FindCachedEquipmentForItem(SlotItem);
-	if (CachedInstance)
-	{
-		// 找到缓存的装备实例，调用装备事件
-		CachedInstance->OnEquipped();
-		PredictedEquippedInst = CachedInstance;
-		
-		// 同时设置 EquippedInst，这样卸载预测时可以直接使用
-		// 预测失败时会在 RollbackPrediction 中清理
-		EquippedInst = CachedInstance;
-		
-		UE_LOG(LogYcEquipment, Verbose, TEXT("EquipItemInSlot_Predicted: 从缓存中找到装备实例，显示它"));
-	}
-	else
-	{
-		// 没有缓存（第一次装备该物品）
-		// 客户端无法预测显示武器模型，但 UI 状态已经更新
-		// 新武器的显示由服务器通过 EquipmentList 复制来完成
-		UE_LOG(LogYcEquipment, Verbose, TEXT("EquipItemInSlot_Predicted: 未找到缓存，等待服务器创建装备实例"));
-	}
-}
-
-void UYcQuickBarComponent::UnequipItemInSlot_Predicted()
-{
-	// 卸下上一次预测显示的装备(玩家快速切换导致上一次预测的装备还未经服务器确认, 所以需要在这这里直接取消装备)
-	if (PredictedEquippedInst)
-	{
-		PredictedEquippedInst->OnUnequipped();
-		PredictedEquippedInst = nullptr;
-	}
-	
-	// 卸下当前经服务器确认装备的实例
-	if (EquippedInst)
-	{
-		EquippedInst->OnUnequipped();
-		// 不清空 EquippedInst，因为它可能还需要用于后续操作
-		return;
-	}
-	
-	// ========================================================================
-	// 如果 EquippedInst 为 null，尝试从 EquipmentManager 的装备列表中查找
-	// 这种情况发生在：服务器复制了装备，但客户端的 EquippedInst 还没设置
-	// ========================================================================
-	
-	// 获取当前应该隐藏的物品（使用服务器确认的索引，而不是预测索引）
-	UYcInventoryItemInstance* CurrentSlotItem = Slots.IsValidIndex(ActiveSlotIndex) ? Slots[ActiveSlotIndex] : nullptr;
-	if (!CurrentSlotItem)
-	{
-		return;
-	}
-	
-	UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
-	if (!EquipmentManager)
-	{
-		return;
-	}
-	
-	// 遍历装备列表查找
-	TArray<UYcEquipmentInstance*> AllEquipments = EquipmentManager->GetEquipmentInstancesOfType(UYcEquipmentInstance::StaticClass());
-	for (UYcEquipmentInstance* ExistingInst : AllEquipments)
-	{
-		if (ExistingInst && ExistingInst->GetAssociatedItem() == CurrentSlotItem)
-		{
-			ExistingInst->OnUnequipped();
-			// 设置 EquippedInst，下次就不用再查找了
-			EquippedInst = ExistingInst;
-			UE_LOG(LogYcEquipment, Verbose, TEXT("UnequipItemInSlot_Predicted: 从装备列表中找到并隐藏装备实例"));
-			return;
-		}
-	}
-}
-
 // ============================================================================
 // 内部实现
 // ============================================================================
 
-void UYcQuickBarComponent::EquipItemInSlot()
+void UYcQuickBarComponent::ActivateSlotEquipment(int32 SlotIndex)
 {
-	check(Slots.IsValidIndex(ActiveSlotIndex));
-	check(EquippedInst == nullptr);
-
-	// 从插槽列中获取要激活的插槽物品
-	UYcInventoryItemInstance* SlotItem = Slots[ActiveSlotIndex];
-	if (!IsValid(SlotItem)) return;
-
-	// 在库存物品对象上查找装备定义片段
-	const FInventoryFragment_Equippable* Equippable = SlotItem->GetTypedFragment<FInventoryFragment_Equippable>();
-	if (!Equippable) return;
-
-	// 获得装备管理组件
-	UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
-	
-	if (!EquipmentManager) return;
-	// 装备指定类型的装备
-	EquippedInst = EquipmentManager->EquipItemByEquipmentDef(Equippable->EquipmentDef, SlotItem);
-}
-
-void UYcQuickBarComponent::UnequipItemInSlot()
-{
-	if (UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager())
+	if (!Slots.IsValidIndex(SlotIndex) || !Slots[SlotIndex])
 	{
-		if (EquippedInst == nullptr) return;
-
-		EquipmentManager->UnequipItem(EquippedInst);
-		EquippedInst = nullptr;
+		return;
+	}
+	
+	UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	if (!EquipmentManager)
+	{
+		return;
+	}
+	
+	UYcEquipmentInstance* Equipment = EquipmentManager->FindEquipmentByItem(Slots[SlotIndex]);
+	if (Equipment)
+	{
+		EquipmentManager->EquipItem(Equipment);
 	}
 }
 
-
-void UYcQuickBarComponent::SetSlotsByIndex_Internal(const int32 Index, UYcInventoryItemInstance* InItem)
+void UYcQuickBarComponent::DeactivateSlotEquipment(int32 SlotIndex)
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !Slots.IsValidIndex(Index)) return;
+	if (!Slots.IsValidIndex(SlotIndex) || !Slots[SlotIndex])
+	{
+		return;
+	}
+	
+	UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	if (!EquipmentManager)
+	{
+		return;
+	}
+	
+	UYcEquipmentInstance* Equipment = EquipmentManager->FindEquipmentByItem(Slots[SlotIndex]);
+	if (Equipment)
+	{
+		EquipmentManager->UnequipItem(Equipment);
+	}
+}
+
+void UYcQuickBarComponent::CreateSlotEquipment(int32 SlotIndex)
+{
+	if (!Slots.IsValidIndex(SlotIndex) || !Slots[SlotIndex])
+	{
+		return;
+	}
+	
+	UYcInventoryItemInstance* Item = Slots[SlotIndex];
+	
+	// 检查物品是否可装备
+	const FInventoryFragment_Equippable* Equippable = Item->GetTypedFragment<FInventoryFragment_Equippable>();
+	if (!Equippable)
+	{
+		return;
+	}
+	
+	UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	if (!EquipmentManager)
+	{
+		return;
+	}
+	
+	// 创建装备实例（Inactive状态，Actors隐藏）
+	EquipmentManager->CreateEquipment(Equippable->EquipmentDef, Item);
+}
+
+void UYcQuickBarComponent::DestroySlotEquipment(int32 SlotIndex)
+{
+	if (!Slots.IsValidIndex(SlotIndex) || !Slots[SlotIndex])
+	{
+		return;
+	}
+	
+	UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	if (!EquipmentManager)
+	{
+		return;
+	}
+	
+	UYcEquipmentInstance* Equipment = EquipmentManager->FindEquipmentByItem(Slots[SlotIndex]);
+	if (Equipment)
+	{
+		EquipmentManager->DestroyEquipment(Equipment);
+	}
+}
+
+void UYcQuickBarComponent::SetSlotItem_Internal(const int32 Index, UYcInventoryItemInstance* Item)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !Slots.IsValidIndex(Index))
+	{
+		return;
+	}
+	
 	UYcInventoryItemInstance* OldItem = Slots[Index];
-	Slots[Index] = InItem ? InItem : nullptr;
+	Slots[Index] = Item;
 
-	if (Slots[Index] == OldItem) return; //	当真的发生了变化才进行网络同步和通知
-
-	MARK_PROPERTY_DIRTY_FROM_NAME(UYcQuickBarComponent, Slots, this);
-	OnRep_Slots(); // 由于C++中服务端修改了属性不会调用OnRep函数，所以需要手动调用一下。
+	if (Slots[Index] != OldItem)
+	{
+		MARK_PROPERTY_DIRTY_FROM_NAME(UYcQuickBarComponent, Slots, this);
+		OnRep_Slots();
+	}
 }
 
 void UYcQuickBarComponent::SetActiveSlotIndex_Internal(int32 NewIndex)
 {
-	if (NewIndex > NumSlots) return;
+	if (NewIndex >= NumSlots)
+	{
+		return;
+	}
+	
 	const int32 OldIndex = ActiveSlotIndex;
 	ActiveSlotIndex = NewIndex;
-	if (ActiveSlotIndex == OldIndex) return;
-
-	if (GetOwner() && GetOwner()->HasAuthority())
+	
+	if (ActiveSlotIndex != OldIndex)
 	{
-		MARK_PROPERTY_DIRTY_FROM_NAME(UYcQuickBarComponent, ActiveSlotIndex, this);
+		if (GetOwner() && GetOwner()->HasAuthority())
+		{
+			MARK_PROPERTY_DIRTY_FROM_NAME(UYcQuickBarComponent, ActiveSlotIndex, this);
+		}
+		OnRep_ActiveSlotIndex(OldIndex);
 	}
-	OnRep_ActiveSlotIndex(OldIndex);
 }
 
 UYcEquipmentManagerComponent* UYcQuickBarComponent::FindEquipmentManager() const
@@ -681,7 +644,7 @@ UYcEquipmentManagerComponent* UYcQuickBarComponent::FindEquipmentManager() const
 	{
 		if (const APawn* Pawn = OwnerController->GetPawn())
 		{
-			if (UYcEquipmentManagerComponent* EquipmentManager = Pawn->FindComponentByClass<UYcEquipmentManagerComponent>()) return EquipmentManager;
+			return Pawn->FindComponentByClass<UYcEquipmentManagerComponent>();
 		}
 	}
 
@@ -689,13 +652,12 @@ UYcEquipmentManagerComponent* UYcQuickBarComponent::FindEquipmentManager() const
 	{
 		return Actor->FindComponentByClass<UYcEquipmentManagerComponent>();
 	}
-	UE_LOG(LogYcEquipment, Warning, TEXT("未能找到EquipmentManagerComponent,请检查Pawn或者PlayerController是否拥有装备管理组件."));
+	
 	return nullptr;
 }
 
 bool UYcQuickBarComponent::IsLocallyControlled() const
 {
-	// 支持 Controller 和 Pawn 两种挂载方式
 	if (const AController* OwnerController = Cast<AController>(GetOwner()))
 	{
 		return OwnerController->IsLocalController();
@@ -707,13 +669,33 @@ bool UYcQuickBarComponent::IsLocallyControlled() const
 	return false;
 }
 
+bool UYcQuickBarComponent::CanExecutePrediction(int32 SlotIndex) const
+{
+	// 检查插槽是否有效且有物品
+	if (!Slots.IsValidIndex(SlotIndex) || !Slots[SlotIndex])
+	{
+		return false;
+	}
+	
+	// 检查装备管理组件是否存在
+	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	if (!EquipmentManager)
+	{
+		return false;
+	}
+	
+	// 检查装备实例是否已同步到客户端
+	// 如果装备实例为空，说明服务器创建的实例还在网络传输中
+	UYcEquipmentInstance* Equipment = EquipmentManager->FindEquipmentByItem(Slots[SlotIndex]);
+	return Equipment != nullptr;
+}
+
 // ============================================================================
 // 网络复制回调
 // ============================================================================
 
 void UYcQuickBarComponent::OnRep_Slots()
 {
-	// 使用 GameplayMessageRouter 插件中的 UGameplayMessageSubsystem 子系统进行消息广播
 	FYcQuickBarSlotsChangedMessage Message;
 	Message.Owner = GetOwner();
 	Message.Slots = Slots;
@@ -722,27 +704,17 @@ void UYcQuickBarComponent::OnRep_Slots()
 	MessageSystem.BroadcastMessage(TAG_Yc_QuickBar_Message_SlotsChanged, Message);
 }
 
-void UYcQuickBarComponent::OnRep_ActiveSlotIndex(int32 InLastActiveSlotIndex)
+void UYcQuickBarComponent::OnRep_ActiveSlotIndex(int32 OldActiveSlotIndex)
 {
-	LastActiveSlotIndex = InLastActiveSlotIndex;
+	LastActiveSlotIndex = OldActiveSlotIndex;
 	
-	// 处理客户端预测校正
-	// 只在主控客户端（AutonomousProxy）上执行预测校正
+	// 主控客户端：处理预测校正
 	if (IsLocallyControlled() && !GetOwner()->HasAuthority())
 	{
 		ReconcilePrediction(ActiveSlotIndex);
 	}
 	
-	// 设置模拟客户端的EquippedInst引用
-	if (GetOwner()->GetLocalRole() == ROLE_SimulatedProxy)
-	{
-		const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
-		UYcEquipmentInstance* CachedInstance = EquipmentManager->FindCachedEquipmentForItem(Slots[ActiveSlotIndex]);
-		EquippedInst = CachedInstance;
-	}
-	
-	// 如果没有待确认的预测，或者预测已经被校正，广播消息
-	// 注意：如果有预测状态，消息已经在 ExecuteLocalPrediction 中广播过了
+	// 如果没有预测状态，广播消息
 	if (!bHasPendingSlotChange)
 	{
 		FYcQuickBarActiveIndexChangedMessage Message;

@@ -1,9 +1,10 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 #pragma once
 
 #include "YcAbilitySet.h"
 #include "YcEquipmentDefinition.h"
+#include "YcEquipmentInstance.h"
 #include "Components/PawnComponent.h"
 #include "Net/Serialization/FastArraySerializer.h"
 #include "YcEquipmentManagerComponent.generated.h"
@@ -12,19 +13,20 @@ struct FYcEquipmentList;
 class UYcEquipmentManagerComponent;
 class UYcInventoryItemInstance;
 
-////////////Applied Equipment FastArray Begin.//////////////
+// ============================================================================
+// FYcEquipmentEntry - 装备条目
+// ============================================================================
 
 /** 
- * 表示被应用到玩家上的一个装备实例结构体，包含了装备的定义、装备的实例对象、通过该装备已授予的技能集句柄信息(用于移除技能)
+ * 装备条目结构体
+ * 表示一个已创建的装备实例，包含装备实例、所属物品、已授予的技能句柄
  */
 USTRUCT(BlueprintType)
-struct FYcAppliedEquipmentEntry : public FFastArraySerializerItem
+struct FYcEquipmentEntry : public FFastArraySerializerItem
 {
 	GENERATED_BODY()
 
-	FYcAppliedEquipmentEntry()
-	{
-	}
+	FYcEquipmentEntry() = default;
 
 	FString GetDebugString() const;
 
@@ -32,71 +34,100 @@ private:
 	friend FYcEquipmentList;
 	friend UYcEquipmentManagerComponent;
 	
-	// 装备的实例对象
+	/** 装备实例对象 */
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UYcEquipmentInstance> Instance;
 	
-	// 装备所属的ItemInst
+	/** 装备所属的库存物品实例 */
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UYcInventoryItemInstance> OwnerItemInstance;
 
-	// 已授予的技能集句柄信息,非网络复制,只在服务器上存在,因为只有服务器能掌管技能的授予/收回等
+	/** 
+	 * 已授予的技能集句柄信息
+	 * 不参与网络复制，只在服务器上存在，因为只有服务器能掌管技能的授予/收回
+	 */
 	UPROPERTY(NotReplicated)
 	FYcAbilitySet_GrantedHandles GrantedHandles;
 };
 
-/** 已应用到玩家的装备列表*/
+// ============================================================================
+// FYcEquipmentList - 装备列表
+// ============================================================================
+
+/** 
+ * 装备列表
+ * 使用 FastArraySerializer 实现高效的网络同步
+ * 
+ * 语义：存储所有已创建的装备实例（包括已装备和未装备的）
+ */
 USTRUCT(BlueprintType)
 struct FYcEquipmentList : public FFastArraySerializer
 {
 	GENERATED_BODY()
 
-	FYcEquipmentList()
-		: OwnerComponent(nullptr)
-	{
-	}
-
-	FYcEquipmentList(UActorComponent* InOwnerComponent)
-		: OwnerComponent(InOwnerComponent)
-	{
-	}
+	FYcEquipmentList() : OwnerComponent(nullptr) {}
+	FYcEquipmentList(UActorComponent* InOwnerComponent) : OwnerComponent(InOwnerComponent) {}
 	
-	//~FFastArraySerializer contract
+	// ========================================================================
+	// FFastArraySerializer 接口
+	// ========================================================================
+	
 	void PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize);
 	void PostReplicatedAdd(const TArrayView<int32> AddedIndices, int32 FinalSize);
 	void PostReplicatedChange(const TArrayView<int32> ChangedIndices, int32 FinalSize);
-	//~End of FFastArraySerializer contract
 
 	bool NetDeltaSerialize(FNetDeltaSerializeInfo& DeltaParms)
 	{
-		return FFastArraySerializer::FastArrayDeltaSerialize<FYcAppliedEquipmentEntry, FYcEquipmentList>(Equipments, DeltaParms, *this);
+		return FFastArraySerializer::FastArrayDeltaSerialize<FYcEquipmentEntry, FYcEquipmentList>(Entries, DeltaParms, *this);
 	}
 
-	/**
-	 * [Server Only] 添加指定装备，同时授予装备的能力、附加装备的Actors
-	 * 根据指定类型的装备创建一个装备实例，并记录进Entries列表中
-	 * 
-	 * @param EquipmentDef 要添加的装备定义
-	 * @param ItemInstance 这个装备所属的ItemInst
-	 * @return 
-	 */
-	UYcEquipmentInstance* AddEntry(const FYcEquipmentDefinition& EquipmentDef, UYcInventoryItemInstance* ItemInstance);
+	// ========================================================================
+	// 装备管理接口（仅服务器）
+	// ========================================================================
 	
 	/**
-	 * [Server Only] 移除指定装备实例(同时移除掉装备所赋予的能力和附加的Actors)
-	 * @param Instance 要移除的实例对象
+	 * [Server Only] 创建装备实例
+	 * 创建装备实例并生成Actors（隐藏状态），但不装备（不授予GA）
+	 * 
+	 * @param EquipmentDef 装备定义
+	 * @param ItemInstance 所属的库存物品实例
+	 * @return 创建的装备实例
 	 */
-	void RemoveEntry(UYcEquipmentInstance* Instance);
+	UYcEquipmentInstance* CreateEntry(const FYcEquipmentDefinition& EquipmentDef, UYcInventoryItemInstance* ItemInstance);
+	
+	/**
+	 * [Server Only] 装备
+	 * 授予GA，显示Actors，设置状态为Equipped
+	 * 
+	 * @param Instance 要装备的装备实例
+	 */
+	void EquipEntry(UYcEquipmentInstance* Instance);
+	
+	/**
+	 * [Server Only] 卸下装备
+	 * 移除GA，隐藏Actors，设置状态为Unequipped
+	 * 
+	 * @param Instance 要卸下的装备实例
+	 */
+	void UnequipEntry(UYcEquipmentInstance* Instance);
+	
+	/**
+	 * [Server Only] 销毁装备实例
+	 * 销毁Actors，移除GA（如果有），从列表中移除
+	 * 
+	 * @param Instance 要销毁的装备实例
+	 */
+	void DestroyEntry(UYcEquipmentInstance* Instance);
 
 private:
-	// 获取OwnerActor的ASC组件对象
 	UYcAbilitySystemComponent* GetAbilitySystemComponent() const;
+	FYcEquipmentEntry* FindEntry(UYcEquipmentInstance* Instance);
 
 	friend UYcEquipmentManagerComponent;
 	
-	// 网络复制的装备实例列表
+	/** 装备条目列表 */
 	UPROPERTY(VisibleAnywhere)
-	TArray<FYcAppliedEquipmentEntry> Equipments;
+	TArray<FYcEquipmentEntry> Entries;
 
 	UPROPERTY(NotReplicated, VisibleAnywhere)
 	TObjectPtr<UActorComponent> OwnerComponent;
@@ -108,110 +139,158 @@ struct TStructOpsTypeTraits<FYcEquipmentList> : public TStructOpsTypeTraitsBase2
 	enum { WithNetDeltaSerializer = true };
 };
 
-////////////Applied Equipment FastArray End.//////////////
+// ============================================================================
+// UYcEquipmentManagerComponent - 装备管理组件
+// ============================================================================
 
 /**
- * Manages equipment applied to a pawn
- * 管理装备的组件,提供装备和卸载指定装备的能力
- * 通常是挂载到玩家控制的角色上, 角色死亡后组件负责清理已生成的装备Actor
+ * ============================================================================
+ * 装备管理组件 (Equipment Manager Component)
+ * ============================================================================
+ * 
+ * 管理角色的装备实例，提供创建、装备、卸下、销毁装备的能力。
+ * 通常挂载到玩家控制的角色上。
+ * 
+ * ============================================================================
+ * 核心设计：职责分离
+ * ============================================================================
+ * 
+ * 本组件采用"职责分离"设计，将装备的生命周期管理与状态管理分开：
+ * 
+ * 1. 生命周期管理：CreateEquipment / DestroyEquipment
+ *    - 控制装备实例的创建和销毁
+ *    - 控制Actors的生成和销毁
+ * 
+ * 2. 状态管理：EquipItem / UnequipItem
+ *    - 控制装备的装备/卸下状态
+ *    - 控制GA的授予/移除
+ *    - 控制Actors的显示/隐藏
+ * 
+ * 这种设计的优势：
+ * - 支持预创建：物品加入QuickBar时就创建装备实例，消除首次装备延迟
+ * - 网络开销小：状态切换只需同步一个枚举值，而不是整个Entry的增删
+ * - 逻辑清晰：创建/销毁 与 装备/卸下 是两个独立的概念
+ * 
+ * ============================================================================
+ * 典型使用流程
+ * ============================================================================
+ * 
+ * 1. 物品加入QuickBar时：
+ *    CreateEquipment() → 创建实例，生成Actors（隐藏），State=Unequipped
+ * 
+ * 2. 玩家装备武器时：
+ *    EquipItem() → 授予GA，显示Actors，State=Equipped
+ * 
+ * 3. 玩家切换武器时：
+ *    UnequipItem(旧) → 移除GA，隐藏Actors，State=Unequipped
+ *    EquipItem(新) → 授予GA，显示Actors，State=Equipped
+ * 
+ * 4. 物品从QuickBar移除时：
+ *    DestroyEquipment() → 销毁Actors，销毁实例
+ * 
+ * ============================================================================
  */
 UCLASS(ClassGroup=(YiChenGameCore), meta=(BlueprintSpawnableComponent), Blueprintable, BlueprintType)
 class YICHENEQUIPMENT_API UYcEquipmentManagerComponent : public UPawnComponent
 {
 	GENERATED_BODY()
+	
 public:
 	UYcEquipmentManagerComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
-	//~UActorComponent interface
-	//virtual void EndPlay() override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void InitializeComponent() override;
 	virtual void UninitializeComponent() override;
 	virtual void ReadyForReplication() override;
-	//~End of UActorComponent interface
 	
-	// [Server Only] 通过装备定义应用装备
-	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
-	UYcEquipmentInstance* EquipItemByEquipmentDef(const FYcEquipmentDefinition& EquipmentDef, UYcInventoryItemInstance* ItemInstance);
+	// ========================================================================
+	// 主要接口（仅服务器）
+	// ========================================================================
 	
-	// [Server Only] 只在服务器被调用
-	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
-	void UnequipItem(UYcEquipmentInstance* EquipmentInst);
+	/**
+	 * [Server Only] 创建装备实例
+	 * 创建装备实例并生成Actors（隐藏状态），但不装备
+	 * 
+	 * @param EquipmentDef 装备定义
+	 * @param ItemInstance 所属的库存物品实例
+	 * @return 创建的装备实例，失败返回nullptr
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Equipment")
+	UYcEquipmentInstance* CreateEquipment(const FYcEquipmentDefinition& EquipmentDef, UYcInventoryItemInstance* ItemInstance);
+	
+	/**
+	 * [Server Only] 装备
+	 * 授予GA，显示Actors，设置状态为Equipped
+	 * 
+	 * @param EquipmentInstance 要装备的装备实例
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Equipment")
+	void EquipItem(UYcEquipmentInstance* EquipmentInstance);
+	
+	/**
+	 * [Server Only] 卸下装备
+	 * 移除GA，隐藏Actors，设置状态为Unequipped
+	 * 
+	 * @param EquipmentInstance 要卸下的装备实例
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Equipment")
+	void UnequipItem(UYcEquipmentInstance* EquipmentInstance);
+	
+	/**
+	 * [Server Only] 销毁装备实例
+	 * 销毁Actors，从列表中移除
+	 * 
+	 * @param EquipmentInstance 要销毁的装备实例
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Equipment")
+	void DestroyEquipment(UYcEquipmentInstance* EquipmentInstance);
+	
+	// ========================================================================
+	// 查询接口
+	// ========================================================================
+	
+	/**
+	 * 根据物品实例查找装备实例
+	 * @param ItemInstance 库存物品实例
+	 * @return 对应的装备实例，如果不存在则返回nullptr
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Equipment")
+	UYcEquipmentInstance* FindEquipmentByItem(UYcInventoryItemInstance* ItemInstance) const;
+	
+	/**
+	 * 获取当前已装备的装备实例
+	 * @return 当前已装备的装备实例，如果没有则返回nullptr
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Equipment")
+	UYcEquipmentInstance* GetEquippedItem() const;
 	
 	/** 
-	* 返回给定装备类型的第一个实例，如果没有找到则返回nullptr
-	*/
-	UFUNCTION(BlueprintCallable, BlueprintPure)
-	UYcEquipmentInstance* GetFirstInstanceOfType(TSubclassOf<UYcEquipmentInstance> InstanceType);
+	 * 返回给定装备类型的第一个实例
+	 * @param InstanceType 装备实例类型
+	 * @return 找到的装备实例，如果没有则返回nullptr
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Equipment")
+	UYcEquipmentInstance* GetFirstInstanceOfType(TSubclassOf<UYcEquipmentInstance> InstanceType) const;
 
 	/**
-	 * 返回给定装备类型的所有装备实例，如果没有找到则返回空数组
+	 * 返回给定装备类型的所有装备实例
+	 * @param InstanceType 装备实例类型
+	 * @return 找到的装备实例数组
 	 */
-	UFUNCTION(BlueprintCallable, BlueprintPure)
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Equipment")
 	TArray<UYcEquipmentInstance*> GetEquipmentInstancesOfType(TSubclassOf<UYcEquipmentInstance> InstanceType) const;
 
+	/** 模板版本：获取指定类型的第一个装备实例 */
 	template <typename T>
 	T* GetFirstInstanceOfType()
 	{
-		return static_cast<T*>(GetFirstInstanceOfType(T::StaticClass()));
+		return Cast<T>(GetFirstInstanceOfType(T::StaticClass()));
 	}
-	
-	/**
-	 * 清理指定物品的缓存装备实例（真正销毁Actors）
-	 * 当物品从QuickBar移除或玩家退出时调用
-	 */
-	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
-	void ClearCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance);
-	
-	/**
-	 * 清理所有缓存的装备实例
-	 */
-	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
-	void ClearAllCachedEquipment();
-	
-	/**
-	 * 查找指定物品的缓存装备实例
-	 * 用于客户端预测时复用已有的装备实例进行显示
-	 * @param ItemInstance 物品实例
-	 * @return 缓存的装备实例，如果不存在则返回nullptr
-	 */
-	UFUNCTION(BlueprintCallable, BlueprintPure)
-	UYcEquipmentInstance* FindCachedEquipmentForItem(UYcInventoryItemInstance* ItemInstance) const;
 	
 private:
 	friend struct FYcEquipmentList;
 	
-	/**
-	 * 缓存装备实例
-	 * 
-	 * CachedEquipmentInstances 不参与网络复制，由每个端各自维护，策略统一：
-	 * 
-	 * 【统一策略】"首次创建时缓存"
-	 * - 缓存时机：
-	 *   - 服务端：AddEntry() 首次创建装备实例时
-	 *   - 客户端：PostReplicatedAdd() 收到服务器同步时
-	 * - 移除时机：物品从 QuickBar 移除时统一清理
-	 *   - 服务端：调用 ClearCachedEquipmentForItem
-	 *   - 客户端：通过 ClientClearCachedEquipmentForItem RPC
-	 * - 目的：
-	 *   - 服务端：避免重复创建 UObject，复用已有的 EquipmentInstance
-	 *   - 客户端：用于客户端预测显示，快速切换时复用
-	 */
-	void CacheEquipmentInstance(UYcInventoryItemInstance* ItemInstance, UYcEquipmentInstance* EquipmentInstance);
-	
-	/** 当前已装备的装备列表 */
+	/** 装备列表 - 存储所有已创建的装备实例 */
 	UPROPERTY(Replicated, VisibleAnywhere)
 	FYcEquipmentList EquipmentList;
-	
-	/** 
-	 * 缓存的装备实例映射（物品实例 -> 装备实例）
-	 * 
-	 * 不参与网络复制，服务器和客户端各自维护，策略统一为"首次创建时缓存"：
-	 * - 缓存时机：服务端在 AddEntry 首次创建时，客户端在 PostReplicatedAdd 时
-	 * - 清理时机：物品从 QuickBar 移除时统一清理
-	 * 
-	 * @see CacheEquipmentInstance 详细说明
-	 */
-	UPROPERTY(VisibleInstanceOnly)
-	TMap<TObjectPtr<UYcInventoryItemInstance>, TObjectPtr<UYcEquipmentInstance>> CachedEquipmentInstances;
 };

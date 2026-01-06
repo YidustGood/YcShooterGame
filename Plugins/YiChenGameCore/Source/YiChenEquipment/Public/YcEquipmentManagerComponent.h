@@ -45,6 +45,7 @@ private:
 	/** 
 	 * 已授予的技能集句柄信息
 	 * 不参与网络复制，只在服务器上存在，因为只有服务器能掌管技能的授予/收回
+	 * 所以在FYcEquipmentList::EquipEntry()/UnequipEntry()和对某个元素的GrantedHandles修改时不需要MarkItemDirty
 	 */
 	UPROPERTY(NotReplicated)
 	FYcAbilitySet_GrantedHandles GrantedHandles;

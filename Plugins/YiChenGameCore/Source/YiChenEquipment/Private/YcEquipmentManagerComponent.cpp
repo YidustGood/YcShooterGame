@@ -187,10 +187,8 @@ void FYcEquipmentList::EquipEntry(UYcEquipmentInstance* Instance)
 	}
 	
 	// 设置状态为已装备（会触发 OnRep 和 OnEquipped）
+	// 注：EquipmentState 通过 SubObjectList 复制，不需要 MarkItemDirty
 	Instance->SetEquipmentState(EYcEquipmentState::Equipped);
-	
-	// 标记网络同步
-	MarkItemDirty(*Entry);
 	
 	UE_LOG(LogYcEquipment, Log, TEXT("EquipEntry: Equipped %s"), *GetNameSafe(Instance));
 }
@@ -220,10 +218,8 @@ void FYcEquipmentList::UnequipEntry(UYcEquipmentInstance* Instance)
 	}
 	
 	// 设置状态为未装备（会触发 OnRep 和 OnUnequipped）
+	// 注：EquipmentState 通过 SubObjectList 复制，不需要 MarkItemDirty
 	Instance->SetEquipmentState(EYcEquipmentState::Unequipped);
-	
-	// 标记网络同步
-	MarkItemDirty(*Entry);
 	
 	UE_LOG(LogYcEquipment, Log, TEXT("UnequipEntry: Unequipped %s"), *GetNameSafe(Instance));
 }

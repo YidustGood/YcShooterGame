@@ -83,7 +83,7 @@ void UYcQuickBarComponent::SetActiveSlotIndex_WithPrediction(const int32 NewInde
 	}
 	
 	// 主控客户端：执行本地预测
-	if (IsLocallyControlled() && !GetOwner()->HasAuthority())
+	if (GetOwner() && GetOwner()->GetLocalRole() == ROLE_AutonomousProxy)
 	{
 		// ========================================================================
 		// 边界情况处理：装备实例尚未同步到客户端
@@ -414,10 +414,13 @@ void UYcQuickBarComponent::ExecuteLocalPredictionDeactivate(int32 NewIndex)
 	{
 		if (UYcEquipmentInstance* Equipment = EquipmentManager->FindEquipmentByItem(Slots[NewIndex]))
 		{
-			// 设置状态为已装备（会触发 OnRep 和 OnEquipped）
+			// 设置状态为未装备（会触发 OnRep 和 OnUnequipped）
 			Equipment->SetEquipmentState(EYcEquipmentState::Unequipped);
 		}
 	}
+	
+	// 将本次卸下的插槽记录为上一次激活的插槽
+	LastActiveSlotIndex = NewIndex;
 	
 	// 设置预测状态
 	bHasPendingSlotChange = true;
@@ -497,6 +500,14 @@ void UYcQuickBarComponent::RollbackPrediction(int32 ServerIndex)
 		}
 	}
 	
+	// 回滚 LastActiveSlotIndex：预测失败时，LastActiveSlotIndex 应该恢复到预测前的状态
+	// 由于预测时我们把 LastActiveSlotIndex 设为了预测前的 CurrentIndex，
+	// 而服务器的真实 LastActiveSlotIndex 我们无法得知，
+	// 最安全的做法是将其设为服务器当前激活索引之前的值（即我们预测前的 ActiveSlotIndex）
+	// 但由于回滚场景复杂，这里简单地将其设为 -1 表示未知
+	// 实际上，回滚是极端情况，LastActiveSlotIndex 主要用于 UI 显示，影响有限
+	LastActiveSlotIndex = -1;
+	
 	// 清除预测状态
 	bHasPendingSlotChange = false;
 	PendingSlotIndex = -1;
@@ -553,6 +564,9 @@ void UYcQuickBarComponent::DeactivateSlotEquipment(int32 SlotIndex)
 	{
 		EquipmentManager->UnequipItem(Equipment);
 	}
+	
+	// 将本次卸下的插槽记录为上一次激活的插槽
+	LastActiveSlotIndex = SlotIndex;
 }
 
 void UYcQuickBarComponent::CreateSlotEquipment(int32 SlotIndex)
@@ -706,11 +720,10 @@ void UYcQuickBarComponent::OnRep_Slots()
 
 void UYcQuickBarComponent::OnRep_ActiveSlotIndex(int32 OldActiveSlotIndex)
 {
-	LastActiveSlotIndex = OldActiveSlotIndex;
-	
 	// 主控客户端：处理预测校正
-	if (IsLocallyControlled() && !GetOwner()->HasAuthority())
+	if (GetOwner() && GetOwner()->GetLocalRole() == ROLE_AutonomousProxy)
 	{
+		// 这里只需要处理预测校正
 		ReconcilePrediction(ActiveSlotIndex);
 	}
 	

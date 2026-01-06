@@ -281,7 +281,7 @@ private:
 	// 本地状态
 	// ========================================================================
 	
-	/** 上一次激活的插槽索引 */
+	/** 上一次激活的插槽索引, 仅服务端和主控客户端有效 */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "QuickBar", meta = (AllowPrivateAccess = "true"))
 	int32 LastActiveSlotIndex = -1;
 	

@@ -361,17 +361,30 @@ private:
 	/** 让单个Actor从休眠状态唤醒 */
 	void WakeActorFromDormant(AActor* Actor, bool bReplicated);
 	
-	/** 设置Actor的视觉可见性（不使用SetActorHiddenInGame避免网络复制问题） */
-	void SetActorVisualVisibility(const AActor* Actor, bool bVisible);
-	
 	/** 内部函数：生成单个装备Actor */
 	AActor* SpawnEquipActorInternal(const TSubclassOf<AActor>& ActorToSpawnClass, const FYcEquipmentActorToSpawn& SpawnInfo, USceneComponent* AttachTarget);
 	
+public:
 	// ========================================================================
-	// 状态设置（仅服务器调用）
+	// 工具函数
 	// ========================================================================
 	
-public:
+	/**
+	 * 设置Actor的视觉可见性
+	 * 
+	 * 使用 USceneComponent::SetVisibility 而非 AActor::SetActorHiddenInGame，
+	 * 因为 bHidden 会网络复制，会覆盖客户端预测状态导致视觉闪烁。
+	 * 
+	 * @param Actor 要设置可见性的Actor
+	 * @param bVisible 是否可见
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Equipment")
+	static void SetActorVisualVisibility(const AActor* Actor, bool bVisible);
+	
+	// ========================================================================
+	// 状态设置
+	// ========================================================================
+	
 	/**
 	 * 设置装备状态（仅服务器或主控客户端预测调用）
 	 * @param NewState 新的装备状态

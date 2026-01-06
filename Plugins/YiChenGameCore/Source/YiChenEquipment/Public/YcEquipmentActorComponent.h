@@ -15,6 +15,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FEquipmentInstRep, UYcEquipmentInsta
  * 所有由装备实例生成的Actor都需要添加这个组件，用于：
  * - 反向查询所属的装备实例
  * - 存储装备配置的 Tags（解决 AActor::Tags 不复制的问题）
+ * - 处理装备附加Actor在客户端同步生成后判断
  * 
  * 网络同步：
  * - 组件本身通过 SetIsReplicated(true) 复制到客户端

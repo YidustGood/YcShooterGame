@@ -59,14 +59,9 @@ void FYcEquipmentList::PostReplicatedAdd(const TArrayView<int32> AddedIndices, i
 		if (const FYcEquipmentDefinition* EquipDef = Entry.Instance->GetEquipmentDef())
 		{
 			Entry.Instance->SpawnEquipmentActors(EquipDef->ActorsToSpawn);
-			// 如果添加后并未装备, 代表是初始化创建那么我们就隐藏附加Actors
-			if (!Entry.Instance->IsEquipped())
-			{
-				Entry.Instance->HideEquipmentActors();
-			}
 		}
 		
-		UE_LOG(LogYcEquipment, Log, TEXT("PostReplicatedAdd: %s"), *Entry.GetDebugString());
+		UE_LOG(LogYcEquipment, Verbose, TEXT("PostReplicatedAdd: %s"), *Entry.GetDebugString());
 	}
 }
 
@@ -78,7 +73,7 @@ void FYcEquipmentList::PostReplicatedChange(const TArrayView<int32> ChangedIndic
 		if (Entry.Instance)
 		{
 			Entry.Instance->SetInstigator(Entry.OwnerItemInstance);
-			UE_LOG(LogYcEquipment, Log, TEXT("PostReplicatedChange: %s"), *Entry.GetDebugString());
+			UE_LOG(LogYcEquipment, Verbose, TEXT("PostReplicatedChange: %s"), *Entry.GetDebugString());
 		}
 	}
 }
@@ -190,7 +185,7 @@ void FYcEquipmentList::EquipEntry(UYcEquipmentInstance* Instance)
 	// 注：EquipmentState 通过 SubObjectList 复制，不需要 MarkItemDirty
 	Instance->SetEquipmentState(EYcEquipmentState::Equipped);
 	
-	UE_LOG(LogYcEquipment, Log, TEXT("EquipEntry: Equipped %s"), *GetNameSafe(Instance));
+	UE_LOG(LogYcEquipment, Verbose, TEXT("EquipEntry: Equipped %s"), *GetNameSafe(Instance));
 }
 
 void FYcEquipmentList::UnequipEntry(UYcEquipmentInstance* Instance)
@@ -221,7 +216,7 @@ void FYcEquipmentList::UnequipEntry(UYcEquipmentInstance* Instance)
 	// 注：EquipmentState 通过 SubObjectList 复制，不需要 MarkItemDirty
 	Instance->SetEquipmentState(EYcEquipmentState::Unequipped);
 	
-	UE_LOG(LogYcEquipment, Log, TEXT("UnequipEntry: Unequipped %s"), *GetNameSafe(Instance));
+	UE_LOG(LogYcEquipment, Verbose, TEXT("UnequipEntry: Unequipped %s"), *GetNameSafe(Instance));
 }
 
 void FYcEquipmentList::DestroyEntry(UYcEquipmentInstance* Instance)

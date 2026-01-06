@@ -131,7 +131,7 @@ void UYcEquipmentInstance::OnRep_EquipmentState(EYcEquipmentState OldState)
 {
 	if (OldState == EquipmentState) return;
 	
-	UE_LOG(LogYcEquipment, Log, TEXT("OnRep_EquipmentState: %s -> %s"), 
+	UE_LOG(LogYcEquipment, Verbose, TEXT("OnRep_EquipmentState: %s -> %s"), 
 		*UEnum::GetValueAsString(OldState), *UEnum::GetValueAsString(EquipmentState));
 	
 	switch (EquipmentState)

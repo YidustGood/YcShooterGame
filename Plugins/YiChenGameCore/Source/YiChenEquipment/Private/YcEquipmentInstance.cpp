@@ -109,6 +109,12 @@ TInstancedStruct<FYcEquipmentFragment> UYcEquipmentInstance::FindEquipmentFragme
 	return TInstancedStruct<FYcEquipmentFragment>();
 }
 
+void UYcEquipmentInstance::OnEquipmentInstanceCreated(const FYcEquipmentDefinition& Definition)
+{
+	// 调用蓝图版本
+	K2_OnEquipmentInstanceCreated();
+}
+
 // ============================================================================
 // 状态管理
 // ============================================================================

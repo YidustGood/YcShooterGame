@@ -293,6 +293,33 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "Equipment")
 	TInstancedStruct<FYcEquipmentFragment> FindEquipmentFragment(const UScriptStruct* FragmentStructType);
 	
+	/**
+	 * 装备实例创建完成时的回调
+	 * 
+	 * 在装备实例创建后、生成Actors之前调用，让子类有机会：
+	 * - 读取并缓存Fragment数据
+	 * - 初始化运行时状态
+	 * - 执行其他初始化逻辑
+	 * 
+	 * 调用时机：
+	 * - 服务器：FYcEquipmentList::CreateEntry() 中创建实例后
+	 * - 客户端：FYcEquipmentList::PostReplicatedAdd() 中实例同步到位后
+	 * 
+	 * 注意：此时 SpawnedActors 和 OwnerClientSpawnedActors 尚未生成
+	 * 
+	 * @param Definition 装备定义
+	 */
+	virtual void OnEquipmentInstanceCreated(const FYcEquipmentDefinition& Definition);
+
+	/**
+	 * 蓝图版本：装备实例创建完成时的回调
+	 * 
+	 * 在 OnEquipmentInstanceCreated 中自动调用，蓝图子类可实现此事件
+	 * 来响应装备实例的创建，进行蓝图层面的初始化
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Equipment", meta = (DisplayName = "OnEquipmentInstanceCreated"))
+	void K2_OnEquipmentInstanceCreated();
+	
 protected:
 	// ========================================================================
 	// 状态变化回调（可在子类中重写）

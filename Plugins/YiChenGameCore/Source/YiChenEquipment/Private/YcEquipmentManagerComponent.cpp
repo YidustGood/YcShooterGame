@@ -55,9 +55,12 @@ void FYcEquipmentList::PostReplicatedAdd(const TArrayView<int32> AddedIndices, i
 		// 设置 Instigator（客户端需要通过这个获取 EquipmentDef）
 		Entry.Instance->SetInstigator(Entry.OwnerItemInstance);
 		
-		// 客户端生成本地Actors（如果需要）
+		// 通知装备实例已创建（在生成Actors之前，让子类有机会读取Fragment数据）
 		if (const FYcEquipmentDefinition* EquipDef = Entry.Instance->GetEquipmentDef())
 		{
+			Entry.Instance->OnEquipmentInstanceCreated(*EquipDef);
+			
+			// 客户端生成本地Actors（如果需要）
 			Entry.Instance->SpawnEquipmentActors(EquipDef->ActorsToSpawn);
 		}
 		
@@ -135,6 +138,9 @@ UYcEquipmentInstance* FYcEquipmentList::CreateEntry(const FYcEquipmentDefinition
 	NewEntry.Instance = NewObject<UYcEquipmentInstance>(OwnerComponent->GetOwner(), InstanceType);
 	NewEntry.Instance->SetInstigator(ItemInstance);
 	NewEntry.OwnerItemInstance = ItemInstance;
+	
+	// 通知装备实例已创建（在生成Actors之前，让子类有机会读取Fragment数据）
+	NewEntry.Instance->OnEquipmentInstanceCreated(EquipmentDef);
 	
 	// 生成Actors（隐藏状态）
 	NewEntry.Instance->SpawnEquipmentActors(EquipmentDef.ActorsToSpawn);

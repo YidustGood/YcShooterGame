@@ -38,7 +38,8 @@ public class YiChenGameplay : ModuleRules
                 "UMG",
                 "GameplayTasks",
                 "GameplayMessageRuntime", 
-                "UIExtension"
+                "UIExtension",
+                "PhysicsCore",
             }
         );
     }

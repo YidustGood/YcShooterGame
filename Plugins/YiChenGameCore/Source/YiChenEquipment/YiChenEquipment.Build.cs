@@ -18,6 +18,7 @@ public class YiChenEquipment : ModuleRules
                 "YiChenInventory",
                 "YiChenAbility", 
                 "GameplayAbilities",
+                "GameplayTags",
                 "ModularGameplay"
             }
         );
@@ -30,7 +31,6 @@ public class YiChenEquipment : ModuleRules
                 "Slate",
                 "SlateCore", 
                 "GameplayMessageRuntime",
-                "GameplayTags",
             }
         );
     }

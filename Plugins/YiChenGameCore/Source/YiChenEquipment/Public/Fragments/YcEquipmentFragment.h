@@ -55,7 +55,7 @@ struct YICHENEQUIPMENT_API FEquipmentFragment_VisualAsset : public FYcEquipmentF
 	 * 资源束名称，与 UYcEquipmentVisualData 中的 AssetBundles 对应
 	 * 默认为 "EquipmentVisual"，所有派生类统一使用此名称
 	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Visual")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
 	TArray<FName> AssetBundleNames = { FName(TEXT("EquipmentVisual")) };
 
 public:

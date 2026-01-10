@@ -2,7 +2,6 @@
 
 #include "Fragments/YcEquipmentFragment.h"
 
-#include "YcEquipmentInstance.h"
 #include "YiChenEquipment.h"
 #include "YcEquipmentVisualData.h"
 #include "Engine/AssetManager.h"
@@ -68,9 +67,4 @@ UYcEquipmentVisualData* FEquipmentFragment_VisualAsset::GetLoadedVisualData() co
 bool FEquipmentFragment_VisualAsset::IsVisualDataLoaded() const
 {
 	return GetLoadedVisualData() != nullptr;
-}
-
-void FEquipmentFragment_VisualAsset::OnEquipmentInstanceCreated(UYcEquipmentInstance* Instance) const
-{
-	UE_LOG(LogYcEquipment, Warning, TEXT("FEquipmentFragment_VisualAsset::OnEquipmentInstanceCreated: %s"), *GetNameSafe(Instance));
 }

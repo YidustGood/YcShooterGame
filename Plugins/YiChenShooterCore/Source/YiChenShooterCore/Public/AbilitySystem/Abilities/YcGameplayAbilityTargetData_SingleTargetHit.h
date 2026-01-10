@@ -27,13 +27,13 @@
  *                             └── int32 CartridgeID  // 弹匣ID
  * 
  * 使用场景：
- * - 在 StartHitScanWeaponTargeting() 中创建，封装射线检测结果
+ * - 在 UYcGameplayAbility_HitScanWeapon::StartHitScanWeaponTargeting() 中创建，封装射线检测结果
  * - 通过 FGameplayAbilityTargetDataHandle 容器传递
  * - 在 OnRangedWeaponTargetDataReady() 蓝图事件中使用
  * - 应用 GameplayEffect 时，通过 AddTargetDataToContext() 传递到效果上下文
  */
 USTRUCT()
-struct YICHENABILITY_API FYcGameplayAbilityTargetData_SingleTargetHit : public FGameplayAbilityTargetData_SingleTargetHit
+struct YICHENSHOOTERCORE_API FYcGameplayAbilityTargetData_SingleTargetHit : public FGameplayAbilityTargetData_SingleTargetHit
 {
 	GENERATED_BODY()
 

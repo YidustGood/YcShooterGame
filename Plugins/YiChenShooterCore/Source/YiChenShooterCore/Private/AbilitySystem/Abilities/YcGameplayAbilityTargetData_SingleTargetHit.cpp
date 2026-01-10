@@ -1,6 +1,6 @@
 ﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
 
-#include "Abilities/YcGameplayAbilityTargetData_SingleTargetHit.h"
+#include "AbilitySystem/Abilities/YcGameplayAbilityTargetData_SingleTargetHit.h"
 
 #include "YcGameplayEffectContext.h"
 

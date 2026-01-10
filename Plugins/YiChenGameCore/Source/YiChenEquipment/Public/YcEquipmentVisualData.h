@@ -127,7 +127,7 @@ public:
 	 * - Asset.Equipment.Sound.XXX    - 音效资产
 	 * - Asset.Equipment.Material.XXX - 材质资产
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual|Extended", meta = (AssetBundles = "EquipmentVisual"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual|Extended", meta = (AssetBundles = "EquipmentVisual", Categories = "Asset"))
 	TMap<FGameplayTag, FYcEquipmentVisualAssetEntry> ExtendedAssets;
 
 	// ================================================================================

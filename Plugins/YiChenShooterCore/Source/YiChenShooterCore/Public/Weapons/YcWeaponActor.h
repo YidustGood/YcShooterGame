@@ -4,6 +4,7 @@
 
 #include "GameFramework/Actor.h"
 #include "GameplayTagContainer.h"
+#include "DataRegistryId.h"
 #include "PrimitiveViewRelevance.h"
 #include "YcWeaponActor.generated.h"
 
@@ -11,10 +12,11 @@ class UYcEquipmentInstance;
 class UYcEquipmentActorComponent;
 class UYcWeaponAttachmentComponent;
 class UYcHitScanWeaponInstance;
-class UYcAttachmentDefinition;
 class USkeletalMeshComponent;
 class UStaticMeshComponent;
 class USceneComponent;
+struct FYcAttachmentDefinition;
+struct FDataRegistryId;
 
 /**
  * 武器Actor基类
@@ -127,10 +129,9 @@ protected:
 	/**
 	 * 更新指定槽位的配件视觉
 	 * @param SlotType 配件槽位类型Tag
-	 * @param Attachment 配件定义（nullptr则清空）
+	 * @param AttachmentDef 配件定义结构体指针（nullptr则清空）
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Attachment")
-	void UpdateAttachmentVisual(FGameplayTag SlotType, UYcAttachmentDefinition* Attachment);
+	void UpdateAttachmentVisual(FGameplayTag SlotType, const FYcAttachmentDefinition* AttachmentDef);
 
 	/**
 	 * 清空指定槽位的配件视觉
@@ -156,15 +157,19 @@ protected:
 
 	/**
 	 * 配件安装时的视觉更新回调
+	 * @param SlotType 配件槽位类型Tag
+	 * @param AttachmentId 配件的 DataRegistry ID
 	 */
 	UFUNCTION()
-	void OnAttachmentInstalled(FGameplayTag SlotType, UYcAttachmentDefinition* Attachment);
+	void OnAttachmentInstalled(FGameplayTag SlotType, const FDataRegistryId& AttachmentId);
 
 	/**
 	 * 配件卸载时的视觉更新回调
+	 * @param SlotType 配件槽位类型Tag
+	 * @param AttachmentId 配件的 DataRegistry ID
 	 */
 	UFUNCTION()
-	void OnAttachmentUninstalled(FGameplayTag SlotType, UYcAttachmentDefinition* Attachment);
+	void OnAttachmentUninstalled(FGameplayTag SlotType, const FDataRegistryId& AttachmentId);
 
 	/**
 	 * 槽位可用性变化回调（动态槽位添加/移除时）
@@ -195,20 +200,20 @@ private:
 
 	/**
 	 * 获取配件的附加父组件
-	 * @param Attachment 配件定义
+	 * @param AttachmentDef 配件定义结构体指针
 	 * @param OutParent 输出的父组件
 	 * @param OutSocketName 输出的Socket名称
 	 * @return 是否成功获取
 	 */
-	bool GetAttachmentParent(UYcAttachmentDefinition* Attachment, 
+	bool GetAttachmentParent(const FYcAttachmentDefinition* AttachmentDef, 
 		USceneComponent*& OutParent, FName& OutSocketName) const;
 
 	/**
 	 * 应用配件的隐藏槽位设置
-	 * @param Attachment 配件定义
+	 * @param AttachmentDef 配件定义结构体指针
 	 * @param bHide true=隐藏, false=显示
 	 */
-	void ApplyHiddenSlots(UYcAttachmentDefinition* Attachment, bool bHide);
+	void ApplyHiddenSlots(const FYcAttachmentDefinition* AttachmentDef, bool bHide);
 
 	/**
 	 * 为动态槽位创建Mesh组件

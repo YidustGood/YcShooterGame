@@ -3,7 +3,7 @@
 #include "Weapons/Attachments/YcWeaponAttachmentComponent.h"
 
 #include "YiChenShooterCore.h"
-#include "Weapons/Attachments/YcAttachmentDefinition.h"
+#include "DataRegistrySubsystem.h"
 #include "Weapons/Attachments/YcFragment_WeaponAttachments.h"
 #include "Weapons/YcHitScanWeaponInstance.h"
 #include "Net/UnrealNetwork.h"
@@ -40,17 +40,13 @@ void UYcWeaponAttachmentComponent::Initialize(UYcHitScanWeaponInstance* InWeapon
 	}
 	
 	// 收集所有要安装的默认配件
-	TArray<TPair<int32, UYcAttachmentDefinition*>> DefaultAttachmentsToInstall;
+	TArray<TPair<int32, FDataRegistryId>> DefaultAttachmentsToInstall;
 	for (int32 i = 0; i < AttachmentsFragment.AttachmentSlots.Num(); ++i)
 	{
 		const FYcAttachmentSlotDef& SlotDef = AttachmentsFragment.AttachmentSlots[i];
-		if (!SlotDef.DefaultAttachment.IsNull())
+		if (SlotDef.DefaultAttachment.IsValid())
 		{
-			UYcAttachmentDefinition* DefaultDef = SlotDef.DefaultAttachment.LoadSynchronous();
-			if (DefaultDef)
-			{
-				DefaultAttachmentsToInstall.Add(TPair<int32, UYcAttachmentDefinition*>(i, DefaultDef));
-			}
+			DefaultAttachmentsToInstall.Add(TPair<int32, FDataRegistryId>(i, SlotDef.DefaultAttachment));
 		}
 	}
 	
@@ -58,34 +54,45 @@ void UYcWeaponAttachmentComponent::Initialize(UYcHitScanWeaponInstance* InWeapon
 	for (const auto& Pair : DefaultAttachmentsToInstall)
 	{
 		const int32 SlotIndex = Pair.Key;
-		UYcAttachmentDefinition* DefaultDef = Pair.Value;
+		const FDataRegistryId& AttachmentId = Pair.Value;
 		const FGameplayTag SlotType = AttachmentsFragment.AttachmentSlots[SlotIndex].SlotType;
 		
+		// 获取配件定义
+		const FYcAttachmentDefinition* AttachmentDef = GetAttachmentDefinition(AttachmentId);
+		if (!AttachmentDef)
+		{
+			UE_LOG(LogYcShooterCore, Warning, TEXT("Initialize: Cannot find default attachment '%s' in slot '%s'"), 
+				*AttachmentId.ToString(), 
+				*SlotType.ToString());
+			continue;
+		}
+		
 		FText Reason;
-		if (CanInstallAttachment(DefaultDef, Reason))
+		if (CanInstallAttachment(AttachmentId, Reason))
 		{
 			FYcAttachmentInstance& Instance = InstalledAttachments[SlotIndex];
-			Instance.AttachmentDef = DefaultDef;
+			Instance.AttachmentRegistryId = AttachmentId;
+			Instance.CachedDef = AttachmentDef;
 			
 			// 初始化调校值
-			if (DefaultDef->bSupportsTuning)
+			if (AttachmentDef->bSupportsTuning)
 			{
-				for (const FYcAttachmentTuningParam& Param : DefaultDef->TuningParams)
+				for (const FYcAttachmentTuningParam& Param : AttachmentDef->TuningParams)
 				{
 					Instance.TuningValues.Add(Param.StatTag, Param.DefaultValue);
 				}
 			}
 			
 			// 添加配件提供的动态槽位
-			if (DefaultDef->ProvidedSlots.Num() > 0)
+			if (AttachmentDef->ProvidedSlots.Num() > 0)
 			{
-				AddDynamicSlots(DefaultDef, SlotType);
+				AddDynamicSlots(AttachmentDef, SlotType);
 			}
 		}
 		else
 		{
 			UE_LOG(LogYcShooterCore, Warning, TEXT("Initialize: Cannot install default attachment '%s' in slot '%s': %s"), 
-				*DefaultDef->GetName(), 
+				*AttachmentId.ToString(), 
 				*SlotType.ToString(),
 				*Reason.ToString());
 		}
@@ -93,11 +100,21 @@ void UYcWeaponAttachmentComponent::Initialize(UYcHitScanWeaponInstance* InWeapon
 }
 
 
-bool UYcWeaponAttachmentComponent::InstallAttachment(UYcAttachmentDefinition* AttachmentDef, 
+bool UYcWeaponAttachmentComponent::InstallAttachment(const FDataRegistryId& AttachmentId, 
 	FGameplayTag SlotType)
 {
+	if (!AttachmentId.IsValid())
+	{
+		UE_LOG(LogYcShooterCore, Warning, TEXT("InstallAttachment: Invalid AttachmentId"));
+		return false;
+	}
+	
+	// 获取配件定义
+	const FYcAttachmentDefinition* AttachmentDef = GetAttachmentDefinition(AttachmentId);
 	if (!AttachmentDef)
 	{
+		UE_LOG(LogYcShooterCore, Warning, TEXT("InstallAttachment: Attachment not found: %s"), 
+			*AttachmentId.ToString());
 		return false;
 	}
 	
@@ -109,7 +126,7 @@ bool UYcWeaponAttachmentComponent::InstallAttachment(UYcAttachmentDefinition* At
 	
 	// 检查是否可以安装
 	FText Reason;
-	if (!CanInstallAttachment(AttachmentDef, Reason))
+	if (!CanInstallAttachment(AttachmentId, Reason))
 	{
 		UE_LOG(LogYcShooterCore, Warning, TEXT("Cannot install attachment: %s"), *Reason.ToString());
 		return false;
@@ -131,7 +148,8 @@ bool UYcWeaponAttachmentComponent::InstallAttachment(UYcAttachmentDefinition* At
 	
 	// 安装新配件
 	FYcAttachmentInstance& Instance = InstalledAttachments[SlotIndex];
-	Instance.AttachmentDef = AttachmentDef;
+	Instance.AttachmentRegistryId = AttachmentId;
+	Instance.CachedDef = AttachmentDef;
 	Instance.SlotType = SlotType;
 	Instance.TuningValues.Empty();
 	
@@ -151,7 +169,7 @@ bool UYcWeaponAttachmentComponent::InstallAttachment(UYcAttachmentDefinition* At
 	}
 	
 	// 广播事件
-	OnAttachmentInstalled.Broadcast(SlotType, AttachmentDef);
+	OnAttachmentInstalled.Broadcast(SlotType, AttachmentId);
 	
 	// 通知属性变化
 	NotifyStatsChanged();
@@ -173,8 +191,9 @@ bool UYcWeaponAttachmentComponent::UninstallAttachment(FGameplayTag SlotType)
 		return false;
 	}
 	
-	// 保存配件定义用于后续处理
-	UYcAttachmentDefinition* OldDef = Instance.AttachmentDef.LoadSynchronous();
+	// 保存配件ID用于后续处理
+	const FDataRegistryId OldAttachmentId = Instance.AttachmentRegistryId;
+	const FYcAttachmentDefinition* OldDef = Instance.GetDefinition();
 	
 	// 先移除该配件提供的动态槽位（会级联卸载子配件）
 	if (OldDef && OldDef->ProvidedSlots.Num() > 0)
@@ -183,12 +202,12 @@ bool UYcWeaponAttachmentComponent::UninstallAttachment(FGameplayTag SlotType)
 	}
 	
 	// 清空槽位
-	Instance.AttachmentDef.Reset();
-	Instance.TuningValues.Empty();
-	Instance.MeshComponent.Reset();
+	Instance.Reset();
+	Instance.SlotType = SlotType; // 保留槽位类型
 	
-	// 广播事件
-	OnAttachmentUninstalled.Broadcast(SlotType, OldDef);
+	// 广播事件（注意：此时配件已从组件中移除，监听者无法通过 GetAttachmentDefInSlot 获取配件定义）
+	// 隐藏槽位的恢复应由监听者在收到事件前自行处理，或者通过 RefreshAllAttachmentVisuals 刷新
+	OnAttachmentUninstalled.Broadcast(SlotType, OldAttachmentId);
 	
 	// 通知属性变化
 	NotifyStatsChanged();
@@ -196,12 +215,20 @@ bool UYcWeaponAttachmentComponent::UninstallAttachment(FGameplayTag SlotType)
 	return true;
 }
 
-bool UYcWeaponAttachmentComponent::CanInstallAttachment(UYcAttachmentDefinition* AttachmentDef, 
+bool UYcWeaponAttachmentComponent::CanInstallAttachment(const FDataRegistryId& AttachmentId, 
 	FText& OutReason) const
 {
+	if (!AttachmentId.IsValid())
+	{
+		OutReason = FText::FromString(TEXT("配件ID无效"));
+		return false;
+	}
+	
+	// 获取配件定义
+	const FYcAttachmentDefinition* AttachmentDef = GetAttachmentDefinition(AttachmentId);
 	if (!AttachmentDef)
 	{
-		OutReason = FText::FromString(TEXT("配件定义无效"));
+		OutReason = FText::FromString(TEXT("配件定义未找到"));
 		return false;
 	}
 	
@@ -261,40 +288,47 @@ void UYcWeaponAttachmentComponent::ClearAllAttachments()
 	{
 		if (Instance.IsValid())
 		{
-			UYcAttachmentDefinition* OldDef = Instance.AttachmentDef.LoadSynchronous();
-			FGameplayTag SlotType = Instance.SlotType;
+			const FDataRegistryId OldAttachmentId = Instance.AttachmentRegistryId;
+			const FGameplayTag SlotType = Instance.SlotType;
 			
-			Instance.AttachmentDef.Reset();
-			Instance.TuningValues.Empty();
-			Instance.MeshComponent.Reset();
+			Instance.Reset();
+			Instance.SlotType = SlotType; // 保留槽位类型
 			
-			OnAttachmentUninstalled.Broadcast(SlotType, OldDef);
+			OnAttachmentUninstalled.Broadcast(SlotType, OldAttachmentId);
 		}
 	}
+	
+	// 清空动态槽位
+	DynamicSlots.Empty();
 	
 	NotifyStatsChanged();
 }
 
+const FYcAttachmentDefinition* UYcWeaponAttachmentComponent::GetAttachmentDefInSlot(FGameplayTag SlotType) const
+{
+	const int32 SlotIndex = FindSlotIndex(SlotType);
+	if (SlotIndex == INDEX_NONE || !InstalledAttachments[SlotIndex].IsValid()) return nullptr;
+	return InstalledAttachments[SlotIndex].GetDefinition();
+}
+
+bool UYcWeaponAttachmentComponent::K2_GetAttachmentDefInSlot(FGameplayTag SlotType, FYcAttachmentDefinition& OutDefinition) const
+{
+	const FYcAttachmentDefinition* Def = GetAttachmentDefInSlot(SlotType);
+	if (Def)
+	{
+		OutDefinition = *Def;
+		return true;
+	}
+	return false;
+}
 
 FYcAttachmentInstance UYcWeaponAttachmentComponent::GetAttachmentInSlot(FGameplayTag SlotType) const
 {
 	const int32 SlotIndex = FindSlotIndex(SlotType);
-	if (SlotIndex != INDEX_NONE)
-	{
-		return InstalledAttachments[SlotIndex];
-	}
-	return FYcAttachmentInstance();
+	return SlotIndex != INDEX_NONE ? InstalledAttachments[SlotIndex] : FYcAttachmentInstance();
 }
 
-UYcAttachmentDefinition* UYcWeaponAttachmentComponent::GetAttachmentDefInSlot(FGameplayTag SlotType) const
-{
-	const int32 SlotIndex = FindSlotIndex(SlotType);
-	if (SlotIndex != INDEX_NONE && InstalledAttachments[SlotIndex].IsValid())
-	{
-		return InstalledAttachments[SlotIndex].AttachmentDef.LoadSynchronous();
-	}
-	return nullptr;
-}
+
 
 bool UYcWeaponAttachmentComponent::HasAttachmentInSlot(FGameplayTag SlotType) const
 {
@@ -323,10 +357,11 @@ TArray<FGameplayTag> UYcWeaponAttachmentComponent::GetInstalledAttachmentIds() c
 	{
 		if (Instance.IsValid())
 		{
-			UYcAttachmentDefinition* Def = Instance.AttachmentDef.LoadSynchronous();
+			const FYcAttachmentDefinition* Def = Instance.GetDefinition();
 			if (Def)
 			{
-				Result.Add(Def->AttachmentId);
+				// 使用配件的 SlotType 作为标识（因为新结构体没有 AttachmentId 字段）
+				Result.Add(Def->SlotType);
 			}
 		}
 	}
@@ -342,7 +377,7 @@ TArray<FYcStatModifier> UYcWeaponAttachmentComponent::GetModifiersForStat(FGamep
 	{
 		if (!Instance.IsValid()) continue;
 		
-		UYcAttachmentDefinition* Def = Instance.AttachmentDef.LoadSynchronous();
+		const FYcAttachmentDefinition* Def = Instance.GetDefinition();
 		if (!Def) continue;
 		
 		// 收集配件的修改器
@@ -454,81 +489,50 @@ TMap<FGameplayTag, float> UYcWeaponAttachmentComponent::CalculateFinalStatValues
 bool UYcWeaponAttachmentComponent::SetTuningValue(FGameplayTag SlotType, FGameplayTag StatTag, float Value)
 {
 	const int32 SlotIndex = FindSlotIndex(SlotType);
-	if (SlotIndex == INDEX_NONE)
-	{
-		return false;
-	}
+	if (SlotIndex == INDEX_NONE) return false;
 	
 	FYcAttachmentInstance& Instance = InstalledAttachments[SlotIndex];
-	if (!Instance.IsValid())
-	{
-		return false;
-	}
+	if (!Instance.IsValid()) return false;
 	
-	UYcAttachmentDefinition* Def = Instance.AttachmentDef.LoadSynchronous();
-	if (!Def || !Def->bSupportsTuning)
-	{
-		return false;
-	}
+	const FYcAttachmentDefinition* Def = Instance.GetDefinition();
+	if (!Def || !Def->bSupportsTuning) return false;
 	
 	// 查找调校参数定义
-	const FYcAttachmentTuningParam* TuningParam = nullptr;
-	for (const FYcAttachmentTuningParam& Param : Def->TuningParams)
-	{
-		if (Param.StatTag.MatchesTagExact(StatTag))
+	const FYcAttachmentTuningParam* TuningParam = Def->TuningParams.FindByPredicate(
+		[&StatTag](const FYcAttachmentTuningParam& Param)
 		{
-			TuningParam = &Param;
-			break;
-		}
-	}
+			return Param.StatTag.MatchesTagExact(StatTag);
+		});
 	
-	if (!TuningParam)
-	{
-		return false;
-	}
+	if (!TuningParam) return false;
 	
 	// 限制值在范围内
 	const float ClampedValue = FMath::Clamp(Value, TuningParam->MinValue, TuningParam->MaxValue);
 	Instance.TuningValues.Add(StatTag, ClampedValue);
 	
-	// 通知属性变化
 	NotifyStatsChanged();
-	
 	return true;
 }
 
 float UYcWeaponAttachmentComponent::GetTuningValue(FGameplayTag SlotType, FGameplayTag StatTag) const
 {
 	const int32 SlotIndex = FindSlotIndex(SlotType);
-	if (SlotIndex == INDEX_NONE)
-	{
-		return 0.0f;
-	}
+	if (SlotIndex == INDEX_NONE) return 0.0f;
 	
-	const FYcAttachmentInstance& Instance = InstalledAttachments[SlotIndex];
-	const float* Value = Instance.TuningValues.Find(StatTag);
+	const float* Value = InstalledAttachments[SlotIndex].TuningValues.Find(StatTag);
 	return Value ? *Value : 0.0f;
 }
 
 void UYcWeaponAttachmentComponent::ResetTuningValues(FGameplayTag SlotType)
 {
 	const int32 SlotIndex = FindSlotIndex(SlotType);
-	if (SlotIndex == INDEX_NONE)
-	{
-		return;
-	}
+	if (SlotIndex == INDEX_NONE) return;
 	
 	FYcAttachmentInstance& Instance = InstalledAttachments[SlotIndex];
-	if (!Instance.IsValid())
-	{
-		return;
-	}
+	if (!Instance.IsValid()) return;
 	
-	UYcAttachmentDefinition* Def = Instance.AttachmentDef.LoadSynchronous();
-	if (!Def || !Def->bSupportsTuning)
-	{
-		return;
-	}
+	const FYcAttachmentDefinition* Def = Instance.GetDefinition();
+	if (!Def || !Def->bSupportsTuning) return;
 	
 	// 重置为默认值
 	Instance.TuningValues.Empty();
@@ -542,14 +546,10 @@ void UYcWeaponAttachmentComponent::ResetTuningValues(FGameplayTag SlotType)
 
 int32 UYcWeaponAttachmentComponent::FindSlotIndex(FGameplayTag SlotType) const
 {
-	for (int32 i = 0; i < InstalledAttachments.Num(); ++i)
+	return InstalledAttachments.IndexOfByPredicate([&SlotType](const FYcAttachmentInstance& Instance)
 	{
-		if (InstalledAttachments[i].SlotType.MatchesTagExact(SlotType))
-		{
-			return i;
-		}
-	}
-	return INDEX_NONE;
+		return Instance.SlotType.MatchesTagExact(SlotType);
+	});
 }
 
 void UYcWeaponAttachmentComponent::NotifyStatsChanged()
@@ -576,7 +576,7 @@ void UYcWeaponAttachmentComponent::CollectAllModifiers(TArray<FYcStatModifier>& 
 	{
 		if (!Instance.IsValid()) continue;
 		
-		UYcAttachmentDefinition* Def = Instance.AttachmentDef.LoadSynchronous();
+		const FYcAttachmentDefinition* Def = Instance.GetDefinition();
 		if (!Def) continue;
 		
 		// 收集配件的修改器
@@ -600,6 +600,33 @@ void UYcWeaponAttachmentComponent::CollectAllModifiers(TArray<FYcStatModifier>& 
 			}
 		}
 	}
+}
+
+const FYcAttachmentDefinition* UYcWeaponAttachmentComponent::GetAttachmentDefinition(const FDataRegistryId& AttachmentId) const
+{
+	if (!AttachmentId.IsValid())
+	{
+		UE_LOG(LogYcShooterCore, Warning, TEXT("GetAttachmentDefinition: Invalid AttachmentId"));
+		return nullptr;
+	}
+
+	const UDataRegistrySubsystem* Subsystem = UDataRegistrySubsystem::Get();
+	if (!Subsystem)
+	{
+		UE_LOG(LogYcShooterCore, Error, TEXT("GetAttachmentDefinition: DataRegistrySubsystem not available"));
+		return nullptr;
+	}
+
+	const FYcAttachmentDefinition* Def = Subsystem->GetCachedItem<FYcAttachmentDefinition>(AttachmentId);
+	
+	if (!Def)
+	{
+		UE_LOG(LogYcShooterCore, Warning, 
+			TEXT("GetAttachmentDefinition: Attachment not found in cache: %s"),
+			*AttachmentId.ToString());
+	}
+	
+	return Def;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -645,15 +672,10 @@ bool UYcWeaponAttachmentComponent::IsSlotAvailable(FGameplayTag SlotType) const
 	}
 	
 	// 检查动态槽位
-	for (const FYcAttachmentSlotDef& Slot : DynamicSlots)
+	return DynamicSlots.ContainsByPredicate([&SlotType](const FYcAttachmentSlotDef& Slot)
 	{
-		if (Slot.SlotType.MatchesTagExact(SlotType))
-		{
-			return true;
-		}
-	}
-	
-	return false;
+		return Slot.SlotType.MatchesTagExact(SlotType);
+	});
 }
 
 bool UYcWeaponAttachmentComponent::GetSlotDef(FGameplayTag SlotType, FYcAttachmentSlotDef& OutSlotDef) const
@@ -703,7 +725,7 @@ TArray<FYcAttachmentSlotDef> UYcWeaponAttachmentComponent::GetSlotsProvidedByAtt
 // 动态槽位管理实现
 // ════════════════════════════════════════════════════════════════════════
 
-void UYcWeaponAttachmentComponent::AddDynamicSlots(UYcAttachmentDefinition* AttachmentDef, FGameplayTag ProviderSlotType)
+void UYcWeaponAttachmentComponent::AddDynamicSlots(const FYcAttachmentDefinition* AttachmentDef, FGameplayTag ProviderSlotType)
 {
 	if (!AttachmentDef || AttachmentDef->ProvidedSlots.Num() == 0)
 	{
@@ -711,7 +733,7 @@ void UYcWeaponAttachmentComponent::AddDynamicSlots(UYcAttachmentDefinition* Atta
 	}
 	
 	// 收集需要安装默认配件的槽位
-	TArray<TPair<FGameplayTag, UYcAttachmentDefinition*>> DefaultAttachmentsToInstall;
+	TArray<TPair<FGameplayTag, FDataRegistryId>> DefaultAttachmentsToInstall;
 	
 	for (const FYcAttachmentSlotDef& ProvidedSlot : AttachmentDef->ProvidedSlots)
 	{
@@ -744,13 +766,9 @@ void UYcWeaponAttachmentComponent::AddDynamicSlots(UYcAttachmentDefinition* Atta
 			OnSlotAvailabilityChanged.Broadcast(NewSlot.SlotType, true);
 			
 			// 记录需要安装的默认配件
-			if (!ProvidedSlot.DefaultAttachment.IsNull())
+			if (ProvidedSlot.DefaultAttachment.IsValid())
 			{
-				UYcAttachmentDefinition* DefaultDef = ProvidedSlot.DefaultAttachment.LoadSynchronous();
-				if (DefaultDef)
-				{
-					DefaultAttachmentsToInstall.Add(TPair<FGameplayTag, UYcAttachmentDefinition*>(NewSlot.SlotType, DefaultDef));
-				}
+				DefaultAttachmentsToInstall.Add(TPair<FGameplayTag, FDataRegistryId>(NewSlot.SlotType, ProvidedSlot.DefaultAttachment));
 			}
 			
 			UE_LOG(LogYcShooterCore, Log, TEXT("AddDynamicSlots: 添加动态槽位 %s (由 %s 提供)"), 
@@ -812,12 +830,89 @@ void UYcWeaponAttachmentComponent::RemoveDynamicSlots(FGameplayTag ProviderSlotT
 
 bool UYcWeaponAttachmentComponent::IsDynamicSlot(FGameplayTag SlotType) const
 {
-	for (const FYcAttachmentSlotDef& Slot : DynamicSlots)
+	return DynamicSlots.ContainsByPredicate([&SlotType](const FYcAttachmentSlotDef& Slot)
 	{
-		if (Slot.SlotType.MatchesTagExact(SlotType))
+		return Slot.SlotType.MatchesTagExact(SlotType);
+	});
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 武器配置/预设系统实现
+// ════════════════════════════════════════════════════════════════════════
+
+bool UYcWeaponAttachmentComponent::ApplyLoadout(const FYcWeaponLoadout& Loadout)
+{
+	// 先清空现有配件
+	ClearAllAttachments();
+	
+	int32 SuccessCount = 0;
+	int32 FailCount = 0;
+	
+	for (const auto& Pair : Loadout.SlotAttachments)
+	{
+		const FGameplayTag& SlotType = Pair.Key;
+		const FDataRegistryId& AttachmentId = Pair.Value;
+		
+		if (!AttachmentId.IsValid())
 		{
-			return true;
+			UE_LOG(LogYcShooterCore, Warning, 
+				TEXT("ApplyLoadout: Skipping invalid AttachmentId for slot %s"),
+				*SlotType.ToString());
+			FailCount++;
+			continue;
+		}
+		
+		if (InstallAttachment(AttachmentId, SlotType))
+		{
+			SuccessCount++;
+			
+			// 应用调校值
+			if (const FYcSlotTuningData* TuningData = Loadout.SlotTuningValues.Find(SlotType))
+			{
+				for (const auto& TuningPair : TuningData->TuningValues)
+				{
+					SetTuningValue(SlotType, TuningPair.Key, TuningPair.Value);
+				}
+			}
+		}
+		else
+		{
+			UE_LOG(LogYcShooterCore, Warning, 
+				TEXT("ApplyLoadout: Failed to install attachment %s to slot %s"),
+				*AttachmentId.ToString(), *SlotType.ToString());
+			FailCount++;
 		}
 	}
-	return false;
+	
+	UE_LOG(LogYcShooterCore, Log, 
+		TEXT("ApplyLoadout: Installed %d attachments, %d failed"),
+		SuccessCount, FailCount);
+	
+	return FailCount == 0;
+}
+
+FYcWeaponLoadout UYcWeaponAttachmentComponent::CreateLoadoutFromCurrent() const
+{
+	FYcWeaponLoadout Loadout;
+	
+	for (const FYcAttachmentInstance& Instance : InstalledAttachments)
+	{
+		if (!Instance.IsValid())
+		{
+			continue;
+		}
+		
+		// 添加配件到预设
+		Loadout.SlotAttachments.Add(Instance.SlotType, Instance.AttachmentRegistryId);
+		
+		// 添加调校值（如果有）
+		if (Instance.TuningValues.Num() > 0)
+		{
+			FYcSlotTuningData TuningData;
+			TuningData.TuningValues = Instance.TuningValues;
+			Loadout.SlotTuningValues.Add(Instance.SlotType, TuningData);
+		}
+	}
+	
+	return Loadout;
 }

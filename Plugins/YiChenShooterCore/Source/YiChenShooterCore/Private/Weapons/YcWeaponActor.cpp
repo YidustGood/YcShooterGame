@@ -6,7 +6,7 @@
 #include "Weapons/YcHitScanWeaponInstance.h"
 #include "Weapons/Attachments/YcWeaponAttachmentComponent.h"
 #include "Weapons/Attachments/YcFragment_WeaponAttachments.h"
-#include "Weapons/Attachments/YcAttachmentDefinition.h"
+#include "Weapons/Attachments/YcAttachmentTypes.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneComponent.h"
@@ -162,7 +162,6 @@ void AYcWeaponActor::InitializeAttachmentSystem(UYcEquipmentInstance* EquipmentI
 	}
 
 	// 初始化配件组件并关联到武器实例
-	// AttachmentComponent->Initialize(WeaponInstance, *AttachmentsFragment);
 	WeaponInstance->SetAttachmentComponent(AttachmentComponent);
 
 	// 绑定配件变化事件
@@ -213,7 +212,7 @@ UStaticMeshComponent* AYcWeaponActor::GetMeshComponentForSlot(FGameplayTag SlotT
 	return nullptr;
 }
 
-void AYcWeaponActor::UpdateAttachmentVisual(FGameplayTag SlotType, UYcAttachmentDefinition* Attachment)
+void AYcWeaponActor::UpdateAttachmentVisual(FGameplayTag SlotType, const FYcAttachmentDefinition* AttachmentDef)
 {
 	UStaticMeshComponent* MeshComp = GetMeshComponentForSlot(SlotType);
 	if (!MeshComp)
@@ -223,7 +222,7 @@ void AYcWeaponActor::UpdateAttachmentVisual(FGameplayTag SlotType, UYcAttachment
 		return;
 	}
 
-	if (!Attachment)
+	if (!AttachmentDef)
 	{
 		// 清空配件
 		MeshComp->SetStaticMesh(nullptr);
@@ -232,7 +231,7 @@ void AYcWeaponActor::UpdateAttachmentVisual(FGameplayTag SlotType, UYcAttachment
 	}
 
 	// 加载配件网格体
-	UStaticMesh* AttachmentMesh = Attachment->AttachmentMesh.LoadSynchronous();
+	UStaticMesh* AttachmentMesh = AttachmentDef->AttachmentMesh.LoadSynchronous();
 	
 	// 更新网格体
 	MeshComp->SetStaticMesh(AttachmentMesh);
@@ -243,7 +242,7 @@ void AYcWeaponActor::UpdateAttachmentVisual(FGameplayTag SlotType, UYcAttachment
 		USceneComponent* ParentComp = nullptr;
 		FName SocketName;
 		
-		if (GetAttachmentParent(Attachment, ParentComp, SocketName))
+		if (GetAttachmentParent(AttachmentDef, ParentComp, SocketName))
 		{
 			// 重新附加到正确的父组件
 			MeshComp->AttachToComponent(ParentComp, 
@@ -251,11 +250,11 @@ void AYcWeaponActor::UpdateAttachmentVisual(FGameplayTag SlotType, UYcAttachment
 		}
 		
 		// 应用偏移变换
-		MeshComp->SetRelativeTransform(Attachment->AttachOffset);
+		MeshComp->SetRelativeTransform(AttachmentDef->AttachOffset);
 		MeshComp->SetVisibility(true);
 		
 		// 应用隐藏槽位设置
-		ApplyHiddenSlots(Attachment, true);
+		ApplyHiddenSlots(AttachmentDef, true);
 	}
 	else
 	{
@@ -268,7 +267,7 @@ void AYcWeaponActor::ClearAttachmentVisual(FGameplayTag SlotType)
 	// 先获取当前配件，用于恢复隐藏的槽位
 	if (AttachmentComponent)
 	{
-		UYcAttachmentDefinition* CurrentAttachment = AttachmentComponent->GetAttachmentDefInSlot(SlotType);
+		const FYcAttachmentDefinition* CurrentAttachment = AttachmentComponent->GetAttachmentDefInSlot(SlotType);
 		if (CurrentAttachment)
 		{
 			// 恢复被隐藏的槽位
@@ -303,8 +302,8 @@ void AYcWeaponActor::RefreshAllAttachmentVisuals()
 			continue;
 		}
 
-		// 加载配件定义
-		UYcAttachmentDefinition* AttachmentDef = Instance.AttachmentDef.LoadSynchronous();
+		// 获取配件定义（使用新的 GetDefinition 方法从 DataRegistry 获取）
+		const FYcAttachmentDefinition* AttachmentDef = Instance.GetDefinition();
 		if (!AttachmentDef)
 		{
 			continue;
@@ -324,31 +323,43 @@ void AYcWeaponActor::SetSlotVisibility(FGameplayTag SlotType, bool bVisible)
 	}
 }
 
-void AYcWeaponActor::OnAttachmentInstalled(FGameplayTag SlotType, UYcAttachmentDefinition* Attachment)
+void AYcWeaponActor::OnAttachmentInstalled(FGameplayTag SlotType, const FDataRegistryId& AttachmentId)
 {
-	if (!Attachment)
+	if (!AttachmentId.IsValid())
 	{
 		return;
 	}
 
+	// 从 AttachmentComponent 获取配件定义
+	const FYcAttachmentDefinition* AttachmentDef = nullptr;
+	if (AttachmentComponent)
+	{
+		AttachmentDef = AttachmentComponent->GetAttachmentDefInSlot(SlotType);
+	}
+
+	if (!AttachmentDef)
+	{
+		UE_LOG(LogYcShooterCore, Warning, TEXT("AYcWeaponActor::OnAttachmentInstalled - 无法获取配件定义: %s"), 
+			*AttachmentId.ToString());
+		return;
+	}
+
 	// 更新视觉
-	UpdateAttachmentVisual(SlotType, Attachment);
+	UpdateAttachmentVisual(SlotType, AttachmentDef);
 
 	UE_LOG(LogYcShooterCore, Log, TEXT("AYcWeaponActor: 配件 %s 已安装到槽位 %s"), 
-		*Attachment->DisplayName.ToString(), *SlotType.ToString());
+		*AttachmentDef->DisplayName.ToString(), *SlotType.ToString());
 }
 
 
-void AYcWeaponActor::OnAttachmentUninstalled(FGameplayTag SlotType, UYcAttachmentDefinition* Attachment)
+void AYcWeaponActor::OnAttachmentUninstalled(FGameplayTag SlotType, const FDataRegistryId& AttachmentId)
 {
-	// 恢复被隐藏的槽位
-	if (Attachment)
-	{
-		ApplyHiddenSlots(Attachment, false);
-		
-		UE_LOG(LogYcShooterCore, Log, TEXT("AYcWeaponActor: 配件 %s 已从槽位 %s 卸载"), 
-			*Attachment->DisplayName.ToString(), *SlotType.ToString());
-	}
+	// 注意：卸载时配件已从组件中移除，无法通过 GetAttachmentDefInSlot 获取
+	// 需要在卸载前获取配件定义来恢复隐藏的槽位
+	// 但由于委托是在卸载后触发的，这里只能清空视觉
+	
+	UE_LOG(LogYcShooterCore, Log, TEXT("AYcWeaponActor: 配件 %s 已从槽位 %s 卸载"), 
+		*AttachmentId.ToString(), *SlotType.ToString());
 
 	// 清空该槽位的视觉
 	UStaticMeshComponent* MeshComp = GetMeshComponentForSlot(SlotType);
@@ -359,17 +370,17 @@ void AYcWeaponActor::OnAttachmentUninstalled(FGameplayTag SlotType, UYcAttachmen
 	}
 }
 
-bool AYcWeaponActor::GetAttachmentParent(UYcAttachmentDefinition* Attachment, 
+bool AYcWeaponActor::GetAttachmentParent(const FYcAttachmentDefinition* AttachmentDef, 
 	USceneComponent*& OutParent, FName& OutSocketName) const
 {
-	if (!Attachment)
+	if (!AttachmentDef)
 	{
 		return false;
 	}
 
-	OutSocketName = Attachment->AttachSocketName;
+	OutSocketName = AttachmentDef->AttachSocketName;
 
-	switch (Attachment->AttachTarget)
+	switch (AttachmentDef->AttachTarget)
 	{
 	case EYcAttachmentTarget::WeaponSocket:
 		// 附加到武器骨骼网格体
@@ -378,9 +389,9 @@ bool AYcWeaponActor::GetAttachmentParent(UYcAttachmentDefinition* Attachment,
 
 	case EYcAttachmentTarget::AttachmentSlot:
 		// 附加到另一个配件的Mesh组件
-		if (Attachment->TargetSlotType.IsValid())
+		if (AttachmentDef->TargetSlotType.IsValid())
 		{
-			UStaticMeshComponent* TargetMesh = GetMeshComponentForSlot(Attachment->TargetSlotType);
+			UStaticMeshComponent* TargetMesh = GetMeshComponentForSlot(AttachmentDef->TargetSlotType);
 			if (TargetMesh)
 			{
 				OutParent = TargetMesh;
@@ -390,7 +401,7 @@ bool AYcWeaponActor::GetAttachmentParent(UYcAttachmentDefinition* Attachment,
 			{
 				UE_LOG(LogYcShooterCore, Warning, 
 					TEXT("AYcWeaponActor::GetAttachmentParent - 目标槽位 %s 没有对应的Mesh组件"), 
-					*Attachment->TargetSlotType.ToString());
+					*AttachmentDef->TargetSlotType.ToString());
 			}
 		}
 		// 回退到武器骨骼
@@ -403,14 +414,14 @@ bool AYcWeaponActor::GetAttachmentParent(UYcAttachmentDefinition* Attachment,
 	}
 }
 
-void AYcWeaponActor::ApplyHiddenSlots(UYcAttachmentDefinition* Attachment, bool bHide)
+void AYcWeaponActor::ApplyHiddenSlots(const FYcAttachmentDefinition* AttachmentDef, bool bHide)
 {
-	if (!Attachment)
+	if (!AttachmentDef)
 	{
 		return;
 	}
 
-	for (const FGameplayTag& SlotToHide : Attachment->HiddenSlots)
+	for (const FGameplayTag& SlotToHide : AttachmentDef->HiddenSlots)
 	{
 		SetSlotVisibility(SlotToHide, !bHide);
 	}

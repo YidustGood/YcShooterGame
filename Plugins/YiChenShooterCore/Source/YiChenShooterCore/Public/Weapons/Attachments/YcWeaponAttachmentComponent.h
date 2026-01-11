@@ -4,15 +4,16 @@
 
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
+#include "DataRegistryId.h"
 #include "YcAttachmentTypes.h"
 #include "YcWeaponAttachmentComponent.generated.h"
 
-class UYcAttachmentDefinition;
 class UYcHitScanWeaponInstance;
 struct FYcFragment_WeaponAttachments;
+struct FYcAttachmentDefinition;
 
-/** 配件变化委托 */
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAttachmentChanged, FGameplayTag, SlotType, UYcAttachmentDefinition*, Attachment);
+/** 配件变化委托 - 使用 FDataRegistryId 标识配件 */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAttachmentChanged, FGameplayTag, SlotType, const FDataRegistryId&, AttachmentId);
 
 /** 属性重算委托 */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnStatsRecalculated);
@@ -66,12 +67,12 @@ public:
 
 	/**
 	 * 安装配件
-	 * @param AttachmentDef 要安装的配件定义
+	 * @param AttachmentId 要安装的配件 DataRegistry ID
 	 * @param SlotType 目标槽位（可选，默认使用配件定义的槽位）
 	 * @return 是否安装成功
 	 */
 	UFUNCTION(BlueprintCallable, Category="Attachment")
-	bool InstallAttachment(UYcAttachmentDefinition* AttachmentDef, 
+	bool InstallAttachment(const FDataRegistryId& AttachmentId, 
 		FGameplayTag SlotType = FGameplayTag());
 
 	/**
@@ -84,12 +85,12 @@ public:
 
 	/**
 	 * 检查配件是否可以安装
-	 * @param AttachmentDef 要检查的配件
+	 * @param AttachmentId 要检查的配件 DataRegistry ID
 	 * @param OutReason 不可安装的原因
 	 * @return 是否可以安装
 	 */
 	UFUNCTION(BlueprintCallable, Category="Attachment")
-	bool CanInstallAttachment(UYcAttachmentDefinition* AttachmentDef, 
+	bool CanInstallAttachment(const FDataRegistryId& AttachmentId, 
 		FText& OutReason) const;
 
 	/**
@@ -101,14 +102,22 @@ public:
 	// ════════════════════════════════════════════════════════════════════════
 	// 配件查询
 	// ════════════════════════════════════════════════════════════════════════
+	
+	/** 获取指定槽位的配件定义 (从 DataRegistry 获取) - 仅 C++ 可用，返回指针避免复制 */
+	const FYcAttachmentDefinition* GetAttachmentDefInSlot(FGameplayTag SlotType) const;
 
+	/** 
+	 * 获取指定槽位的配件定义 - 蓝图版本
+	 * @param SlotType 槽位类型
+	 * @param OutDefinition 输出的配件定义（复制）
+	 * @return 是否找到配件定义
+	 */
+	UFUNCTION(BlueprintCallable, Category="Attachment", meta=(DisplayName="Get Attachment Def In Slot"))
+	bool K2_GetAttachmentDefInSlot(FGameplayTag SlotType, FYcAttachmentDefinition& OutDefinition) const;
+	
 	/** 获取指定槽位的已安装配件 */
 	UFUNCTION(BlueprintCallable, Category="Attachment")
 	FYcAttachmentInstance GetAttachmentInSlot(FGameplayTag SlotType) const;
-
-	/** 获取指定槽位的配件定义 */
-	UFUNCTION(BlueprintCallable, Category="Attachment")
-	UYcAttachmentDefinition* GetAttachmentDefInSlot(FGameplayTag SlotType) const;
 
 	/** 获取所有已安装配件 */
 	UFUNCTION(BlueprintCallable, Category="Attachment")
@@ -122,7 +131,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Attachment")
 	int32 GetInstalledAttachmentCount() const;
 
-	/** 获取所有已安装配件的ID列表 */
+	/** 获取所有已安装配件的ID列表 (返回配件的 SlotType Tag) */
 	UFUNCTION(BlueprintCallable, Category="Attachment")
 	TArray<FGameplayTag> GetInstalledAttachmentIds() const;
 
@@ -232,6 +241,32 @@ public:
 	void ResetTuningValues(FGameplayTag SlotType);
 
 	// ════════════════════════════════════════════════════════════════════════
+	// 武器配置/预设系统
+	// ════════════════════════════════════════════════════════════════════════
+
+	/**
+	 * 应用武器配置预设
+	 * 
+	 * 会先清空现有配件，然后按预设安装配件并应用调校值。
+	 * 如果预设中包含无效的配件ID，会跳过该条目并记录警告。
+	 * 
+	 * @param Loadout 要应用的武器配置
+	 * @return 是否所有配件都成功安装（部分失败返回false）
+	 */
+	UFUNCTION(BlueprintCallable, Category="Attachment|Loadout")
+	bool ApplyLoadout(const FYcWeaponLoadout& Loadout);
+
+	/**
+	 * 从当前配置创建预设
+	 * 
+	 * 遍历所有已安装的配件，创建包含配件ID和调校值的预设。
+	 * 
+	 * @return 当前武器配置的预设
+	 */
+	UFUNCTION(BlueprintCallable, Category="Attachment|Loadout")
+	FYcWeaponLoadout CreateLoadoutFromCurrent() const;
+
+	// ════════════════════════════════════════════════════════════════════════
 	// 事件委托
 	// ════════════════════════════════════════════════════════════════════════
 
@@ -287,8 +322,15 @@ protected:
 	/** 收集所有修改器（包括调校） */
 	void CollectAllModifiers(TArray<FYcStatModifier>& OutModifiers) const;
 
+	/** 
+	 * 从 DataRegistry 获取配件定义
+	 * @param AttachmentId 配件的 DataRegistry ID
+	 * @return 配件定义指针，如果未找到返回 nullptr
+	 */
+	const FYcAttachmentDefinition* GetAttachmentDefinition(const FDataRegistryId& AttachmentId) const;
+
 	/** 添加配件提供的动态槽位 */
-	void AddDynamicSlots(UYcAttachmentDefinition* AttachmentDef, FGameplayTag ProviderSlotType);
+	void AddDynamicSlots(const FYcAttachmentDefinition* AttachmentDef, FGameplayTag ProviderSlotType);
 
 	/** 移除配件提供的动态槽位（同时卸载槽位上的子配件） */
 	void RemoveDynamicSlots(FGameplayTag ProviderSlotType);

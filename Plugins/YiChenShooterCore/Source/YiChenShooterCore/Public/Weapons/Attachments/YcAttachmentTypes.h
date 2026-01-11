@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
 #include "Engine/DataTable.h"
 #include "GameplayTagContainer.h"
 #include "DataRegistryId.h"
@@ -10,6 +9,7 @@
 
 class UTexture2D;
 class UStaticMesh;
+struct FYcAttachmentDefinition;
 
 /**
  * EYcAttachmentTarget - 配件附加目标类型
@@ -177,10 +177,6 @@ struct YICHENSHOOTERCORE_API FYcAttachmentSlotDef
 	UPROPERTY(BlueprintReadOnly, Category="Slot")
 	FGameplayTag ProviderSlotType;
 };
-
-
-// Forward declaration for FYcAttachmentDefinition
-struct FYcAttachmentDefinition;
 
 /**
  * FYcAttachmentInstance - 配件运行时实例

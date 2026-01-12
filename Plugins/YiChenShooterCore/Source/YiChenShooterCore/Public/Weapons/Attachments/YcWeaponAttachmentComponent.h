@@ -33,7 +33,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSlotAvailabilityChanged, FGamepl
  * - 处理配件互斥逻辑
  * 
  * 网络同步：
- * - InstalledAttachments 复制到所有客户端
+ * - AttachmentArray 使用 Fast Array 增量复制到所有客户端
  * - 配件安装/卸载通过服务器RPC执行
  */
 UCLASS(BlueprintType, meta=(BlueprintSpawnableComponent))
@@ -121,7 +121,7 @@ public:
 
 	/** 获取所有已安装配件 */
 	UFUNCTION(BlueprintCallable, Category="Attachment")
-	TArray<FYcAttachmentInstance> GetAllAttachments() const { return InstalledAttachments; }
+	TArray<FYcAttachmentInstance> GetAllAttachments() const { return AttachmentArray.Items; }
 
 	/** 检查指定槽位是否有配件 */
 	UFUNCTION(BlueprintCallable, Category="Attachment")
@@ -287,9 +287,9 @@ public:
 	FOnSlotAvailabilityChanged OnSlotAvailabilityChanged;
 
 protected:
-	/** 已安装的配件列表 */
-	UPROPERTY(ReplicatedUsing=OnRep_InstalledAttachments, BlueprintReadOnly, Category="Attachment")
-	TArray<FYcAttachmentInstance> InstalledAttachments;
+	/** 配件数组 (Fast Array)*/
+	UPROPERTY(Replicated, BlueprintReadOnly, VisibleInstanceOnly, Category="Attachment")
+	FYcAttachmentArray AttachmentArray;
 
 	/** 武器实例引用 */
 	UPROPERTY()
@@ -315,10 +315,6 @@ protected:
 	/** 通知武器实例重算属性 */
 	void NotifyStatsChanged();
 
-	/** 网络复制回调 */
-	UFUNCTION()
-	void OnRep_InstalledAttachments();
-
 	/** 收集所有修改器（包括调校） */
 	void CollectAllModifiers(TArray<FYcStatModifier>& OutModifiers) const;
 
@@ -337,4 +333,58 @@ protected:
 
 	/** 检查槽位是否为动态槽位 */
 	bool IsDynamicSlot(FGameplayTag SlotType) const;
+
+	// ════════════════════════════════════════════════════════════════════════
+	// Fast Array 回调处理 (友元访问)
+	// ════════════════════════════════════════════════════════════════════════
+
+	friend struct FYcAttachmentInstance;
+	friend struct FYcAttachmentArray;
+
+	/** 处理配件添加回调 (由 Fast Array PostReplicatedAdd 调用) */
+	void HandleAttachmentAdded(const FYcAttachmentInstance& Instance);
+
+	/** 处理配件移除回调 (由 Fast Array PreReplicatedRemove 调用) */
+	void HandleAttachmentRemoved(const FYcAttachmentInstance& Instance);
+
+	/** 处理配件修改回调 (由 Fast Array PostReplicatedChange 调用) */
+	void HandleAttachmentChanged(const FYcAttachmentInstance& Instance);
+
+	// ════════════════════════════════════════════════════════════════════════
+	// Server RPC
+	// ════════════════════════════════════════════════════════════════════════
+
+	/**
+	 * 服务器安装配件 RPC
+	 * @param AttachmentId 要安装的配件 DataRegistry ID
+	 * @param SlotType 目标槽位
+	 */
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_InstallAttachment(const FDataRegistryId& AttachmentId, FGameplayTag SlotType);
+
+	/**
+	 * 服务器卸载配件 RPC
+	 * @param SlotType 要卸载的槽位
+	 */
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_UninstallAttachment(FGameplayTag SlotType);
+
+	// ════════════════════════════════════════════════════════════════════════
+	// 内部实现方法
+	// ════════════════════════════════════════════════════════════════════════
+
+	/**
+	 * 服务器端执行安装配件
+	 * @param AttachmentId 要安装的配件 DataRegistry ID
+	 * @param SlotType 目标槽位
+	 * @return 是否安装成功
+	 */
+	bool Internal_InstallAttachment(const FDataRegistryId& AttachmentId, FGameplayTag SlotType);
+
+	/**
+	 * 服务器端执行卸载配件
+	 * @param SlotType 要卸载的槽位
+	 * @return 是否卸载成功
+	 */
+	bool Internal_UninstallAttachment(FGameplayTag SlotType);
 };

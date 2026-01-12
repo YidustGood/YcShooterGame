@@ -33,6 +33,7 @@ public:
 
 protected:
 	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostInitializeComponents() override;
 
 public:
 	// 根组件
@@ -192,7 +193,10 @@ private:
 	/** 初始化槽位到Mesh组件的映射 */
 	void InitializeSlotMeshMapping();
 
-	/** 初始化配件系统 */
+	/** 
+	 * 初始化配件系统
+	 * 在OnEquipmentInstRep()中调用以确保EquipmentInst有效性
+	 */
 	void InitializeAttachmentSystem(UYcEquipmentInstance* EquipmentInst);
 
 	/** 绑定配件变化事件 */

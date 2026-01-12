@@ -5,11 +5,14 @@
 #include "Engine/DataTable.h"
 #include "GameplayTagContainer.h"
 #include "DataRegistryId.h"
+#include "Net/Serialization/FastArraySerializer.h"
 #include "YcAttachmentTypes.generated.h"
 
 class UTexture2D;
 class UStaticMesh;
+class UYcWeaponAttachmentComponent;
 struct FYcAttachmentDefinition;
+struct FYcAttachmentArray;
 
 /**
  * EYcAttachmentTarget - 配件附加目标类型
@@ -183,9 +186,11 @@ struct YICHENSHOOTERCORE_API FYcAttachmentSlotDef
  * 
  * 存储已安装配件的运行时数据
  * 使用 FDataRegistryId 引用配件定义，支持网络复制和存档序列化
+ * 
+ * 继承 FFastArraySerializerItem 支持 Fast Array 增量复制。
  */
 USTRUCT(BlueprintType)
-struct YICHENSHOOTERCORE_API FYcAttachmentInstance
+struct YICHENSHOOTERCORE_API FYcAttachmentInstance : public FFastArraySerializerItem
 {
 	GENERATED_BODY()
 
@@ -194,25 +199,36 @@ struct YICHENSHOOTERCORE_API FYcAttachmentInstance
 	{
 	}
 
+	// ═══════════════════════════════════════════════════════════════
+	// 复制属性
+	// ═══════════════════════════════════════════════════════════════
+
 	/** 配件 DataRegistry ID */
-	UPROPERTY(BlueprintReadOnly, Category="Attachment")
+	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly, Category="Attachment")
 	FDataRegistryId AttachmentRegistryId;
 
 	/** 安装的槽位类型 */
-	UPROPERTY(BlueprintReadOnly, Category="Attachment")
+	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly,  Category="Attachment")
 	FGameplayTag SlotType;
 
-	// @TODO 用TMap的话无法参与网络复制，如果确实需要同步给客户端考虑借助相关的一些复制函数处理
-	/** 调校参数值（Key=StatTag, Value=调校值） */
-	UPROPERTY(BlueprintReadOnly, NotReplicated, Category="Attachment")
+	// ═══════════════════════════════════════════════════════════════
+	// 非复制属性 (本地状态)
+	// ═══════════════════════════════════════════════════════════════
+
+	/** 调校参数值（Key=StatTag, Value=调校值）- 不参与网络复制 */
+	UPROPERTY(BlueprintReadOnly, NotReplicated, VisibleInstanceOnly, Category="Attachment")
 	TMap<FGameplayTag, float> TuningValues;
 
-	/** 生成的配件网格体组件（弱引用） */
-	UPROPERTY(BlueprintReadOnly, Category="Attachment")
+	/** 生成的配件网格体组件（弱引用）- 不参与网络复制 */
+	UPROPERTY(BlueprintReadOnly, NotReplicated, VisibleInstanceOnly, Category="Attachment")
 	TWeakObjectPtr<UStaticMeshComponent> MeshComponent;
 
-	/** 缓存的配件定义指针 (不复制，运行时缓存) */
+	/** 缓存的配件定义指针 - 不参与网络复制，运行时缓存 */
 	mutable const FYcAttachmentDefinition* CachedDef;
+
+	// ═══════════════════════════════════════════════════════════════
+	// 辅助方法
+	// ═══════════════════════════════════════════════════════════════
 
 	/** 检查是否有效 */
 	bool IsValid() const { return AttachmentRegistryId.IsValid(); }
@@ -225,6 +241,97 @@ struct YICHENSHOOTERCORE_API FYcAttachmentInstance
 
 	/** 获取配件定义 (自动缓存) */
 	const FYcAttachmentDefinition* GetDefinition() const;
+	
+	/** 获取调试字符串 */
+	FString GetDebugString() const;
+};
+
+
+/**
+ * FYcAttachmentArray - 配件数组序列化器
+ * 
+ * 继承 FFastArraySerializer 实现增量网络复制。
+ * 提供精确的元素变更回调。
+ */
+USTRUCT(BlueprintType)
+struct YICHENSHOOTERCORE_API FYcAttachmentArray : public FFastArraySerializer
+{
+	GENERATED_BODY()
+
+	FYcAttachmentArray() : OwnerComponent(nullptr) {}
+
+	/** 配件实例数组 */
+	UPROPERTY(VisibleInstanceOnly)
+	TArray<FYcAttachmentInstance> Items;
+
+	/** 所属组件引用 (用于回调访问) - 不参与网络复制 */
+	UPROPERTY(NotReplicated, VisibleInstanceOnly)
+	TObjectPtr<UYcWeaponAttachmentComponent> OwnerComponent;
+
+	// ═══════════════════════════════════════════════════════════════
+	// FFastArraySerializer 接口
+	// ═══════════════════════════════════════════════════════════════
+
+	/** 元素被移除前回调 (客户端) */
+	void PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize);
+
+	/** 元素被添加后回调 (客户端) */
+	void PostReplicatedAdd(const TArrayView<int32> AddedIndices, int32 FinalSize);
+
+	/** 元素被修改后回调 (客户端) */
+	void PostReplicatedChange(const TArrayView<int32> ChangedIndices, int32 FinalSize);
+
+	/** 网络增量序列化 */
+	bool NetDeltaSerialize(FNetDeltaSerializeInfo& DeltaParms)
+	{
+		return FFastArraySerializer::FastArrayDeltaSerialize<FYcAttachmentInstance, FYcAttachmentArray>(
+			Items, DeltaParms, *this);
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// 辅助方法
+	// ═══════════════════════════════════════════════════════════════
+
+	/** 标记指定元素已修改 */
+	void MarkItemDirtyByIndex(int32 Index)
+	{
+		if (Items.IsValidIndex(Index))
+		{
+			MarkItemDirty(Items[Index]);
+		}
+	}
+
+	/** 根据槽位查找配件索引 */
+	int32 FindIndexBySlot(FGameplayTag SlotType) const
+	{
+		return Items.IndexOfByPredicate([&SlotType](const FYcAttachmentInstance& Item)
+		{
+			return Item.SlotType == SlotType;
+		});
+	}
+
+	/** 根据槽位获取配件 */
+	FYcAttachmentInstance* FindBySlot(FGameplayTag SlotType)
+	{
+		int32 Index = FindIndexBySlot(SlotType);
+		return Index != INDEX_NONE ? &Items[Index] : nullptr;
+	}
+
+	const FYcAttachmentInstance* FindBySlot(FGameplayTag SlotType) const
+	{
+		int32 Index = FindIndexBySlot(SlotType);
+		return Index != INDEX_NONE ? &Items[Index] : nullptr;
+	}
+};
+
+/** 启用 NetDeltaSerialize */
+template<>
+struct TStructOpsTypeTraits<FYcAttachmentArray> : public TStructOpsTypeTraitsBase2<FYcAttachmentArray>
+{
+	enum
+	{
+		WithNetDeltaSerializer = true,
+	};
 };
 
 

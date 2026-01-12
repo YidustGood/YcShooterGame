@@ -105,6 +105,17 @@ void AYcWeaponActor::OnConstruction(const FTransform& Transform)
 	SetReserveMagazineVisibility(false);
 }
 
+void AYcWeaponActor::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+	
+	/**
+	 * 绑定配件变化事件
+	 * 因为UYcWeaponAttachmentComponent的AttachmentArray的客户端回调比OnEquipmentInstRep更早触发, 所以需要在这里就提前绑定好, 以便响应配件变化事件
+	 */
+	BindAttachmentEvents();
+}
+
 void AYcWeaponActor::SetReserveMagazineVisibility(bool bVisibility)
 {
 	if (MeshMagazineReserve)
@@ -160,18 +171,20 @@ void AYcWeaponActor::InitializeAttachmentSystem(UYcEquipmentInstance* EquipmentI
 		// 武器没有配置配件系统，跳过初始化
 		return;
 	}
-
+	
 	// 初始化配件组件并关联到武器实例
 	WeaponInstance->SetAttachmentComponent(AttachmentComponent);
+	
+	// 仅服务端刷新所有配件视觉（显示默认配件）
+	// 客户端的视觉更新通过 Fast Array 回调 (PostReplicatedAdd/Change) 触发
+	if (HasAuthority())
+	{
+		RefreshAllAttachmentVisuals();
+	}
 
-	// 绑定配件变化事件
-	BindAttachmentEvents();
-
-	// 刷新所有配件视觉（显示默认配件）
-	RefreshAllAttachmentVisuals();
-
-	UE_LOG(LogYcShooterCore, Log, TEXT("AYcWeaponActor: 配件系统初始化完成，槽位数量: %d"), 
-		AttachmentsFragment->AttachmentSlots.Num());
+	UE_LOG(LogYcShooterCore, Log, TEXT("AYcWeaponActor: 配件系统初始化完成，槽位数量: %d [%s]"), 
+		AttachmentsFragment->AttachmentSlots.Num(),
+		HasAuthority() ? TEXT("Server") : TEXT("Client"));
 }
 
 void AYcWeaponActor::InitializeSlotMeshMapping()
@@ -195,6 +208,8 @@ void AYcWeaponActor::BindAttachmentEvents()
 		return;
 	}
 
+	//@TODO 后续实际上还可以采用GameplayMessage来处理降低耦合
+	
 	// 绑定配件安装/卸载事件
 	AttachmentComponent->OnAttachmentInstalled.AddDynamic(this, &AYcWeaponActor::OnAttachmentInstalled);
 	AttachmentComponent->OnAttachmentUninstalled.AddDynamic(this, &AYcWeaponActor::OnAttachmentUninstalled);
@@ -325,11 +340,6 @@ void AYcWeaponActor::SetSlotVisibility(FGameplayTag SlotType, bool bVisible)
 
 void AYcWeaponActor::OnAttachmentInstalled(FGameplayTag SlotType, const FDataRegistryId& AttachmentId)
 {
-	if (!AttachmentId.IsValid())
-	{
-		return;
-	}
-
 	// 从 AttachmentComponent 获取配件定义
 	const FYcAttachmentDefinition* AttachmentDef = nullptr;
 	if (AttachmentComponent)
@@ -339,8 +349,17 @@ void AYcWeaponActor::OnAttachmentInstalled(FGameplayTag SlotType, const FDataReg
 
 	if (!AttachmentDef)
 	{
-		UE_LOG(LogYcShooterCore, Warning, TEXT("AYcWeaponActor::OnAttachmentInstalled - 无法获取配件定义: %s"), 
-			*AttachmentId.ToString());
+		// 如果没有配件定义，可能是槽位被清空或配件无效
+		// 清空该槽位的视觉
+		UStaticMeshComponent* MeshComp = GetMeshComponentForSlot(SlotType);
+		if (MeshComp)
+		{
+			MeshComp->SetStaticMesh(nullptr);
+			MeshComp->SetVisibility(false);
+		}
+		
+		UE_LOG(LogYcShooterCore, Verbose, TEXT("AYcWeaponActor::OnAttachmentInstalled - 槽位 %s 无配件定义，已清空视觉"), 
+			*SlotType.ToString());
 		return;
 	}
 
@@ -355,11 +374,7 @@ void AYcWeaponActor::OnAttachmentInstalled(FGameplayTag SlotType, const FDataReg
 void AYcWeaponActor::OnAttachmentUninstalled(FGameplayTag SlotType, const FDataRegistryId& AttachmentId)
 {
 	// 注意：卸载时配件已从组件中移除，无法通过 GetAttachmentDefInSlot 获取
-	// 需要在卸载前获取配件定义来恢复隐藏的槽位
-	// 但由于委托是在卸载后触发的，这里只能清空视觉
-	
-	UE_LOG(LogYcShooterCore, Log, TEXT("AYcWeaponActor: 配件 %s 已从槽位 %s 卸载"), 
-		*AttachmentId.ToString(), *SlotType.ToString());
+	// AttachmentId 可能是无效的（当通过 PostReplicatedChange 检测到槽位被清空时） 
 
 	// 清空该槽位的视觉
 	UStaticMeshComponent* MeshComp = GetMeshComponentForSlot(SlotType);

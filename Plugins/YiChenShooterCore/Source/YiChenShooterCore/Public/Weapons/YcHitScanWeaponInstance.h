@@ -258,6 +258,9 @@ public:
 	/** 应用配件修改器 */
 	void ApplyAttachmentModifiers();
 
+	/** 广播属性变化消息到 GameplayMessageSubsystem */
+	void BroadcastStatsChangedMessage() const;
+
 	// ==================== 运行时状态 ====================
 	
 	/** 当前腰射扩散角度 */

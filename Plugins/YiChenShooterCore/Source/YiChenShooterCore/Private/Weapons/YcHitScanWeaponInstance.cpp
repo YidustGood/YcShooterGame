@@ -1,11 +1,13 @@
 ﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 #include "Weapons/YcHitScanWeaponInstance.h"
+#include "Weapons/YcWeaponMessages.h"
 #include "Weapons/Fragments/YcFragment_WeaponStats.h"
 #include "Weapons/Attachments/YcFragment_WeaponAttachments.h"
 #include "Weapons/Attachments/YcWeaponAttachmentComponent.h"
 #include "YiChenEquipment/Public/YcEquipmentDefinition.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameFramework/Pawn.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcHitScanWeaponInstance)
@@ -127,6 +129,20 @@ void UYcHitScanWeaponInstance::RecalculateStats()
 	{
 		ApplyAttachmentModifiers();
 	}
+
+	// 广播属性变化消息（供 UI 和其他解耦系统监听）
+	BroadcastStatsChangedMessage();
+}
+
+void UYcHitScanWeaponInstance::BroadcastStatsChangedMessage() const
+{
+	UGameplayMessageSubsystem& MsgSubsystem = UGameplayMessageSubsystem::Get(this);
+	
+	FYcWeaponStatsChangedMessage Message;
+	Message.WeaponInstance = const_cast<UYcHitScanWeaponInstance*>(this);
+	Message.OwnerPawn = GetPawn();
+	
+	MsgSubsystem.BroadcastMessage(TAG_Message_Weapon_StatsChanged, Message);
 }
 
 void UYcHitScanWeaponInstance::ApplyAttachmentModifiers()
@@ -192,7 +208,6 @@ void UYcHitScanWeaponInstance::SetAttachmentComponent(UYcWeaponAttachmentCompone
 	{
 		AttachmentComponent->Initialize(this, *AttachmentsFragment);
 	}
-	RecalculateStats();
 }
 
 

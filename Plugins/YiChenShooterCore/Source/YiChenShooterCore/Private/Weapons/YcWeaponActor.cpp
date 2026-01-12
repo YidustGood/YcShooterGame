@@ -134,11 +134,23 @@ void AYcWeaponActor::SetMagazineVisibility(bool bVisibility)
 
 void AYcWeaponActor::OnEquipmentInstRep(UYcEquipmentInstance* EquipmentInst)
 {
-	// 初始化配件系统
-	InitializeAttachmentSystem(EquipmentInst);
+	if (EquipmentInst)
+	{
+		// 初始化配件系统
+		InitializeAttachmentSystem(EquipmentInst);
+		
+		/**
+		 * 对于武器默认配件它会在客户端的OnEquipmentInstRep调用前就已经同步到客户端
+		 * 所以我们在这里针对客户端做一遍刷新以便这会儿同步过来的武器实例能够计算出正确的数值
+		 */
+		if (!HasAuthority())
+		{
+			GetWeaponInstance()->RecalculateStats();
+		}
 
-	// 调用蓝图扩展点
-	K2_OnWeaponInitialized(EquipmentInst);
+		// 调用蓝图扩展点
+		K2_OnWeaponInitialized(EquipmentInst);
+	}
 }
 
 UYcHitScanWeaponInstance* AYcWeaponActor::GetWeaponInstance() const
@@ -444,20 +456,21 @@ void AYcWeaponActor::ApplyHiddenSlots(const FYcAttachmentDefinition* AttachmentD
 
 void AYcWeaponActor::OnSlotAvailabilityChanged(FGameplayTag SlotType, bool bIsAvailable)
 {
-	if (bIsAvailable)
-	{
-		// 动态槽位被添加，创建对应的Mesh组件
-		CreateDynamicMeshComponent(SlotType);
-		
-		UE_LOG(LogYcShooterCore, Log, TEXT("AYcWeaponActor: 动态槽位 %s 已添加"), *SlotType.ToString());
-	}
-	else
-	{
-		// 动态槽位被移除，销毁对应的Mesh组件
-		DestroyDynamicMeshComponent(SlotType);
-		
-		UE_LOG(LogYcShooterCore, Log, TEXT("AYcWeaponActor: 动态槽位 %s 已移除"), *SlotType.ToString());
-	}
+	// @TODO 可以增加动态Mesh组件功能, 目前静态就不能做移除
+	// if (bIsAvailable)
+	// {
+	// 	// 动态槽位被添加，创建对应的Mesh组件
+	// 	CreateDynamicMeshComponent(SlotType);
+	// 	
+	// 	UE_LOG(LogYcShooterCore, Log, TEXT("AYcWeaponActor: 动态槽位 %s 已添加"), *SlotType.ToString());
+	// }
+	// else
+	// {
+	// 	// 动态槽位被移除，销毁对应的Mesh组件
+	// 	DestroyDynamicMeshComponent(SlotType);
+	// 	
+	// 	UE_LOG(LogYcShooterCore, Log, TEXT("AYcWeaponActor: 动态槽位 %s 已移除"), *SlotType.ToString());
+	// }
 }
 
 UStaticMeshComponent* AYcWeaponActor::CreateDynamicMeshComponent(FGameplayTag SlotType)

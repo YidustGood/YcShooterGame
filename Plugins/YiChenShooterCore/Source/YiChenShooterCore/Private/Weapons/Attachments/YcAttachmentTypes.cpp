@@ -16,9 +16,19 @@ void FYcAttachmentInstance::Reset()
 {
 	AttachmentRegistryId = FDataRegistryId();
 	SlotType = FGameplayTag();
+	bIsInstalled = false;
 	TuningValues.Empty();
 	MeshComponent.Reset();
 	CachedDef = nullptr;
+}
+
+void FYcAttachmentInstance::MarkUninstalled()
+{
+	// 保留 AttachmentRegistryId 和 SlotType，便于客户端处理卸载逻辑
+	bIsInstalled = false;
+	TuningValues.Empty();
+	MeshComponent.Reset();
+	// 注意：不清空 CachedDef，客户端可能需要访问
 }
 
 bool FYcAttachmentInstance::CacheDefinitionFromRegistry() const
@@ -80,15 +90,8 @@ void FYcAttachmentArray::PreReplicatedRemove(const TArrayView<int32> RemovedIndi
 	for (const int32 Index : RemovedIndices)
 	{
 		FYcAttachmentInstance& Instance = Items[Index];
-		
-		// 注意：PreReplicatedRemove 在元素被移除前调用，此时数据仍然有效
-		// 但如果是通过 Reset() 清空的槽位，AttachmentRegistryId 可能已经无效
-		if (!Instance.IsValid())
-		{
-			UE_LOG(LogYcAttachment, Verbose, TEXT("PreReplicatedRemove: Skipping invalid instance in Slot[%s]"), 
-				*Instance.SlotType.ToString());
-			continue;
-		}
+		// 这个函数是在配件从数组中移除前调用的, 我们要标注这个配件为未安装, 以避免在本帧的武器数组计算中错误的收集到这已经卸下的配件的数值修改器
+		Instance.bIsInstalled = false;
 		
 		UE_LOG(LogYcAttachment, Log, TEXT("PreReplicatedRemove: %s"), *Instance.GetDebugString());
 		
@@ -135,33 +138,37 @@ void FYcAttachmentArray::PostReplicatedChange(const TArrayView<int32> ChangedInd
 	{
 		FYcAttachmentInstance& Instance = Items[Index];
 		
-		// 重置缓存
-		Instance.CachedDef = nullptr;
-		
-		// 如果实例无效（被清空），这表示配件被卸载了
-		// 需要广播卸载事件以更新视觉
-		if (!Instance.IsValid())
+		// 根据 bIsInstalled 判断是安装还是卸载
+		if (!Instance.bIsInstalled)
 		{
-			UE_LOG(LogYcAttachment, Log, TEXT("PostReplicatedChange: Attachment cleared in Slot[%s]"), 
-				*Instance.SlotType.ToString());
+			// 配件被卸载
+			UE_LOG(LogYcAttachment, Log, TEXT("PostReplicatedChange: Attachment uninstalled from Slot[%s], was: %s"), 
+				*Instance.SlotType.ToString(),
+				*Instance.AttachmentRegistryId.ToString());
 			
 			if (OwnerComponent)
 			{
-				// 广播卸载事件（使用无效的 AttachmentId 表示槽位被清空）
-				OwnerComponent->OnAttachmentUninstalled.Broadcast(Instance.SlotType, FDataRegistryId());
-				OwnerComponent->NotifyStatsChanged();
+				// 使用保留的 AttachmentRegistryId 广播卸载事件
+				OwnerComponent->HandleAttachmentRemoved(Instance);
 			}
-			continue;
+			
+			// // 卸载处理完成后，清空数据, 注释原因：保留, 装备下一个配件直接覆盖就好了
+			// Instance.AttachmentRegistryId = FDataRegistryId();
+			// Instance.CachedDef = nullptr;
 		}
-		
-		// 重新缓存定义 (可能 ID 变了)
-		Instance.CacheDefinitionFromRegistry();
-		
-		UE_LOG(LogYcAttachment, Log, TEXT("PostReplicatedChange: %s"), *Instance.GetDebugString());
-		
-		if (OwnerComponent)
+		else
 		{
-			OwnerComponent->HandleAttachmentChanged(Instance);
+			// 配件被安装或更换
+			Instance.CachedDef = nullptr; // 重置缓存
+			Instance.CacheDefinitionFromRegistry();
+			
+			UE_LOG(LogYcAttachment, Log, TEXT("PostReplicatedChange: Attachment installed/changed: %s"), 
+				*Instance.GetDebugString());
+			
+			if (OwnerComponent)
+			{
+				OwnerComponent->HandleAttachmentChanged(Instance);
+			}
 		}
 	}
 }

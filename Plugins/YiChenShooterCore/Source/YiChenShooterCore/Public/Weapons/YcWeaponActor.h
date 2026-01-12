@@ -91,6 +91,7 @@ protected:
 	/** 
 	 * 装备实例复制回调（内部使用）
 	 * 处理配件系统初始化等核心逻辑，然后调用 OnWeaponInitialized
+	 * 注意: 这个回调发生的时机可能会晚于Actor的某些网络复制事件, 需要注意时序问题, 例如武器默认配件同步到客户端时这个回调就还未触发
 	 */
 	UFUNCTION()
 	void OnEquipmentInstRep(UYcEquipmentInstance* EquipmentInst);

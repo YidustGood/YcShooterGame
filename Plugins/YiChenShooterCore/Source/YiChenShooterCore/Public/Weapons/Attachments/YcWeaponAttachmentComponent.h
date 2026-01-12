@@ -299,7 +299,7 @@ protected:
 	const FYcFragment_WeaponAttachments* AttachmentsConfig = nullptr;
 
 	/** 动态槽位列表（由已安装配件提供） */
-	UPROPERTY()
+	UPROPERTY(VisibleInstanceOnly)
 	TArray<FYcAttachmentSlotDef> DynamicSlots;
 
 	/** 是否已初始化 */
@@ -314,9 +314,6 @@ protected:
 
 	/** 通知武器实例重算属性 */
 	void NotifyStatsChanged();
-
-	/** 收集所有修改器（包括调校） */
-	void CollectAllModifiers(TArray<FYcStatModifier>& OutModifiers) const;
 
 	/** 
 	 * 从 DataRegistry 获取配件定义
@@ -333,6 +330,12 @@ protected:
 
 	/** 检查槽位是否为动态槽位 */
 	bool IsDynamicSlot(FGameplayTag SlotType) const;
+
+	/** 
+	 * 广播配件变化消息到 GameplayMessageSubsystem
+	 * 用于 UI 和其他解耦系统监听
+	 */
+	void BroadcastAttachmentMessage(FGameplayTag SlotType, const FDataRegistryId& AttachmentId, bool bInstalled) const;
 
 	// ════════════════════════════════════════════════════════════════════════
 	// Fast Array 回调处理 (友元访问)
@@ -384,7 +387,8 @@ protected:
 	/**
 	 * 服务器端执行卸载配件
 	 * @param SlotType 要卸载的槽位
+	 * @param bRemoveFromArray 是否从AttachmentArray中移除元素, 对于动态插槽的配件就会传入true进行删除
 	 * @return 是否卸载成功
 	 */
-	bool Internal_UninstallAttachment(FGameplayTag SlotType);
+	bool Internal_UninstallAttachment(FGameplayTag SlotType, bool bRemoveFromArray = false);
 };

@@ -195,7 +195,8 @@ struct YICHENSHOOTERCORE_API FYcAttachmentInstance : public FFastArraySerializer
 	GENERATED_BODY()
 
 	FYcAttachmentInstance()
-		: CachedDef(nullptr)
+		: bIsInstalled(false)
+		, CachedDef(nullptr)
 	{
 	}
 
@@ -210,6 +211,14 @@ struct YICHENSHOOTERCORE_API FYcAttachmentInstance : public FFastArraySerializer
 	/** 安装的槽位类型 */
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly,  Category="Attachment")
 	FGameplayTag SlotType;
+
+	/** 
+	 * 是否已安装配件
+	 * 用于区分"空槽位"和"已卸载配件的槽位"
+	 * 卸载时设为 false 但保留 AttachmentRegistryId，便于客户端处理卸载逻辑
+	 */
+	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly, Category="Attachment")
+	bool bIsInstalled;
 
 	// ═══════════════════════════════════════════════════════════════
 	// 非复制属性 (本地状态)
@@ -230,11 +239,17 @@ struct YICHENSHOOTERCORE_API FYcAttachmentInstance : public FFastArraySerializer
 	// 辅助方法
 	// ═══════════════════════════════════════════════════════════════
 
-	/** 检查是否有效 */
-	bool IsValid() const { return AttachmentRegistryId.IsValid(); }
+	/** 检查是否有效（已安装配件） */
+	bool IsValid() const { return bIsInstalled && AttachmentRegistryId.IsValid(); }
 
-	/** 重置实例 */
+	/** 检查是否有配件数据（可能已卸载但数据未清空） */
+	bool HasAttachmentData() const { return AttachmentRegistryId.IsValid(); }
+
+	/** 重置实例（完全清空） */
 	void Reset();
+
+	/** 标记为已卸载（保留数据供客户端处理） */
+	void MarkUninstalled();
 
 	/** 从 DataRegistry 缓存配件定义 */
 	bool CacheDefinitionFromRegistry() const;

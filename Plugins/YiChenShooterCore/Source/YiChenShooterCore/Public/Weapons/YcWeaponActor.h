@@ -5,7 +5,6 @@
 #include "GameFramework/Actor.h"
 #include "GameplayTagContainer.h"
 #include "DataRegistryId.h"
-#include "PrimitiveViewRelevance.h"
 #include "YcWeaponActor.generated.h"
 
 class UYcEquipmentInstance;
@@ -19,9 +18,16 @@ struct FYcAttachmentDefinition;
 struct FDataRegistryId;
 
 /**
- * 武器Actor基类
- * 武器由一个骨骼网格体作为主模型，配件通过配件系统动态附加
- * 由Equipment配置生成
+ * AYcWeaponActor - 武器Actor基类
+ * 
+ * 武器由一个骨骼网格体作为主模型，配件网格体通过配件系统动态创建/销毁。
+ * 由 Equipment 系统生成和管理。
+ * 
+ * 配件视觉系统：
+ * - 配件网格体按需动态创建，不预分配
+ * - 通过 SlotToMeshMap 管理槽位到网格体组件的映射
+ * - 支持配件附加到武器Socket或其他配件上
+ * - 支持配件隐藏其他槽位的功能
  */
 UCLASS(BlueprintType, Blueprintable)
 class YICHENSHOOTERCORE_API AYcWeaponActor : public AActor
@@ -32,66 +38,83 @@ public:
 	AYcWeaponActor();
 
 protected:
-	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void PostInitializeComponents() override;
+	virtual void BeginDestroy() override;
 
 public:
-	// 根组件
+	// ════════════════════════════════════════════════════════════════════════
+	// 核心组件
+	// ════════════════════════════════════════════════════════════════════════
+
+	/** 根组件 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<USceneComponent> WeaponRoot;
 
-	// 武器主骨骼网格体
+	/** 武器主骨骼网格体 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	TObjectPtr<USkeletalMeshComponent> Weapon;
+	TObjectPtr<USkeletalMeshComponent> WeaponMesh;
 
 	// ════════════════════════════════════════════════════════════════════════
-	// 配件Mesh组件（通过配件系统动态设置网格体）
+	// 公共接口
 	// ════════════════════════════════════════════════════════════════════════
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Attachments")
-	TObjectPtr<UStaticMeshComponent> MeshMuzzle;
+	/** 获取配件管理器组件 */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Attachment")
+	UYcWeaponAttachmentComponent* GetAttachmentComponent() const { return AttachmentComponent; }
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Attachments")
-	TObjectPtr<UStaticMeshComponent> MeshBarrel;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Attachments")
-	TObjectPtr<UStaticMeshComponent> MeshOptic;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Attachments")
-	TObjectPtr<UStaticMeshComponent> MeshUnderbarrel;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Attachments")
-	TObjectPtr<UStaticMeshComponent> MeshMagazine;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Attachments")
-	TObjectPtr<UStaticMeshComponent> MeshMagazineReserve;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Attachments")
-	TObjectPtr<UStaticMeshComponent> MeshLaser;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Attachments")
-	TObjectPtr<UStaticMeshComponent> MeshForestock;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Attachments")
-	TObjectPtr<UStaticMeshComponent> MeshIronsights;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Attachments")
-	TObjectPtr<UStaticMeshComponent> MeshSlide;
-
-public:
-	/** 设置备用弹匣可见性 */
+	/** 获取关联的武器实例 */
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
-	void SetReserveMagazineVisibility(bool bVisibility);
+	UYcHitScanWeaponInstance* GetWeaponInstance() const;
 
-	/** 设置弹匣可见性 */
+	/** 获取武器主网格体 */
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
-	void SetMagazineVisibility(bool bVisibility);
+	USkeletalMeshComponent* GetWeaponMesh() const { return WeaponMesh; }
+
+	// ════════════════════════════════════════════════════════════════════════
+	// 配件视觉系统 - 公共接口
+	// ════════════════════════════════════════════════════════════════════════
+
+	/**
+	 * 获取指定槽位的网格体组件
+	 * @param SlotType 配件槽位类型Tag
+	 * @return 对应的StaticMeshComponent，未找到返回nullptr
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Attachment")
+	UStaticMeshComponent* GetAttachmentMeshForSlot(FGameplayTag SlotType) const;
+
+	/**
+	 * 检查指定槽位是否有网格体组件
+	 * @param SlotType 配件槽位类型Tag
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Attachment")
+	bool HasAttachmentMeshForSlot(FGameplayTag SlotType) const;
+
+	/**
+	 * 设置指定槽位的可见性
+	 * @param SlotType 配件槽位类型Tag
+	 * @param bVisible 是否可见
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Attachment")
+	void SetSlotVisibility(FGameplayTag SlotType, bool bVisible);
+
+	/**
+	 * 刷新所有配件视觉
+	 * 根据AttachmentComponent中的已安装配件更新所有视觉
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Attachment")
+	void RefreshAllAttachmentVisuals();
 
 protected:
+	// ════════════════════════════════════════════════════════════════════════
+	// 装备系统回调
+	// ════════════════════════════════════════════════════════════════════════
+
 	/** 
 	 * 装备实例复制回调（内部使用）
-	 * 处理配件系统初始化等核心逻辑，然后调用 OnWeaponInitialized
-	 * 注意: 这个回调发生的时机可能会晚于Actor的某些网络复制事件, 需要注意时序问题, 例如武器默认配件同步到客户端时这个回调就还未触发
+	 * 处理配件系统初始化等核心逻辑，然后调用 K2_OnWeaponInitialized
+	 * 
+	 * 注意: 此回调可能晚于 Actor 的某些网络复制事件，
+	 * 例如武器默认配件可能在此回调前就已同步到客户端
 	 */
 	UFUNCTION()
 	void OnEquipmentInstRep(UYcEquipmentInstance* EquipmentInst);
@@ -105,60 +128,58 @@ protected:
 	void K2_OnWeaponInitialized(UYcEquipmentInstance* EquipmentInst);
 
 	// ════════════════════════════════════════════════════════════════════════
-	// 配件系统
-	// ════════════════════════════════════════════════════════════════════════
-
-	/** 获取配件管理器组件 */
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Attachment")
-	UYcWeaponAttachmentComponent* GetAttachmentComponent() const { return AttachmentComponent; }
-
-	/** 获取关联的武器实例 */
-	UFUNCTION(BlueprintCallable, Category = "Weapon")
-	UYcHitScanWeaponInstance* GetWeaponInstance() const;
-
-	// ════════════════════════════════════════════════════════════════════════
-	// 配件视觉系统
+	// 配件视觉系统 - 内部实现
 	// ════════════════════════════════════════════════════════════════════════
 
 	/**
-	 * 获取指定槽位对应的Mesh组件
-	 * @param SlotType 配件槽位类型Tag
-	 * @return 对应的StaticMeshComponent，未找到返回nullptr
+	 * 创建配件网格体组件
+	 * @param SlotType 槽位类型Tag
+	 * @param AttachmentDef 配件定义
+	 * @return 创建的网格体组件，失败返回nullptr
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Attachment")
-	UStaticMeshComponent* GetMeshComponentForSlot(FGameplayTag SlotType) const;
+	UStaticMeshComponent* CreateAttachmentMesh(FGameplayTag SlotType, const FYcAttachmentDefinition* AttachmentDef);
 
 	/**
-	 * 更新指定槽位的配件视觉
-	 * @param SlotType 配件槽位类型Tag
-	 * @param AttachmentDef 配件定义结构体指针（nullptr则清空）
+	 * 销毁配件网格体组件
+	 * @param SlotType 槽位类型Tag
 	 */
-	void UpdateAttachmentVisual(FGameplayTag SlotType, const FYcAttachmentDefinition* AttachmentDef);
+	void DestroyAttachmentMesh(FGameplayTag SlotType);
 
 	/**
-	 * 清空指定槽位的配件视觉
-	 * @param SlotType 配件槽位类型Tag
+	 * 销毁所有配件网格体组件
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Attachment")
-	void ClearAttachmentVisual(FGameplayTag SlotType);
+	void DestroyAllAttachmentMeshes();
 
 	/**
-	 * 刷新所有配件视觉
-	 * 根据AttachmentComponent中的已安装配件更新所有视觉
+	 * 配置网格体组件的附加关系和变换
+	 * @param MeshComp 要配置的网格体组件
+	 * @param AttachmentDef 配件定义
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Attachment")
-	void RefreshAllAttachmentVisuals();
+	void ConfigureAttachmentMesh(UStaticMeshComponent* MeshComp, const FYcAttachmentDefinition* AttachmentDef);
 
 	/**
-	 * 设置指定槽位的可见性
-	 * @param SlotType 配件槽位类型Tag
-	 * @param bVisible 是否可见
+	 * 获取配件的附加父组件和Socket
+	 * @param AttachmentDef 配件定义
+	 * @param OutParent 输出的父组件
+	 * @param OutSocketName 输出的Socket名称
+	 * @return 是否成功获取
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Attachment")
-	void SetSlotVisibility(FGameplayTag SlotType, bool bVisible);
+	bool ResolveAttachmentParent(const FYcAttachmentDefinition* AttachmentDef, 
+		USceneComponent*& OutParent, FName& OutSocketName) const;
 
 	/**
-	 * 配件安装时的视觉更新回调
+	 * 应用配件的隐藏槽位设置
+	 * @param AttachmentDef 配件定义
+	 * @param bHide true=隐藏, false=显示
+	 */
+	void ApplyHiddenSlots(const FYcAttachmentDefinition* AttachmentDef, bool bHide);
+
+	// ════════════════════════════════════════════════════════════════════════
+	// 配件事件回调
+	// ════════════════════════════════════════════════════════════════════════
+
+	/**
+	 * 配件安装回调
 	 * @param SlotType 配件槽位类型Tag
 	 * @param AttachmentId 配件的 DataRegistry ID
 	 */
@@ -166,75 +187,44 @@ protected:
 	void OnAttachmentInstalled(FGameplayTag SlotType, const FDataRegistryId& AttachmentId);
 
 	/**
-	 * 配件卸载时的视觉更新回调
+	 * 配件卸载回调
 	 * @param SlotType 配件槽位类型Tag
 	 * @param AttachmentId 配件的 DataRegistry ID
 	 */
 	UFUNCTION()
 	void OnAttachmentUninstalled(FGameplayTag SlotType, const FDataRegistryId& AttachmentId);
 
-	/**
-	 * 槽位可用性变化回调（动态槽位添加/移除时）
-	 */
-	UFUNCTION()
-	void OnSlotAvailabilityChanged(FGameplayTag SlotType, bool bIsAvailable);
-	
 private:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = ( AllowPrivateAccess = "true" ))
+	// ════════════════════════════════════════════════════════════════════════
+	// 私有组件
+	// ════════════════════════════════════════════════════════════════════════
+
+	/** 装备Actor组件 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UYcEquipmentActorComponent> EquipmentActorComponent;
 
 	/** 配件管理器组件 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = ( AllowPrivateAccess = "true" ))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UYcWeaponAttachmentComponent> AttachmentComponent;
 
-	/** 槽位类型到Mesh组件的映射 */
-	UPROPERTY()
-	TMap<FGameplayTag, TObjectPtr<UStaticMeshComponent>> SlotToMeshMap;
-
-	/** 初始化槽位到Mesh组件的映射 */
-	void InitializeSlotMeshMapping();
+	// ════════════════════════════════════════════════════════════════════════
+	// 配件网格体管理
+	// ════════════════════════════════════════════════════════════════════════
 
 	/** 
-	 * 初始化配件系统
-	 * 在OnEquipmentInstRep()中调用以确保EquipmentInst有效性
+	 * 槽位到网格体组件的映射
+	 * 动态创建的配件网格体存储在此映射中
 	 */
+	UPROPERTY(VisibleInstanceOnly, Category = "Attachment|Debug")
+	TMap<FGameplayTag, TObjectPtr<UStaticMeshComponent>> SlotToMeshMap;
+
+	// ════════════════════════════════════════════════════════════════════════
+	// 初始化
+	// ════════════════════════════════════════════════════════════════════════
+
+	/** 初始化配件系统 */
 	void InitializeAttachmentSystem(UYcEquipmentInstance* EquipmentInst);
 
 	/** 绑定配件变化事件 */
 	void BindAttachmentEvents();
-
-	/**
-	 * 获取配件的附加父组件
-	 * @param AttachmentDef 配件定义结构体指针
-	 * @param OutParent 输出的父组件
-	 * @param OutSocketName 输出的Socket名称
-	 * @return 是否成功获取
-	 */
-	bool GetAttachmentParent(const FYcAttachmentDefinition* AttachmentDef, 
-		USceneComponent*& OutParent, FName& OutSocketName) const;
-
-	/**
-	 * 应用配件的隐藏槽位设置
-	 * @param AttachmentDef 配件定义结构体指针
-	 * @param bHide true=隐藏, false=显示
-	 */
-	void ApplyHiddenSlots(const FYcAttachmentDefinition* AttachmentDef, bool bHide);
-
-	/**
-	 * 为动态槽位创建Mesh组件
-	 * @param SlotType 槽位类型Tag
-	 * @return 创建的Mesh组件
-	 */
-	UStaticMeshComponent* CreateDynamicMeshComponent(FGameplayTag SlotType);
-
-	/**
-	 * 销毁动态槽位的Mesh组件
-	 * @param SlotType 槽位类型Tag
-	 */
-	void DestroyDynamicMeshComponent(FGameplayTag SlotType);
 };
-
-
-
-
-

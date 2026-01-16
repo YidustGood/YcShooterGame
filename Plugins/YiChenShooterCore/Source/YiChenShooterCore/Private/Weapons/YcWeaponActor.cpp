@@ -27,6 +27,7 @@ AYcWeaponActor::AYcWeaponActor()
 	WeaponMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("WeaponMesh"));
 	WeaponMesh->SetupAttachment(WeaponRoot);
 	WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	WeaponMesh->SetFirstPersonPrimitiveType(FirstPersonType);
 
 	// 装备Actor组件
 	EquipmentActorComponent = CreateDefaultSubobject<UYcEquipmentActorComponent>(TEXT("EquipmentActorComponent"));
@@ -179,6 +180,7 @@ UStaticMeshComponent* AYcWeaponActor::CreateAttachmentMesh(FGameplayTag SlotType
 	// 设置网格体
 	NewMeshComp->SetStaticMesh(MeshAsset);
 	NewMeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	NewMeshComp->SetFirstPersonPrimitiveType(FirstPersonType);
 	
 	// 配置附加关系和变换
 	ConfigureAttachmentMesh(NewMeshComp, AttachmentDef);

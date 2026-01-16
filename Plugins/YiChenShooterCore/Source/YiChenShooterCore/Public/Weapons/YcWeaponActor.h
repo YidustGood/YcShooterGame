@@ -217,6 +217,17 @@ private:
 	 */
 	UPROPERTY(VisibleInstanceOnly, Category = "Attachment|Debug")
 	TMap<FGameplayTag, TObjectPtr<UStaticMeshComponent>> SlotToMeshMap;
+	
+	/** 
+	 * 武器网格体第一人称图元类型
+	 * 确定武器网格体如何与第一人称渲染进行交互, 包括WeaponMesh和动态生成的配件模型, 1P/3P WeaponActor需要设置匹配的类型以确保正确渲染
+	 * 注意：一定不要取名为FirstPersonPrimitiveType, 会导致运行时值为None (UE5.6)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attachment", meta=(AllowPrivateAccess = "true"))
+	EFirstPersonPrimitiveType FirstPersonType;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attachment", meta=(AllowPrivateAccess = "true"))
+	int32 FirstPersonPrimitiveTypeInt;
 
 	// ════════════════════════════════════════════════════════════════════════
 	// 初始化

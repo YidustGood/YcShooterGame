@@ -27,12 +27,12 @@ struct YICHENSHOOTERCORE_API FYcFragment_WeaponAttachments : public FYcEquipment
 
 	/** 武器支持的配件槽位列表 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="配件槽位", 
-		meta=(TitleProperty="DisplayName"))
+		meta=(TitleProperty="{SlotType} -> {DisplayName}"))
 	TArray<FYcAttachmentSlotDef> AttachmentSlots;
 
 	/** 最大可安装配件数量（0=无限制） */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="限制")
-	int32 MaxAttachments = 5;
+	int32 MaxAttachments = 0;
 
 	// ════════════════════════════════════════════════════════════════════════
 	// 辅助函数

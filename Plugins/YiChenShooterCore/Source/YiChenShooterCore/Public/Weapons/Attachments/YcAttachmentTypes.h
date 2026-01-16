@@ -147,7 +147,7 @@ struct YICHENSHOOTERCORE_API FYcAttachmentSlotDef
 	}
 
 	/** 槽位类型Tag (e.g. Attachment.Slot.Optic) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Slot")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Slot", meta = (Categories = "Attachment.Slot"))
 	FGameplayTag SlotType;
 
 	/** 槽位显示名称 */

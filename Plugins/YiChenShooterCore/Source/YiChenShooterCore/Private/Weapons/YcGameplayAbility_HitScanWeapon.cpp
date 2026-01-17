@@ -636,6 +636,13 @@ void UYcGameplayAbility_HitScanWeapon::OnTargetDataReadyCallback(const FGameplay
 	else
 	{
 		UE_LOG(LogYcShooterCore, Warning, TEXT("武器技能 %s 提交失败 (bIsTargetDataValid=%d)"), *GetPathName(), bIsTargetDataValid ? 1 : 0);
+		
+		// Cost检查未通过（如弹药不足），停止射击
+		if (bIsFiring)
+		{
+			StopFiring(false);
+		}
+		
 		K2_EndAbility();
 	}
 

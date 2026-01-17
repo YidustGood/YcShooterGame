@@ -5,6 +5,7 @@
 #include "ModularGameState.h"
 #include "YcGameState.generated.h"
 
+struct FYcGameVerbMessage;
 class UYcExperienceManagerComponent;
 
 /**
@@ -20,6 +21,24 @@ class YICHENGAMEPLAY_API AYcGameState : public AModularGameStateBase
 	GENERATED_BODY()
 public:
 	AYcGameState(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+	
+	/**
+	 * 向所有客户端发送不可靠消息（可能丢失）
+	 * 仅用于可以容忍丢失的客户端通知，如击杀提示、玩家加入消息等
+	 * 
+	 * @param Message - 要发送的游戏消息
+	 */
+	UFUNCTION(NetMulticast, Unreliable, BlueprintCallable, Category = "YcGameCore|GameState")
+	void MulticastMessageToClients(const FYcGameVerbMessage Message);
+
+	/**
+	 * 向所有客户端发送可靠消息（保证送达）
+	 * 仅用于不能容忍丢失的重要客户端通知
+	 * 
+	 * @param Message - 要发送的游戏消息
+	 */
+	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category = "YcGameCore|GameState")
+	void MulticastReliableMessageToClients(const FYcGameVerbMessage Message);
 	
 private:
 	/**

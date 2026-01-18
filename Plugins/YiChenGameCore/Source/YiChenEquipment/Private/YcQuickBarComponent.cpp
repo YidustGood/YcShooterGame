@@ -25,6 +25,7 @@
 #include "YiChenEquipment.h"
 #include "Fragments/InventoryFragment_Equippable.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
+#include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "Net/Core/PushModel/PushModel.h"
 
@@ -737,4 +738,83 @@ void UYcQuickBarComponent::OnRep_ActiveSlotIndex(int32 OldActiveSlotIndex)
 		UGameplayMessageSubsystem& MessageSystem = UGameplayMessageSubsystem::Get(this);
 		MessageSystem.BroadcastMessage(TAG_Yc_QuickBar_Message_ActiveIndexChanged, Message);
 	}
+}
+
+UYcQuickBarComponent* UYcQuickBarComponent::FindQuickBarComponent(const AActor* Actor)
+{
+	if (!Actor)
+	{
+		return nullptr;
+	}
+	
+	// 1. 直接从 Actor 上查找（可能是 Controller 或 PlayerState）
+	if (UYcQuickBarComponent* QuickBar = Actor->FindComponentByClass<UYcQuickBarComponent>())
+	{
+		return QuickBar;
+	}
+	
+	// 2. 如果是 Pawn，尝试从其 Controller 上查找
+	if (const APawn* Pawn = Cast<APawn>(Actor))
+	{
+		if (const AController* Controller = Pawn->GetController())
+		{
+			if (UYcQuickBarComponent* QuickBar = Controller->FindComponentByClass<UYcQuickBarComponent>())
+			{
+				return QuickBar;
+			}
+		}
+		
+		// 3. 尝试从 Pawn 的 PlayerState 上查找
+		if (const APlayerState* PlayerState = Pawn->GetPlayerState())
+		{
+			if (UYcQuickBarComponent* QuickBar = PlayerState->FindComponentByClass<UYcQuickBarComponent>())
+			{
+				return QuickBar;
+			}
+		}
+	}
+	
+	// 4. 如果是 Controller，尝试从其 Pawn 上查找
+	if (const AController* Controller = Cast<AController>(Actor))
+	{
+		if (const APawn* Pawn = Controller->GetPawn())
+		{
+			if (UYcQuickBarComponent* QuickBar = Pawn->FindComponentByClass<UYcQuickBarComponent>())
+			{
+				return QuickBar;
+			}
+		}
+		
+		// 5. 尝试从 Controller 的 PlayerState 上查找
+		if (const APlayerState* PlayerState = Controller->PlayerState)
+		{
+			if (UYcQuickBarComponent* QuickBar = PlayerState->FindComponentByClass<UYcQuickBarComponent>())
+			{
+				return QuickBar;
+			}
+		}
+	}
+	
+	// 6. 如果是 PlayerState，尝试从其 Pawn 上查找
+	if (const APlayerState* PlayerState = Cast<APlayerState>(Actor))
+	{
+		if (const APawn* Pawn = PlayerState->GetPawn())
+		{
+			if (UYcQuickBarComponent* QuickBar = Pawn->FindComponentByClass<UYcQuickBarComponent>())
+			{
+				return QuickBar;
+			}
+		}
+		
+		// 7. 尝试从 PlayerState 的 Controller 上查找
+		if (const AController* Controller = Cast<AController>(PlayerState->GetOwner()))
+		{
+			if (UYcQuickBarComponent* QuickBar = Controller->FindComponentByClass<UYcQuickBarComponent>())
+			{
+				return QuickBar;
+			}
+		}
+	}
+	
+	return nullptr;
 }

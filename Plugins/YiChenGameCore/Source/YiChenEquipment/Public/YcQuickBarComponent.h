@@ -297,6 +297,18 @@ private:
 	
 	/** 待确认的请求数量（处理快速连续切换） */
 	int32 PendingRequestCount = 0;
+	
+	
+public:
+	/**
+	 * 从 Actor 上查找 QuickBarComponent
+	 * 支持从 Pawn、Controller、PlayerState 三种对象上查找
+	 * 
+	 * @param Actor 要查找的 Actor（可以是 Pawn、Controller、PlayerState 或其他）
+	 * @return 找到的 QuickBarComponent，未找到返回 nullptr
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "QuickBar", meta = (DefaultToSelf = "Actor"))
+	static UYcQuickBarComponent* FindQuickBarComponent(const AActor* Actor);
 };
 
 // ============================================================================

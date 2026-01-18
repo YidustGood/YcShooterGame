@@ -7,7 +7,7 @@
 #include "Fragments/YcEquipmentFragment.h"
 #include "Weapons/YcWeaponVisualData.h"
 #include "Weapons/YcHitScanWeaponInstance.h"
-
+#include "Weapons/Fragments/YcEquipmentFragment_ReticleConfig.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcWeaponLibrary)
 
@@ -194,4 +194,21 @@ void UYcWeaponLibrary::BreakWeaponStats_Recoil(
 	RecoilRecoveryRate = Stats.RecoilRecoveryRate;
 	RecoilRecoveryDelay = Stats.RecoilRecoveryDelay;
 	RecoilRecoveryPercent = Stats.RecoilRecoveryPercent;
+}
+
+bool UYcWeaponLibrary::GetWeaponReticleConfig(UYcEquipmentInstance* Equipment,
+	FYcEquipmentFragment_ReticleConfig& ReticleConfig)
+{
+	if (!Equipment)
+	{
+		return false;
+	}
+
+	if (const FYcEquipmentFragment_ReticleConfig* Fragment = Equipment->GetTypedFragment<FYcEquipmentFragment_ReticleConfig>())
+	{
+		ReticleConfig = *Fragment;
+		return true;
+	}
+
+	return false;
 }

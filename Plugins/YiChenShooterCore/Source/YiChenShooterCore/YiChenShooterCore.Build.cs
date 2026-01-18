@@ -30,6 +30,7 @@ public class YiChenShooterCore : ModuleRules
 				"ModularGameplay", 
 				"YiChenEquipment",
 				"DataRegistry",
+				"UMG"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

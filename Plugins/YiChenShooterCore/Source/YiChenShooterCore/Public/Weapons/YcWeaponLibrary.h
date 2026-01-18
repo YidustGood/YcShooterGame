@@ -6,6 +6,7 @@
 #include "Fragments/YcEquipmentFragment.h"
 #include "YcWeaponLibrary.generated.h"
 
+struct FYcEquipmentFragment_ReticleConfig;
 class UYcEquipmentInstance;
 class UYcWeaponVisualData;
 struct FYcComputedWeaponStats;
@@ -165,4 +166,13 @@ public:
 		float& RecoilRecoveryDelay,
 		float& RecoilRecoveryPercent
 	);
+	
+	/**
+	 * 获取装备的准星配置数据
+	 * @param Equipment 装备实例
+	 * @param ReticleConfig 输出找到的准星配置数据
+	 * @return 是否成功找到
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Fragment")
+	static bool GetWeaponReticleConfig(UYcEquipmentInstance* Equipment, FYcEquipmentFragment_ReticleConfig& ReticleConfig);
 };

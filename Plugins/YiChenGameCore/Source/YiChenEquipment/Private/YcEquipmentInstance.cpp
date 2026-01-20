@@ -111,6 +111,15 @@ TInstancedStruct<FYcEquipmentFragment> UYcEquipmentInstance::FindEquipmentFragme
 
 void UYcEquipmentInstance::OnEquipmentInstanceCreated(const FYcEquipmentDefinition& Definition)
 {
+	// 遍历所有 Fragment 并调用 OnEquipmentInstanceCreated
+	for (const TInstancedStruct<FYcEquipmentFragment>& Fragment : Definition.Fragments)
+	{
+		if (const FYcEquipmentFragment* FragmentPtr = Fragment.GetPtr<FYcEquipmentFragment>())
+		{
+			FragmentPtr->OnEquipmentInstanceCreated(this);
+		}
+	}
+	
 	// 调用蓝图版本
 	K2_OnEquipmentInstanceCreated();
 }
@@ -156,6 +165,18 @@ void UYcEquipmentInstance::OnEquipped()
 {
 	UE_LOG(LogYcEquipment, Verbose, TEXT("OnEquipped: %s (AutoShow=%d)"), *GetNameSafe(this), bAutoShowEquipmentActors);
 	
+	// 遍历所有 Fragment 并调用 OnEquipped
+	if (const FYcEquipmentDefinition* EquipDef = GetEquipmentDef())
+	{
+		for (const TInstancedStruct<FYcEquipmentFragment>& Fragment : EquipDef->Fragments)
+		{
+			if (const FYcEquipmentFragment* FragmentPtr = Fragment.GetPtr<FYcEquipmentFragment>())
+			{
+				FragmentPtr->OnEquipped(this);
+			}
+		}
+	}
+	
 	// 根据配置决定是否自动显示Actors
 	// 如果设为false，需要在 K2_OnEquipped 蓝图中播放装备动画后手动调用 ShowEquipmentActors()
 	if (bAutoShowEquipmentActors)
@@ -170,6 +191,18 @@ void UYcEquipmentInstance::OnEquipped()
 void UYcEquipmentInstance::OnUnequipped()
 {
 	UE_LOG(LogYcEquipment, Verbose, TEXT("OnUnequipped: %s (AutoHide=%d)"), *GetNameSafe(this), bAutoHideEquipmentActors);
+	
+	// 遍历所有 Fragment 并调用 OnUnequipped
+	if (const FYcEquipmentDefinition* EquipDef = GetEquipmentDef())
+	{
+		for (const TInstancedStruct<FYcEquipmentFragment>& Fragment : EquipDef->Fragments)
+		{
+			if (const FYcEquipmentFragment* FragmentPtr = Fragment.GetPtr<FYcEquipmentFragment>())
+			{
+				FragmentPtr->OnUnequipped(this);
+			}
+		}
+	}
 	
 	// 根据配置决定是否自动隐藏Actors
 	// 如果设为false，需要在 K2_OnUnequipped 蓝图中播放卸下动画后手动调用 HideEquipmentActors()
@@ -528,6 +561,7 @@ AActor* UYcEquipmentInstance::SpawnEquipActorInternal(
 	NewActor->SetActorRelativeTransform(SpawnInfo.AttachTransform);
 	NewActor->AttachToComponent(AttachTarget, FAttachmentTransformRules::KeepRelativeTransform, SpawnInfo.AttachSocket);
 	NewActor->Tags.Append(SpawnInfo.ActorTags);
+	NewActor->SetInstigator(GetPawn());
 	
 	// 设置装备Actor组件数据
 	if (UYcEquipmentActorComponent* EquipComp = NewActor->FindComponentByClass<UYcEquipmentActorComponent>())

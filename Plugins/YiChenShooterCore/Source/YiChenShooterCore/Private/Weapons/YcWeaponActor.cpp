@@ -11,6 +11,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "YiChenShooterCore.h"
+#include "Weapons/YcWeaponVisualData.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcWeaponActor)
 
@@ -117,9 +118,18 @@ void AYcWeaponActor::RefreshAllAttachmentVisuals()
 
 void AYcWeaponActor::OnEquipmentInstRep(UYcEquipmentInstance* EquipmentInst)
 {
-	if (!EquipmentInst)
+	const UYcWeaponInstance* WeaponInstance = Cast<UYcWeaponInstance>(EquipmentInst);
+	if (!WeaponInstance)
 	{
+		UE_LOG(LogYcShooterCore, Error, TEXT("AYcWeaponActor::OnEquipmentInstRep: 武器Actor关联的EquipmentInstance非UYcWeaponInstance或其子类!"));
 		return;
+	}
+	
+	// 设置武器模型和武器动画蓝图类
+	if (const UYcWeaponVisualData* WeaponVisualData = WeaponInstance->GetWeaponVisualData())
+	{
+		WeaponMesh->SetSkeletalMesh(WeaponVisualData->MainWeaponMesh.Get());
+		WeaponMesh->SetAnimInstanceClass(WeaponVisualData->WeaponAnimInstanceClass.Get());
 	}
 
 	// 初始化配件系统

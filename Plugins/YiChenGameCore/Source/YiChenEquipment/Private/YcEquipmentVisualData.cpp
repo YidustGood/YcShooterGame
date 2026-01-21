@@ -2,6 +2,8 @@
 
 #include "YcEquipmentVisualData.h"
 
+UE_DEFINE_GAMEPLAY_TAG(TAG_Yc_Asset_Item_EquipmentVisualData, "Yc.Asset.Item.EquipmentVisualData");
+
 UYcEquipmentVisualData::UYcEquipmentVisualData()
 {
 }

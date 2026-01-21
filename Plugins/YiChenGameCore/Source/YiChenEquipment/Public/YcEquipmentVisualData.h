@@ -3,8 +3,12 @@
 #pragma once
 
 #include "GameplayTagContainer.h"
+#include "NativeGameplayTags.h"
 #include "Engine/DataAsset.h"
 #include "YcEquipmentVisualData.generated.h"
+
+/** 装备视觉资产标签 */
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Yc_Asset_Item_EquipmentVisualData);
 
 /**
  * 装备视觉资产类型枚举

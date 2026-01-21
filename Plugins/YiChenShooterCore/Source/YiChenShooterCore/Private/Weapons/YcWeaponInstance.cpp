@@ -2,10 +2,20 @@
 
 #include "Weapons/YcWeaponInstance.h"
 
+#include "Weapons/YcWeaponLibrary.h"
+
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcWeaponInstance)
 
 UYcWeaponInstance::UYcWeaponInstance(const FObjectInitializer& ObjectInitializer)
 {
+}
+
+void UYcWeaponInstance::OnEquipmentInstanceCreated(const FYcEquipmentDefinition& Definition)
+{
+	Super::OnEquipmentInstanceCreated(Definition);
+	
+	// 获取到武器视觉资产并保存, 方便后续使用
+	WeaponVisualData = UYcWeaponLibrary::GetWeaponVisualData(this);
 }
 
 void UYcWeaponInstance::OnEquipped()

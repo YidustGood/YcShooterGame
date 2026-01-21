@@ -5,6 +5,8 @@
 #include "YiChenEquipment/Public/YcEquipmentInstance.h"
 #include "YcWeaponInstance.generated.h"
 
+class UYcWeaponVisualData;
+
 /**
  * UYcWeaponInstance - 武器实例基类
  * 
@@ -28,6 +30,8 @@ public:
 	 * @return 始终返回true，表示支持网络复制
 	 */
 	virtual bool IsSupportedForNetworking() const override { return true; };
+	
+	virtual void OnEquipmentInstanceCreated(const FYcEquipmentDefinition& Definition) override;
 
 	//~UYcEquipmentInstance 接口
 	/**
@@ -75,4 +79,11 @@ private:
 
 	/** 武器最后一次开火的时间戳（世界时间秒数） */
 	double TimeLastFired = 0.0;
+	
+	/** 武器视觉资产 */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, meta=(AllowPrivateAccess=true))
+	UYcWeaponVisualData* WeaponVisualData;
+	
+public:
+	FORCEINLINE UYcWeaponVisualData* GetWeaponVisualData() const { return WeaponVisualData; };
 };

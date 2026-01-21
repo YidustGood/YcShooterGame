@@ -3,6 +3,8 @@
 #include "Weapons/YcWeaponVisualData.h"
 #include "YcShooterGameplayTags.h"
 
+UE_DEFINE_GAMEPLAY_TAG(TAG_Yc_Asset_Item_WeaponVisualData, "Yc.Asset.Item.WeaponVisualData");
+
 UYcWeaponVisualData::UYcWeaponVisualData()
 {
 }

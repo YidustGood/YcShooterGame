@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "NativeGameplayTags.h"
 #include "YcEquipmentVisualData.h"
 #include "YcWeaponVisualData.generated.h"
 
@@ -10,6 +11,9 @@ class UStaticMesh;
 class USkeletalMesh;
 class UAnimSequence;
 class UAnimInstance;
+
+/** 武器视觉资产标签 */
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Yc_Asset_Item_WeaponVisualData);
 
 /**
  * 武器动作视觉数据

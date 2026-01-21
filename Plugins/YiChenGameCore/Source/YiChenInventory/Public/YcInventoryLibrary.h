@@ -8,9 +8,12 @@
 #include "StructUtils/InstancedStruct.h"
 #include "YcInventoryLibrary.generated.h"
 
+struct FYcDataAssetEntry;
+struct FGameplayTag;
 struct FDataRegistryId;
 class UYcInventoryItemInstance;
 class UYcInventoryManagerComponent;
+
 /**
  * 库存系统蓝图函数库
  * 提供库存相关的工具函数，方便蓝图和C++调用
@@ -54,4 +57,23 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory", meta = (WorldContext = "WorldContextObject"))
 	static void LoadItemDefDataAssetAsync(UObject* WorldContextObject, const FDataRegistryId& ItemDataRegistryId);
+	
+	/**
+	 * 通过标签从物品定义中获取已加载的数据资产
+	 * @param ItemDef 物品定义
+	 * @param AssetTag 资产标签
+	 * @return 已加载的数据资产指针，未找到或未加载时返回 nullptr
+	 */
+	UFUNCTION(BlueprintPure, Category = "Inventory")
+	static UPrimaryDataAsset* GetYcDataAssetByTag(const FYcInventoryItemDefinition& ItemDef, const FGameplayTag& AssetTag);
+	
+	/**
+	 * 通过标签从物品定义中获取数据资产条目
+	 * @param ItemDef 物品定义
+	 * @param AssetTag 资产标签
+	 * @param OutDataAssetEntry 输出参数，获取到的数据资产条目
+	 * @return true 表示成功获取，false 表示未找到
+	 */
+	UFUNCTION(BlueprintPure, Category = "Inventory")
+	static bool GetYcDataAssetEntryByTag(const FYcInventoryItemDefinition& ItemDef, const FGameplayTag& AssetTag, FYcDataAssetEntry& OutDataAssetEntry);
 };

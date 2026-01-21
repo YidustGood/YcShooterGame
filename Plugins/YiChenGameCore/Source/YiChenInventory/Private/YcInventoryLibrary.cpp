@@ -85,3 +85,29 @@ void UYcInventoryLibrary::LoadItemDefDataAssetAsync(UObject* WorldContextObject,
 	
 	DataAssetFragment->LoadAllDataAssetAsync(WorldContextObject);
 }
+
+UPrimaryDataAsset* UYcInventoryLibrary::GetYcDataAssetByTag(const FYcInventoryItemDefinition& ItemDef,
+	const FGameplayTag& AssetTag)
+{
+	const FItemFragment_DataAsset* DataAssetFragment = ItemDef.GetTypedFragment<FItemFragment_DataAsset>();
+	if (!DataAssetFragment) return nullptr;
+	
+	const FYcDataAssetEntry* Entry = DataAssetFragment->GetDataAssetByTag(AssetTag);
+	if (!Entry) return nullptr;
+	
+	return Entry->GetLoadedDataAsset();
+}
+
+bool UYcInventoryLibrary::GetYcDataAssetEntryByTag(const FYcInventoryItemDefinition& ItemDef,
+	const FGameplayTag& AssetTag, FYcDataAssetEntry& OutDataAssetEntry)
+{
+	const FItemFragment_DataAsset* DataAssetFragment = ItemDef.GetTypedFragment<FItemFragment_DataAsset>();
+	if (!DataAssetFragment) return false;
+	
+	const FYcDataAssetEntry* Entry = DataAssetFragment->GetDataAssetByTag(AssetTag);
+	if (!Entry) return false;
+	
+	OutDataAssetEntry = *Entry;
+	
+	return true;
+}

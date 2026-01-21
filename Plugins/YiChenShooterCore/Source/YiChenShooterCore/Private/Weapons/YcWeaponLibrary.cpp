@@ -4,7 +4,9 @@
 #include "Weapons/YcWeaponLibrary.h"
 
 #include "YcEquipmentInstance.h"
-#include "Fragments/YcEquipmentFragment.h"
+#include "YcInventoryItemInstance.h"
+#include "YcInventoryLibrary.h"
+#include "YiChenShooterCore.h"
 #include "Weapons/YcWeaponVisualData.h"
 #include "Weapons/YcHitScanWeaponInstance.h"
 #include "Weapons/Fragments/YcEquipmentFragment_ReticleConfig.h"
@@ -13,17 +15,15 @@
 
 UYcWeaponVisualData* UYcWeaponLibrary::GetWeaponVisualData(UYcEquipmentInstance* Equipment)
 {
-	if (!Equipment)
+	if (!Equipment || !Equipment->GetAssociatedItem() || !Equipment->GetAssociatedItem()->GetItemDef())
 	{
+		UE_LOG(LogYcShooterCore, Error, TEXT("获取 WeaponVisualData 失败, 关联物品定义无效!"));
 		return nullptr;
 	}
-
-	if (const FEquipmentFragment_VisualAsset* VisualAsset = Equipment->GetTypedFragment<FEquipmentFragment_VisualAsset>())
-	{
-		return VisualAsset->GetLoadedVisualDataAs<UYcWeaponVisualData>();
-	}
-
-	return nullptr;
+	
+	UPrimaryDataAsset* DataAsset = UYcInventoryLibrary::GetYcDataAssetByTag(*Equipment->GetAssociatedItem()->GetItemDef(), TAG_Yc_Asset_Item_WeaponVisualData);
+	
+	return Cast<UYcWeaponVisualData>(DataAsset);
 }
 
 void UYcWeaponLibrary::BreakWeaponStats(

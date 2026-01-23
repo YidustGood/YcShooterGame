@@ -58,3 +58,15 @@ void UYcEquipmentActorComponent::OnRep_EquipmentInst()
 	}
 	OnEquipmentRep.Broadcast(GetOwningEquipment());
 }
+
+void UYcEquipmentActorComponent::NotifyEquipmentStateChanged(const bool bEquipped) const
+{
+	if (bEquipped)
+	{
+		OnEquipped.Broadcast(EquipmentInst);
+	}
+	else
+	{
+		OnUnequipped.Broadcast(EquipmentInst);
+	}
+}

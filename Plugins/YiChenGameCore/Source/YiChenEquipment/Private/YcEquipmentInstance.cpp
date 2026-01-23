@@ -417,6 +417,12 @@ void UYcEquipmentInstance::ShowReplicatedActors()
 			}
 			
 			SetActorVisualVisibility(Actor, true);
+			
+			// 通知 Actor 组件装备状态变化
+			if (UYcEquipmentActorComponent* EquipComp = Actor->FindComponentByClass<UYcEquipmentActorComponent>())
+			{
+				EquipComp->NotifyEquipmentStateChanged(true);
+			}
 		}
 		++ReplicatedActorIndex;
 	}
@@ -442,6 +448,12 @@ void UYcEquipmentInstance::HideReplicatedActors()
 			if (SpawnInfo.bDormantOnUnequip)
 			{
 				SetActorDormant(Actor, true);
+			}
+			
+			// 通知 Actor 组件装备状态变化
+			if (UYcEquipmentActorComponent* EquipComp = Actor->FindComponentByClass<UYcEquipmentActorComponent>())
+			{
+				EquipComp->NotifyEquipmentStateChanged(false);
 			}
 		}
 		++ReplicatedActorIndex;
@@ -469,6 +481,12 @@ void UYcEquipmentInstance::ShowLocalActors()
 			}
 			
 			SetActorVisualVisibility(Actor, true);
+			
+			// 通知 Actor 组件装备状态变化
+			if (UYcEquipmentActorComponent* EquipComp = Actor->FindComponentByClass<UYcEquipmentActorComponent>())
+			{
+				EquipComp->NotifyEquipmentStateChanged(true);
+			}
 		}
 		++LocalActorIndex;
 	}
@@ -494,6 +512,12 @@ void UYcEquipmentInstance::HideLocalActors()
 			if (SpawnInfo.bDormantOnUnequip)
 			{
 				SetActorDormant(Actor, false);
+			}
+			
+			// 通知 Actor 组件装备状态变化
+			if (UYcEquipmentActorComponent* EquipComp = Actor->FindComponentByClass<UYcEquipmentActorComponent>())
+			{
+				EquipComp->NotifyEquipmentStateChanged(false);
 			}
 		}
 		++LocalActorIndex;

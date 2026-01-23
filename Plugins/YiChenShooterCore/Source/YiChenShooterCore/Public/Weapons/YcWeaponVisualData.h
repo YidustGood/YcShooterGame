@@ -94,7 +94,7 @@ public:
 	 * 通过 GameplayTag 索引，支持自定义动作类型
 	 * 推荐 Tag 格式：Asset.Weapon.Action.XXX（如 Asset.Weapon.Action.Inspect）
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Visual|Actions", meta = (AssetBundles = "EquipmentVisual", Categories = "Asset"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Visual|Actions", meta = (AssetBundles = "EquipmentVisual", Categories = "Asset", ForceInlineRow))
 	TMap<FGameplayTag, FYcWeaponActionVisual> Actions;
 
 	/**
@@ -102,7 +102,7 @@ public:
 	 * 通过 GameplayTag 索引，支持自定义姿态
 	 * 推荐 Tag 格式：Asset.Weapon.Pose.XXX（如 Asset.Weapon.Pose.Crouch）
 	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Visual|Pose", meta = (AssetBundles = "EquipmentVisual", Categories = "Asset"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Visual|Pose", meta = (AssetBundles = "EquipmentVisual", Categories = "Asset", ForceInlineRow))
 	TMap<FGameplayTag, TSoftObjectPtr<UAnimSequence>> PoseAnims;
 
 	// ================================================================================

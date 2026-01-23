@@ -105,8 +105,8 @@ void FItemFragment_DataAsset::LoadAllDataAssetAsync(UObject* InRelatedObject) co
 	{
 		const FYcDataAssetEntry& Entry = Pair.Value;
 		
-		// 如果资产未加载且标记了自动加载，则进行异步加载
-		if (!Entry.IsDataAssetLoaded() && Entry.bAutoLoad)
+		// 如果资产未加载，则进行异步加载
+		if (!Entry.IsDataAssetLoaded())
 		{
 			const FGameplayTag AssetTag = Pair.Key;
 			const FPrimaryAssetId AssetId = Entry.DataAssetId;
@@ -133,7 +133,7 @@ void FItemFragment_DataAsset::LoadAllDataAssetAsync(UObject* InRelatedObject) co
 			Entry.LoadDataAssetAsync(OnLoadCompleted, false);
 		}
 	}
-}
+}                    
 
 const FYcDataAssetEntry* FItemFragment_DataAsset::GetDataAssetByTag(FGameplayTag Tag) const
 {

@@ -47,13 +47,11 @@ struct YICHENINVENTORY_API FYcDataAssetEntry
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "DataAsset")
 	FPrimaryAssetId DataAssetId;
 	
-	/** 要加载的资产包名称列表 */
+	/** 
+	 * 要加载的资产包名称列表, 一定要和资产项的meta = (AssetBundles = "XXX") 匹配上, 配置错了不会自动加载相关资产, 详情了解AssetBundles机制
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "DataAsset")
 	TArray<FName> AssetBundleNames;
-	
-	/** 是否在物品实例创建时自动加载 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "DataAsset")
-	bool bAutoLoad = false;
 	
 	/**
 	 * 异步加载资产数据
@@ -115,7 +113,7 @@ struct YICHENINVENTORY_API FItemFragment_DataAsset : public FYcInventoryItemFrag
 	GENERATED_BODY()
 	
 	/** 数据资产映射表，使用GameplayTag作为键来标识不同类型的资产 */
-	UPROPERTY(EditDefaultsOnly, Category="DataAsset")
+	UPROPERTY(EditDefaultsOnly, Category="DataAsset", meta=(Categories = "Asset", ForceInlineRow))
 	TMap<FGameplayTag, FYcDataAssetEntry> DataAssetMap;
 	
 	/**

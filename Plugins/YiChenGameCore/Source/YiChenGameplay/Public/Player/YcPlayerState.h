@@ -74,7 +74,7 @@ private:
 	 * 注意：此选择适用于MOBA、RPG、英雄射击等玩法。对于无需状态持久化的AI或一次性实体，
 	 * 将ASC附加到其Pawn上更为合适。
 	 */
-	UPROPERTY(VisibleAnywhere, Category = "YcGameCore|PlayerState")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "YcGameCore|PlayerState", meta = (AllowPrivateAccess = true))
 	TObjectPtr<UYcAbilitySystemComponent> AbilitySystemComponent;
 	
 	// @TODO 断线重连数据备份与恢复机制

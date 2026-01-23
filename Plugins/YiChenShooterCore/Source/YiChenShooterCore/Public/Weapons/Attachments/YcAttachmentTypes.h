@@ -149,6 +149,10 @@ struct YICHENSHOOTERCORE_API FYcAttachmentSlotDef
 	/** 槽位类型Tag (e.g. Attachment.Slot.Optic) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Slot", meta = (Categories = "Attachment.Slot"))
 	FGameplayTag SlotType;
+	
+	/** 槽位在UI中的排序优先级 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Slot")
+	int32 SortOrder;
 
 	/** 槽位显示名称 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Slot")
@@ -161,10 +165,13 @@ struct YICHENSHOOTERCORE_API FYcAttachmentSlotDef
 	/** 默认配件 (DataRegistry ID，可选，武器出厂自带的配件) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Slot")
 	FDataRegistryId DefaultAttachment;
-
-	/** 槽位在UI中的排序优先级 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Slot")
-	int32 SortOrder;
+	
+	/**
+	 * 提供此槽位的配件所在的槽位
+	 * 仅当 bIsDynamic=true 时有效
+	 */
+	UPROPERTY(BlueprintReadOnly, Category="Slot")
+	FGameplayTag ProviderSlotType;
 
 	/** 
 	 * 是否为动态槽位（由配件提供）
@@ -172,13 +179,6 @@ struct YICHENSHOOTERCORE_API FYcAttachmentSlotDef
 	 */
 	UPROPERTY(BlueprintReadOnly, Category="Slot")
 	bool bIsDynamic;
-
-	/**
-	 * 提供此槽位的配件所在的槽位
-	 * 仅当 bIsDynamic=true 时有效
-	 */
-	UPROPERTY(BlueprintReadOnly, Category="Slot")
-	FGameplayTag ProviderSlotType;
 };
 
 /**

@@ -299,7 +299,7 @@ void UYcHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputCompone
 
 void UYcHeroComponent::Input_AbilityInputTagPressed(const FGameplayTag InputTag)
 {
-#ifdef DEBUG_INPUT_STATE
+#if DEBUG_INPUT_STATE
 	UE_LOG(LogYcInput, Log, TEXT("[UYcHeroComponent::Input_AbilityInputTagPressed] 接收到输入标签按下: %s, 组件所有者: %s"), 
 		*InputTag.ToString(), 
 		*GetNameSafe(GetOwner()));
@@ -318,7 +318,7 @@ void UYcHeroComponent::Input_AbilityInputTagPressed(const FGameplayTag InputTag)
 
 void UYcHeroComponent::Input_AbilityInputTagReleased(const FGameplayTag InputTag)
 {
-#ifdef DEBUG_INPUT_STATE
+#if DEBUG_INPUT_STATE
 	UE_LOG(LogYcInput, Log, TEXT("[UYcHeroComponent::Input_AbilityInputTagReleased] 接收到输入标签释放: %s, 组件所有者: %s"), 
 		*InputTag.ToString(), 
 		*GetNameSafe(GetOwner()));

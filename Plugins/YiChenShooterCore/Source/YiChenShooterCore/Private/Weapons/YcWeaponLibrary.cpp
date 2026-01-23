@@ -4,11 +4,13 @@
 #include "Weapons/YcWeaponLibrary.h"
 
 #include "YcEquipmentInstance.h"
+#include "YcEquipmentLibrary.h"
 #include "YcInventoryItemInstance.h"
 #include "YcInventoryLibrary.h"
 #include "YiChenShooterCore.h"
 #include "Weapons/YcWeaponVisualData.h"
 #include "Weapons/YcHitScanWeaponInstance.h"
+#include "Weapons/YcWeaponActor.h"
 #include "Weapons/Fragments/YcEquipmentFragment_ReticleConfig.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcWeaponLibrary)
@@ -211,4 +213,20 @@ bool UYcWeaponLibrary::GetWeaponReticleConfig(UYcEquipmentInstance* Equipment,
 	}
 
 	return false;
+}
+
+AYcWeaponActor* UYcWeaponLibrary::GetPlayerFirstPersonWeaponActor(AActor* OwnerActor)
+{
+	UYcEquipmentInstance* EquipmentInst = UYcEquipmentLibrary::GetCurrentEquipmentInst(OwnerActor);
+	if (!EquipmentInst) return nullptr;
+	
+	return Cast<AYcWeaponActor>(EquipmentInst->FindSpawnedActorByTag(TEXT("FPWeapon")));
+}
+
+AYcWeaponActor* UYcWeaponLibrary::GetPlayerThirdPersonWeaponActor(AActor* OwnerActor)
+{
+	UYcEquipmentInstance* EquipmentInst = UYcEquipmentLibrary::GetCurrentEquipmentInst(OwnerActor);
+	if (!EquipmentInst) return nullptr;
+	
+	return Cast<AYcWeaponActor>(EquipmentInst->FindSpawnedActorByTag(TEXT("TPWeapon")));
 }

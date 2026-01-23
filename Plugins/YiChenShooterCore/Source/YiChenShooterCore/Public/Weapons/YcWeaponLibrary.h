@@ -10,6 +10,7 @@ struct FYcEquipmentFragment_ReticleConfig;
 class UYcEquipmentInstance;
 class UYcWeaponVisualData;
 struct FYcComputedWeaponStats;
+class AYcWeaponActor;
 
 /**
  * 武器系统蓝图函数库
@@ -175,4 +176,20 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Fragment")
 	static bool GetWeaponReticleConfig(UYcEquipmentInstance* Equipment, FYcEquipmentFragment_ReticleConfig& ReticleConfig);
+	
+	/**
+	 * 获取玩家的第一人称武器Actor
+	 * @param OwnerActor 拥有者Actor
+	 * @return 第一人称武器Actor，未找到返回 nullptr
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Fragment")
+	static AYcWeaponActor* GetPlayerFirstPersonWeaponActor(AActor* OwnerActor);
+	
+	/**
+	 * 获取玩家的第三人称武器Actor
+	 * @param OwnerActor 拥有者Actor
+	 * @return 第三人称武器Actor，未找到返回 nullptr
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Fragment")
+	static AYcWeaponActor* GetPlayerThirdPersonWeaponActor(AActor* OwnerActor);
 };

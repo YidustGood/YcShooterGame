@@ -506,22 +506,22 @@ int32 UYcAbilitySystemComponent::K2_GetTagCount(const FGameplayTag TagToCheck) c
 	return GetTagCount(TagToCheck);
 }
 
-void UYcAbilitySystemComponent::K2_AddLooseGameplayTag(const FGameplayTag& GameplayTag, const int32 Count)
+void UYcAbilitySystemComponent::K2_YcAddLooseGameplayTag(const FGameplayTag& GameplayTag, const int32 Count)
 {
 	AddLooseGameplayTag(GameplayTag, Count);
 }
 
-void UYcAbilitySystemComponent::K2_AddLooseGameplayTags(const FGameplayTagContainer& GameplayTags, const int32 Count)
+void UYcAbilitySystemComponent::K2_YcAddLooseGameplayTags(const FGameplayTagContainer& GameplayTags, const int32 Count)
 {
 	AddLooseGameplayTags(GameplayTags, Count);
 }
 
-void UYcAbilitySystemComponent::K2_RemoveLooseGameplayTag(const FGameplayTag& GameplayTag, const int32 Count)
+void UYcAbilitySystemComponent::K2_YcRemoveLooseGameplayTag(const FGameplayTag& GameplayTag, const int32 Count)
 {
 	RemoveLooseGameplayTag(GameplayTag, Count);
 }
 
-void UYcAbilitySystemComponent::K2_RemoveLooseGameplayTags(const FGameplayTagContainer& GameplayTags, const int32 Count)
+void UYcAbilitySystemComponent::K2_YcRemoveLooseGameplayTags(const FGameplayTagContainer& GameplayTags, const int32 Count)
 {
 	RemoveLooseGameplayTags(GameplayTags, Count);
 }

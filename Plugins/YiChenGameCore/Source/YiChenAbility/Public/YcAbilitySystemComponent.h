@@ -383,7 +383,7 @@ public:
 	 * @param TagToCheck 要查询的GameplayTag
 	 * @return 该标签的计数，如果标签不存在则返回0
 	 */
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Abilities", Meta = (DisplayName = "GetTagCount", ScriptName = "GetTagCount"))
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Abilities", Meta = (DisplayName = "GetTagCount"))
 	int32 K2_GetTagCount(FGameplayTag TagToCheck) const;
 	
 	/**
@@ -392,8 +392,8 @@ public:
 	 * @param GameplayTag 要添加的GameplayTag
 	 * @param Count 添加的数量，默认为1。如果Count > 1，则该标签会被堆叠
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Abilities", Meta = (DisplayName = "AddLooseGameplayTag"))
-	void K2_AddLooseGameplayTag(const FGameplayTag& GameplayTag, int32 Count = 1);
+	UFUNCTION(BlueprintCallable, Category = "Abilities", Meta = (DisplayName = "YcAddLooseGameplayTag"))
+	void K2_YcAddLooseGameplayTag(const FGameplayTag& GameplayTag, int32 Count = 1);
 
 	/**
 	 * 批量添加Loose GameplayTags（蓝图接口）
@@ -401,8 +401,8 @@ public:
 	 * @param GameplayTags 要添加的GameplayTag容器
 	 * @param Count 每个标签添加的数量，默认为1
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Abilities", Meta = (DisplayName = "AddLooseGameplayTags"))
-	void K2_AddLooseGameplayTags(const FGameplayTagContainer& GameplayTags, int32 Count = 1);
+	UFUNCTION(BlueprintCallable, Category = "Abilities", Meta = (DisplayName = "YcAddLooseGameplayTags"))
+	void K2_YcAddLooseGameplayTags(const FGameplayTagContainer& GameplayTags, int32 Count = 1);
 
 	/**
 	 * 移除一个Loose GameplayTag（蓝图接口）
@@ -410,8 +410,8 @@ public:
 	 * @param GameplayTag 要移除的GameplayTag
 	 * @param Count 移除的数量，默认为1。如果该标签的计数大于Count，则只减少计数；否则完全移除该标签
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Abilities", Meta = (DisplayName = "RemoveLooseGameplayTag"))
-	void K2_RemoveLooseGameplayTag(const FGameplayTag& GameplayTag, int32 Count = 1);
+	UFUNCTION(BlueprintCallable, Category = "Abilities", Meta = (DisplayName = "YcRemoveLooseGameplayTag"))
+	void K2_YcRemoveLooseGameplayTag(const FGameplayTag& GameplayTag, int32 Count = 1);
 
 	/**
 	 * 批量移除Loose GameplayTags（蓝图接口）
@@ -419,8 +419,8 @@ public:
 	 * @param GameplayTags 要移除的GameplayTag容器
 	 * @param Count 每个标签移除的数量，默认为1
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Abilities", Meta = (DisplayName = "RemoveLooseGameplayTags"))
-	void K2_RemoveLooseGameplayTags(const FGameplayTagContainer& GameplayTags, int32 Count = 1);
+	UFUNCTION(BlueprintCallable, Category = "Abilities", Meta = (DisplayName = "YcRemoveLooseGameplayTags"))
+	void K2_YcRemoveLooseGameplayTags(const FGameplayTagContainer& GameplayTags, int32 Count = 1);
 	
 	/**
 	 * 在本地执行一次性的GameplayCue效果

@@ -360,44 +360,13 @@ void UYcQuickBarComponent::ExecuteLocalPrediction(const int32 NewIndex)
 {
 	UE_LOG(LogYcEquipment, Verbose, TEXT("ExecuteLocalPrediction: %d -> %d"), GetActiveSlotIndex(), NewIndex);
 	
-	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
-	if (!EquipmentManager)
-	{
-		return;
-	}
-	
-	// 隐藏当前装备
-	const int32 CurrentIndex = bHasPendingSlotChange ? PendingSlotIndex : ActiveSlotIndex;
-	if (Slots.IsValidIndex(CurrentIndex) && Slots[CurrentIndex])
-	{
-		if (UYcEquipmentInstance* CurrentEquipment = EquipmentManager->FindEquipmentByItem(Slots[CurrentIndex]))
-		{
-			// 设置状态为未装备（会触发 OnRep 和 OnUnequipped）
-			CurrentEquipment->SetEquipmentState(EYcEquipmentState::Unequipped);
-		}
-	}
-	
-	// 显示新装备
-	if (Slots.IsValidIndex(NewIndex) && Slots[NewIndex])
-	{
-		if (UYcEquipmentInstance* NewEquipment = EquipmentManager->FindEquipmentByItem(Slots[NewIndex]))
-		{
-			// 设置状态为已装备（会触发 OnRep 和 OnEquipped）
-			NewEquipment->SetEquipmentState(EYcEquipmentState::Equipped);
-		}
-	}
-	
 	// 设置预测状态
 	bHasPendingSlotChange = true;
 	PendingSlotIndex = NewIndex;
 	
-	// 广播消息让 UI 立即响应
-	FYcQuickBarActiveIndexChangedMessage Message;
-	Message.Owner = GetOwner();
-	Message.ActiveIndex = NewIndex;
-
-	UGameplayMessageSubsystem& MessageSystem = UGameplayMessageSubsystem::Get(this);
-	MessageSystem.BroadcastMessage(TAG_Yc_QuickBar_Message_ActiveIndexChanged, Message);
+	// 处理装备切换
+	const int32 CurrentIndex = bHasPendingSlotChange ? PendingSlotIndex : ActiveSlotIndex;
+	ExecuteEquipmentChange(CurrentIndex, NewIndex);
 }
 
 void UYcQuickBarComponent::ExecuteLocalPredictionDeactivate(int32 NewIndex)
@@ -518,6 +487,43 @@ void UYcQuickBarComponent::RollbackPrediction(int32 ServerIndex)
 	FYcQuickBarActiveIndexChangedMessage Message;
 	Message.Owner = GetOwner();
 	Message.ActiveIndex = ServerIndex;
+
+	UGameplayMessageSubsystem& MessageSystem = UGameplayMessageSubsystem::Get(this);
+	MessageSystem.BroadcastMessage(TAG_Yc_QuickBar_Message_ActiveIndexChanged, Message);
+}
+
+void UYcQuickBarComponent::ExecuteEquipmentChange(int32 OldIndex, int32 NewIndex)
+{
+	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	if (!EquipmentManager)
+	{
+		return;
+	}
+	
+	// 隐藏旧装备
+	if (Slots.IsValidIndex(OldIndex) && Slots[OldIndex])
+	{
+		if (UYcEquipmentInstance* CurrentEquipment = EquipmentManager->FindEquipmentByItem(Slots[OldIndex]))
+		{
+			// 设置状态为未装备（会触发 OnRep 和 OnUnequipped）
+			CurrentEquipment->SetEquipmentState(EYcEquipmentState::Unequipped);
+		}
+	}
+	
+	// 显示新装备
+	if (Slots.IsValidIndex(NewIndex) && Slots[NewIndex])
+	{
+		if (UYcEquipmentInstance* NewEquipment = EquipmentManager->FindEquipmentByItem(Slots[NewIndex]))
+		{
+			// 设置状态为已装备（会触发 OnRep 和 OnEquipped）
+			NewEquipment->SetEquipmentState(EYcEquipmentState::Equipped);
+		}
+	}
+	
+	// 广播消息让 UI 立即响应
+	FYcQuickBarActiveIndexChangedMessage Message;
+	Message.Owner = GetOwner();
+	Message.ActiveIndex = NewIndex;
 
 	UGameplayMessageSubsystem& MessageSystem = UGameplayMessageSubsystem::Get(this);
 	MessageSystem.BroadcastMessage(TAG_Yc_QuickBar_Message_ActiveIndexChanged, Message);
@@ -722,13 +728,22 @@ void UYcQuickBarComponent::OnRep_Slots()
 void UYcQuickBarComponent::OnRep_ActiveSlotIndex(int32 OldActiveSlotIndex)
 {
 	// 主控客户端：处理预测校正
-	if (GetOwner() && GetOwner()->GetLocalRole() == ROLE_AutonomousProxy)
+	if (GetOwner() && GetOwner()->GetLocalRole() == ROLE_AutonomousProxy && bHasPendingSlotChange)
 	{
 		// 这里只需要处理预测校正
 		ReconcilePrediction(ActiveSlotIndex);
+		return;
 	}
 	
-	// 如果没有预测状态，广播消息
+	// 主控客户端没有预测, 同步装备/卸载
+	if (GetOwner() && GetOwner()->GetLocalRole() == ROLE_AutonomousProxy && !bHasPendingSlotChange)
+	{
+		// 没有预测状态（服务端直接修改）：执行实际装备逻辑
+		ExecuteEquipmentChange(OldActiveSlotIndex, ActiveSlotIndex);
+		return;
+	}
+	
+	// 如果没有预测状态，广播消息(服务端或者模拟客户端执行)
 	if (!bHasPendingSlotChange)
 	{
 		FYcQuickBarActiveIndexChangedMessage Message;

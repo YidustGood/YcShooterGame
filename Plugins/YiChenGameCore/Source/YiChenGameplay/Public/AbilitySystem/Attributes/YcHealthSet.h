@@ -5,7 +5,7 @@
 #include "NativeGameplayTags.h"
 #include "AbilitySystemComponent.h"
 #include "Attributes/YcAttributeSet.h"
-#include "YcShooterHealthSet.generated.h"
+#include "YcHealthSet.generated.h"
 
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Gameplay_Damage);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Gameplay_DamageImmunity);
@@ -16,22 +16,22 @@ UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Gameplay_Attribute_SetByCaller_Heal);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Gameplay_Attribute_SetByCaller_Damage);
 
 /**
- * 射击游戏健康属性集
+ * 健康属性集
  * 管理角色的生命值、最大生命值、伤害和治疗等健康相关属性
  * 提供健康值变化事件委托，支持伤害免疫、自毁伤害等特殊处理
  */
 UCLASS()
-class YICHENSHOOTERCORE_API UYcShooterHealthSet : public UYcAttributeSet
+class YICHENGAMEPLAY_API UYcHealthSet : public UYcAttributeSet
 {
 	GENERATED_BODY()
 	public:
 
-	UYcShooterHealthSet();
+	UYcHealthSet();
 
-	ATTRIBUTE_ACCESSORS(UYcShooterHealthSet, Health);
-	ATTRIBUTE_ACCESSORS(UYcShooterHealthSet, MaxHealth);
-	ATTRIBUTE_ACCESSORS(UYcShooterHealthSet, Healing);
-	ATTRIBUTE_ACCESSORS(UYcShooterHealthSet, Damage);
+	ATTRIBUTE_ACCESSORS(UYcHealthSet, Health);
+	ATTRIBUTE_ACCESSORS(UYcHealthSet, MaxHealth);
+	ATTRIBUTE_ACCESSORS(UYcHealthSet, Healing);
+	ATTRIBUTE_ACCESSORS(UYcHealthSet, Damage);
 	
 	/** 健康值变化委托，当由于伤害或治疗导致健康值改变时触发，注意：客户端上的一些信息可能会丢失 */
 	mutable FYcAttributeEvent OnHealthChanged;

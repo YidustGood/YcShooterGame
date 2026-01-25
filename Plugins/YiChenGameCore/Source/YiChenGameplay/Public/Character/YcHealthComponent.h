@@ -3,16 +3,16 @@
 #pragma once
 
 #include "YcAbilityComponent.h"
-#include "YcShooterHealthComponent.generated.h"
+#include "YcHealthComponent.generated.h"
 
 struct FGameplayTag;
 class UYcAbilitySystemComponent;
-class UYcShooterHealthSet;
+class UYcHealthSet;
 class UYcCombatSet;
 struct FGameplayEffectSpec;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FYcShooterHealth_DeathEvent, AActor*, OwningActor);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FYcShooterHealth_AttributeChanged, UYcShooterHealthComponent*, HealthComponent, float, OldValue, float, NewValue, AActor*, Instigator);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FYcShooterHealth_AttributeChanged, UYcHealthComponent*, HealthComponent, float, OldValue, float, NewValue, AActor*, Instigator);
 
 /**
  *	定义当前死亡状态
@@ -27,14 +27,14 @@ enum class EYcDeathState : uint8
 };
 
 /**
- * 射击游戏健康组件
+ * 健康组件
  * 用于处理与健康相关的所有功能，包括健康值管理、死亡序列处理等
  * 监听ASC生命周期消息进行初始化，监听健康属性变化事件，处理健康值归零事件
  * 健康值归零后会在HandleOutOfHealth()这个回调中发送GameplayEvent触发死亡技能
  * 然后具体的死亡逻辑一部分可以在死亡技能中实现，一部分可以在OnDeathStarted和OnDeathFinished委托的自定义回调函数中实现
  */
-UCLASS(ClassGroup=(YiChenShooterCore), meta=(BlueprintSpawnableComponent))
-class YICHENSHOOTERCORE_API UYcShooterHealthComponent : public UYcAbilityComponent
+UCLASS(ClassGroup=(YiChenGameplay), meta=(BlueprintSpawnableComponent))
+class YICHENGAMEPLAY_API UYcHealthComponent : public UYcAbilityComponent
 {
 	GENERATED_BODY()
 
@@ -43,7 +43,7 @@ public:
 	 * 构造函数
 	 * @param ObjectInitializer 对象初始化器
 	 */
-	UYcShooterHealthComponent(const FObjectInitializer& ObjectInitializer);
+	UYcHealthComponent(const FObjectInitializer& ObjectInitializer);
 	
 	/**
 	 * 查找指定Actor上的健康组件
@@ -51,7 +51,7 @@ public:
 	 * @return 找到的健康组件，如果不存在则返回nullptr
 	 */
 	UFUNCTION(BlueprintPure, Category = "YcGameCore|Health")
-	static UYcShooterHealthComponent* FindHealthComponent(const AActor* Actor) { return (Actor ? Actor->FindComponentByClass<UYcShooterHealthComponent>() : nullptr); }
+	static UYcHealthComponent* FindHealthComponent(const AActor* Actor) { return (Actor ? Actor->FindComponentByClass<UYcHealthComponent>() : nullptr); }
 
 	/**
 	 * 模板方法：与AbilitySystemComponent初始化时的业务逻辑
@@ -202,7 +202,7 @@ protected:
 	
 	/** 此Actor使用的健康属性集 */
 	UPROPERTY(VisibleAnywhere, Category= "AttributeSet")
-	TObjectPtr<const UYcShooterHealthSet> HealthSet;
+	TObjectPtr<const UYcHealthSet> HealthSet;
 	
 	/** 用于处理死亡状态的复制状态 */
 	UPROPERTY(ReplicatedUsing = OnRep_DeathState)

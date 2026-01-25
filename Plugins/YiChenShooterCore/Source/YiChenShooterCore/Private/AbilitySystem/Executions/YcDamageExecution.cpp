@@ -7,7 +7,7 @@
 #include "YcGameplayEffectContext.h"
 #include "YcTeamSubsystem.h"
 #include "AbilitySystem/Attributes/YcCombatSet.h"
-#include "AbilitySystem/Attributes/YcShooterHealthSet.h"
+#include "AbilitySystem/Attributes/YcHealthSet.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcDamageExecution)
 
@@ -148,7 +148,7 @@ void UYcDamageExecution::Execute_Implementation(const FGameplayEffectCustomExecu
 	if (DamageDone > 0.0f)
 	{
 		// 应用修改器, 会把计算出的DamageDone应用到被攻击玩家的UYcShooterHealthSet::Damage上, 然后UYcShooterHealthSet::PostGameplayEffectExecute会扣除Damage值大小的生命值, 以实现对玩家造成伤害
-		OutExecutionOutput.AddOutputModifier(FGameplayModifierEvaluatedData(UYcShooterHealthSet::GetDamageAttribute(), EGameplayModOp::Additive, DamageDone));
+		OutExecutionOutput.AddOutputModifier(FGameplayModifierEvaluatedData(UYcHealthSet::GetDamageAttribute(), EGameplayModOp::Additive, DamageDone));
 	}
 #endif // #if WITH_SERVER_CODE
 }

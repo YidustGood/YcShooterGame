@@ -3,16 +3,16 @@
 #pragma once
 
 #include "Abilities/YcGameplayAbility.h"
-#include "YcGameplayAbility_ShooterDeath.generated.h"
+#include "YcGameplayAbility_Death.generated.h"
 
 /**
- * 射击游戏死亡技能
+ * 死亡技能
  * 用于处理角色死亡的技能，实际逻辑是转发到Avatar actor的HealthComponent->StartDeath以及FinishDeath进行处理
  * 技能通过"GameplayEvent.Death"能力触发标签自动激活
  * 玩家血量归零后UYcShooterHealthComponent::HandleOutOfHealth()中会发送一个"GameplayEvent.Death"事件来触发这个死亡技能
  */
 UCLASS(Abstract)
-class YICHENSHOOTERCORE_API UYcGameplayAbility_ShooterDeath : public UYcGameplayAbility
+class YICHENGAMEPLAY_API UYcGameplayAbility_Death : public UYcGameplayAbility
 {
 	GENERATED_BODY()
 public:
@@ -20,7 +20,7 @@ public:
 	 * 构造函数
 	 * @param ObjectInitializer 对象初始化器
 	 */
-	UYcGameplayAbility_ShooterDeath(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+	UYcGameplayAbility_Death(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 	
 protected:
 

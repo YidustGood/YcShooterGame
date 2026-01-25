@@ -1,7 +1,7 @@
 ﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 
-#include "AbilitySystem/Attributes/YcShooterHealthSet.h"
+#include "AbilitySystem/Attributes/YcHealthSet.h"
 
 #include "GameplayEffectExtension.h"
 #include "NativeGameplayTags.h"
@@ -11,7 +11,7 @@
 #include "GameplayCommon/YcGameVerbMessage.h"
 #include "Net/UnrealNetwork.h"
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(YcShooterHealthSet)
+#include UE_INLINE_GENERATED_CPP_BY_NAME(YcHealthSet)
 
 UE_DEFINE_GAMEPLAY_TAG(TAG_Gameplay_Damage, "Gameplay.Damage");
 UE_DEFINE_GAMEPLAY_TAG(TAG_Gameplay_DamageImmunity, "Gameplay.DamageImmunity");
@@ -21,7 +21,7 @@ UE_DEFINE_GAMEPLAY_TAG(TAG_Yc_Damage_Message, "Yc.Damage.Message");
 UE_DEFINE_GAMEPLAY_TAG(TAG_Gameplay_Attribute_SetByCaller_Heal, "Gameplay.Attribute.SetByCaller.Heal");
 UE_DEFINE_GAMEPLAY_TAG(TAG_Gameplay_Attribute_SetByCaller_Damage, "Gameplay.Attribute.SetByCaller.Damage");
 
-UYcShooterHealthSet::UYcShooterHealthSet()
+UYcHealthSet::UYcHealthSet()
 	: Health(100.0f)
 	, MaxHealth(100.0f)
 {
@@ -30,17 +30,17 @@ UYcShooterHealthSet::UYcShooterHealthSet()
 	HealthBeforeAttributeChange = 0.0f;
 }
 
-void UYcShooterHealthSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+void UYcHealthSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME_CONDITION_NOTIFY(UYcShooterHealthSet, Health, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UYcShooterHealthSet, MaxHealth, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UYcHealthSet, Health, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UYcHealthSet, MaxHealth, COND_None, REPNOTIFY_Always);
 }
 
-void UYcShooterHealthSet::OnRep_Health(const FGameplayAttributeData& OldValue)
+void UYcHealthSet::OnRep_Health(const FGameplayAttributeData& OldValue)
 {
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UYcShooterHealthSet, Health, OldValue);
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UYcHealthSet, Health, OldValue);
 
 	// 调用变化回调，但没有instigator信息（客户端上可能缺失）
 	// 未来可以改为显式RPC
@@ -60,16 +60,16 @@ void UYcShooterHealthSet::OnRep_Health(const FGameplayAttributeData& OldValue)
 	bOutOfHealth = (CurrentHealth <= 0.0f);
 }
 
-void UYcShooterHealthSet::OnRep_MaxHealth(const FGameplayAttributeData& OldValue)
+void UYcHealthSet::OnRep_MaxHealth(const FGameplayAttributeData& OldValue)
 {
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UYcShooterHealthSet, MaxHealth, OldValue);
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UYcHealthSet, MaxHealth, OldValue);
 
 	// 调用变化回调，但没有instigator信息（客户端上可能缺失）
 	// 未来可以改为显式RPC
 	OnMaxHealthChanged.Broadcast(nullptr, nullptr, nullptr, GetMaxHealth() - OldValue.GetCurrentValue(), OldValue.GetCurrentValue(), GetMaxHealth());
 }
 
-bool UYcShooterHealthSet::PreGameplayEffectExecute(FGameplayEffectModCallbackData& Data)
+bool UYcHealthSet::PreGameplayEffectExecute(FGameplayEffectModCallbackData& Data)
 {
 	if (!Super::PreGameplayEffectExecute(Data))
 	{
@@ -110,7 +110,7 @@ bool UYcShooterHealthSet::PreGameplayEffectExecute(FGameplayEffectModCallbackDat
 	return true;
 }
 
-void UYcShooterHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
+void UYcHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
 {
 	Super::PostGameplayEffectExecute(Data);
 
@@ -190,21 +190,21 @@ void UYcShooterHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCall
 	bOutOfHealth = (GetHealth() <= 0.0f);
 }
 
-void UYcShooterHealthSet::PreAttributeBaseChange(const FGameplayAttribute& Attribute, float& NewValue) const
+void UYcHealthSet::PreAttributeBaseChange(const FGameplayAttribute& Attribute, float& NewValue) const
 {
 	Super::PreAttributeBaseChange(Attribute, NewValue);
 
 	ClampAttribute(Attribute, NewValue);
 }
 
-void UYcShooterHealthSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
+void UYcHealthSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
 {
 	Super::PreAttributeChange(Attribute, NewValue);
 
 	ClampAttribute(Attribute, NewValue);
 }
 
-void UYcShooterHealthSet::PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue)
+void UYcHealthSet::PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue)
 {
 	Super::PostAttributeChange(Attribute, OldValue, NewValue);
 
@@ -232,7 +232,7 @@ void UYcShooterHealthSet::PostAttributeChange(const FGameplayAttribute& Attribut
 	// UE_LOG(LogYcShooterCore, Log, *Msg);
 }
 
-void UYcShooterHealthSet::ClampAttribute(const FGameplayAttribute& Attribute, float& NewValue) const
+void UYcHealthSet::ClampAttribute(const FGameplayAttribute& Attribute, float& NewValue) const
 {
 	if (Attribute == GetHealthAttribute())
 	{

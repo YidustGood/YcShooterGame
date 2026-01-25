@@ -4,7 +4,7 @@
 #include "AbilitySystem/Executions/YcHealExecution.h"
 
 #include "AbilitySystem/Attributes/YcCombatSet.h"
-#include "AbilitySystem/Attributes/YcShooterHealthSet.h"
+#include "AbilitySystem/Attributes/YcHealthSet.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcHealExecution)
 
@@ -66,7 +66,7 @@ void UYcHealExecution::Execute_Implementation(const FGameplayEffectCustomExecuti
 	{
 		// 应用治疗修改器，这会变成目标的+生命值
 		// UYcShooterHealthSet::PostGameplayEffectExecute会将Healing转换为+Health，以实现对玩家进行治疗
-		OutExecutionOutput.AddOutputModifier(FGameplayModifierEvaluatedData(UYcShooterHealthSet::GetHealingAttribute(), EGameplayModOp::Additive, HealingDone));
+		OutExecutionOutput.AddOutputModifier(FGameplayModifierEvaluatedData(UYcHealthSet::GetHealingAttribute(), EGameplayModOp::Additive, HealingDone));
 	}
 #endif // #if WITH_SERVER_CODE
 }

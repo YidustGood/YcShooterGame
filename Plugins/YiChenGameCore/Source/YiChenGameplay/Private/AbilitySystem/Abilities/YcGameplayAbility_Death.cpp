@@ -1,19 +1,19 @@
 ﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 
-#include "AbilitySystem/Abilities/YcGameplayAbility_ShooterDeath.h"
+#include "AbilitySystem/Abilities/YcGameplayAbility_Death.h"
 
 #include "YcAbilitySystemComponent.h"
 #include "YcGameplayTags.h"
-#include "YiChenShooterCore.h"
+#include "YiChenGameplay.h"
 #include "Abilities/GameplayAbility.h"
-#include "Character/YcShooterHealthComponent.h"
+#include "Character/YcHealthComponent.h"
 #include "Utils/CommonSimpleUtil.h"
 
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(YcGameplayAbility_ShooterDeath)
+#include UE_INLINE_GENERATED_CPP_BY_NAME(YcGameplayAbility_Death)
 
-UYcGameplayAbility_ShooterDeath::UYcGameplayAbility_ShooterDeath(const FObjectInitializer& ObjectInitializer)
+UYcGameplayAbility_Death::UYcGameplayAbility_Death(const FObjectInitializer& ObjectInitializer)
 : Super(ObjectInitializer)
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;	// 实例化政策：为每个Actor实例化技能
@@ -31,7 +31,7 @@ UYcGameplayAbility_ShooterDeath::UYcGameplayAbility_ShooterDeath(const FObjectIn
 	}
 }
 
-void UYcGameplayAbility_ShooterDeath::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
+void UYcGameplayAbility_Death::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
 	const FGameplayEventData* TriggerEventData)
 {
 	check(ActorInfo);
@@ -50,7 +50,7 @@ void UYcGameplayAbility_ShooterDeath::ActivateAbility(const FGameplayAbilitySpec
 	// 将激活组改为阻塞性排他，阻止其他技能激活
 	if (!ChangeActivationGroup(EYcAbilityActivationGroup::Exclusive_Blocking))
 	{
-		UE_LOG(LogYcShooterCore, Error, TEXT("UYcGameplayAbility_ShooterDeath::ActivateAbility: Ability [%s] failed to change activation group to blocking."), *GetName());
+		UE_LOG(LogYcGameplay, Error, TEXT("UYcGameplayAbility_ShooterDeath::ActivateAbility: Ability [%s] failed to change activation group to blocking."), *GetName());
 	}
 
 	if (bAutoStartDeath)
@@ -61,7 +61,7 @@ void UYcGameplayAbility_ShooterDeath::ActivateAbility(const FGameplayAbilitySpec
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 }
 
-void UYcGameplayAbility_ShooterDeath::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
+void UYcGameplayAbility_Death::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
 	bool bReplicateEndAbility, bool bWasCancelled)
 {
 	check(ActorInfo);
@@ -73,13 +73,13 @@ void UYcGameplayAbility_ShooterDeath::EndAbility(const FGameplayAbilitySpecHandl
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
-void UYcGameplayAbility_ShooterDeath::StartDeath()
+void UYcGameplayAbility_Death::StartDeath()
 {
-	UYcShooterHealthComponent* HealthComponent = UYcShooterHealthComponent::FindHealthComponent(GetAvatarActorFromActorInfo());
+	UYcHealthComponent* HealthComponent = UYcHealthComponent::FindHealthComponent(GetAvatarActorFromActorInfo());
 	if(!HealthComponent)
 	{
-		const FString ErrMsg = FString::Printf(TEXT("StartDeath failed,[%s] get YcShooterHealthComponent invalid."), GetAvatarActorFromActorInfo() ? *GetAvatarActorFromActorInfo()->GetName() : TEXT("Invalid avatar actor from actor info."));
-		YC_LOG(LogYcShooterCore, Error, *ErrMsg);
+		const FString ErrMsg = FString::Printf(TEXT("StartDeath failed,[%s] get UYcHealthComponent invalid."), GetAvatarActorFromActorInfo() ? *GetAvatarActorFromActorInfo()->GetName() : TEXT("Invalid avatar actor from actor info."));
+		YC_LOG(LogYcGameplay, Error, *ErrMsg);
 		return;
 	}
 	
@@ -89,13 +89,13 @@ void UYcGameplayAbility_ShooterDeath::StartDeath()
 	}
 }
 
-void UYcGameplayAbility_ShooterDeath::FinishDeath()
+void UYcGameplayAbility_Death::FinishDeath()
 {
-	UYcShooterHealthComponent* HealthComponent = UYcShooterHealthComponent::FindHealthComponent(GetAvatarActorFromActorInfo());
+	UYcHealthComponent* HealthComponent = UYcHealthComponent::FindHealthComponent(GetAvatarActorFromActorInfo());
 	if(!HealthComponent)
 	{
-		const FString ErrMsg = FString::Printf(TEXT("FinishDeath failed,[%s] get YcShooterHealthComponent invalid."), GetAvatarActorFromActorInfo() ? *GetAvatarActorFromActorInfo()->GetName() : TEXT("Invalid avatar actor from actor info."));
-		YC_LOG(LogYcShooterCore, Error, *ErrMsg);
+		const FString ErrMsg = FString::Printf(TEXT("FinishDeath failed,[%s] get UYcHealthComponent invalid."), GetAvatarActorFromActorInfo() ? *GetAvatarActorFromActorInfo()->GetName() : TEXT("Invalid avatar actor from actor info."));
+		YC_LOG(LogYcGameplay, Error, *ErrMsg);
 		return;
 	}
 	

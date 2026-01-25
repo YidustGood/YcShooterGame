@@ -1,12 +1,12 @@
 ﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 
-#include "Character/YcShooterHealthComponent.h"
+#include "Character/YcHealthComponent.h"
 #include "NativeGameplayTags.h"
 #include "YcAbilitySystemComponent.h"
 #include "YcGameplayTags.h"
-#include "YiChenShooterCore.h"
-#include "AbilitySystem/Attributes/YcShooterHealthSet.h"
+#include "YiChenGameplay.h"
+#include "AbilitySystem/Attributes/YcHealthSet.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameplayCommon/YcGameVerbMessage.h"
 #include "Net/UnrealNetwork.h"
@@ -14,11 +14,11 @@
 #include "System/YcGameData.h"
 #include "GameFramework/PlayerState.h"
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(YcShooterHealthComponent)
+#include UE_INLINE_GENERATED_CPP_BY_NAME(YcHealthComponent)
 
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_Elimination_Message, "Yc.Elimination.Message");
 
-UYcShooterHealthComponent::UYcShooterHealthComponent(const FObjectInitializer& ObjectInitializer)
+UYcHealthComponent::UYcHealthComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	PrimaryComponentTick.bStartWithTickEnabled = false;
@@ -32,14 +32,14 @@ UYcShooterHealthComponent::UYcShooterHealthComponent(const FObjectInitializer& O
 	HealthSet = nullptr;
 }
 
-void UYcShooterHealthComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+void UYcHealthComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(UYcShooterHealthComponent, DeathState);
+	DOREPLIFETIME(UYcHealthComponent, DeathState);
 }
 
-void UYcShooterHealthComponent::DoInitializeWithAbilitySystem(UYcAbilitySystemComponent* ASC)
+void UYcHealthComponent::DoInitializeWithAbilitySystem(UYcAbilitySystemComponent* ASC)
 {
 	Super::DoInitializeWithAbilitySystem(ASC);
 	
@@ -47,12 +47,12 @@ void UYcShooterHealthComponent::DoInitializeWithAbilitySystem(UYcAbilitySystemCo
 	check(Owner);
 	
 	// 创建健康组件所需的AttributeSet
-	HealthSet = AddAttributeSet<UYcShooterHealthSet>();
+	HealthSet = AddAttributeSet<UYcHealthSet>();
 	
 	// 验证属性集创建成功
 	if (!HealthSet)
 	{
-		UE_LOG(LogYcShooterCore, Error, TEXT("UYcShooterHealthComponent: Cannot initialize health component for owner [%s] with NULL health set on the ability system."), *GetNameSafe(Owner));
+		UE_LOG(LogYcGameplay, Error, TEXT("UYcShooterHealthComponent: Cannot initialize health component for owner [%s] with NULL health set on the ability system."), *GetNameSafe(Owner));
 		return;
 	}
 	
@@ -65,7 +65,7 @@ void UYcShooterHealthComponent::DoInitializeWithAbilitySystem(UYcAbilitySystemCo
 	HealthSet->OnOutOfHealth.AddUObject(this, &ThisClass::HandleOutOfHealth);
 
 	// TEMP: 将属性重置为默认值。最终这将由电子表格驱动
-	AbilitySystemComponent->SetNumericAttributeBase(UYcShooterHealthSet::GetHealthAttribute(), HealthSet->GetMaxHealth());
+	AbilitySystemComponent->SetNumericAttributeBase(UYcHealthSet::GetHealthAttribute(), HealthSet->GetMaxHealth());
 
 	ClearGameplayTags();
 
@@ -74,7 +74,7 @@ void UYcShooterHealthComponent::DoInitializeWithAbilitySystem(UYcAbilitySystemCo
 	OnMaxHealthChanged.Broadcast(this, HealthSet->GetHealth(), HealthSet->GetHealth(), nullptr);
 }
 
-void UYcShooterHealthComponent::DoUninitializeFromAbilitySystem()
+void UYcHealthComponent::DoUninitializeFromAbilitySystem()
 {
 	ClearGameplayTags();
 
@@ -92,17 +92,17 @@ void UYcShooterHealthComponent::DoUninitializeFromAbilitySystem()
 	Super::DoUninitializeFromAbilitySystem();
 }
 
-float UYcShooterHealthComponent::GetHealth() const
+float UYcHealthComponent::GetHealth() const
 {
 	return (HealthSet ? HealthSet->GetHealth() : 0.0f);
 }
 
-float UYcShooterHealthComponent::GetMaxHealth() const
+float UYcHealthComponent::GetMaxHealth() const
 {
 	return (HealthSet ? HealthSet->GetMaxHealth() : 0.0f);
 }
 
-float UYcShooterHealthComponent::GetHealthNormalized() const
+float UYcHealthComponent::GetHealthNormalized() const
 {
 	if(!HealthSet) return 0.0f;
 	
@@ -112,12 +112,12 @@ float UYcShooterHealthComponent::GetHealthNormalized() const
 	return ((MaxHealth > 0.0f) ? (Health / MaxHealth) : 0.0f);
 }
 
-void UYcShooterHealthComponent::K2_DamageSelfDestruct(bool bFellOutOfWorld)
+void UYcHealthComponent::K2_DamageSelfDestruct(bool bFellOutOfWorld)
 {
 	DamageSelfDestruct(bFellOutOfWorld);
 }
 
-void UYcShooterHealthComponent::StartDeath()
+void UYcHealthComponent::StartDeath()
 {
 	if (DeathState != EYcDeathState::NotDead) return;
 
@@ -139,7 +139,7 @@ void UYcShooterHealthComponent::StartDeath()
 	Owner->ForceNetUpdate();
 }
 
-void UYcShooterHealthComponent::FinishDeath()
+void UYcHealthComponent::FinishDeath()
 {
 	if (DeathState != EYcDeathState::DeathStarted) return;
 	
@@ -159,7 +159,7 @@ void UYcShooterHealthComponent::FinishDeath()
 }
 
 
-void UYcShooterHealthComponent::DamageSelfDestruct(bool bFellOutOfWorld)
+void UYcHealthComponent::DamageSelfDestruct(bool bFellOutOfWorld)
 {
 	// 要处于未死亡状态且ASC组件有效才能进行对自我的摧毁性伤害
 	if ((DeathState != EYcDeathState::NotDead) || AbilitySystemComponent == nullptr) return;
@@ -168,7 +168,7 @@ void UYcShooterHealthComponent::DamageSelfDestruct(bool bFellOutOfWorld)
 	const TSubclassOf<UGameplayEffect> DamageGE = UYcAssetManager::GetSubclass(UYcGameData::Get().DamageGameplayEffect_SetByCaller);
 	if (!DamageGE)
 	{
-		UE_LOG(LogYcShooterCore, Error, TEXT("UYcShooterHealthComponent: DamageSelfDestruct failed for owner [%s]. Unable to find gameplay effect [%s]."), *GetNameSafe(GetOwner()), *UYcGameData::Get().DamageGameplayEffect_SetByCaller.GetAssetName());
+		UE_LOG(LogYcGameplay, Error, TEXT("UYcShooterHealthComponent: DamageSelfDestruct failed for owner [%s]. Unable to find gameplay effect [%s]."), *GetNameSafe(GetOwner()), *UYcGameData::Get().DamageGameplayEffect_SetByCaller.GetAssetName());
 		return;
 	}
 
@@ -177,7 +177,7 @@ void UYcShooterHealthComponent::DamageSelfDestruct(bool bFellOutOfWorld)
 
 	if (!Spec)
 	{
-		UE_LOG(LogYcShooterCore, Error, TEXT("UYcShooterHealthComponent: DamageSelfDestruct failed for owner [%s]. Unable to make outgoing spec for [%s]."), *GetNameSafe(GetOwner()), *GetNameSafe(DamageGE));
+		UE_LOG(LogYcGameplay, Error, TEXT("UYcShooterHealthComponent: DamageSelfDestruct failed for owner [%s]. Unable to make outgoing spec for [%s]."), *GetNameSafe(GetOwner()), *GetNameSafe(DamageGE));
 		return;
 	}
 
@@ -196,7 +196,7 @@ void UYcShooterHealthComponent::DamageSelfDestruct(bool bFellOutOfWorld)
 	AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*Spec);
 }
 
-void UYcShooterHealthComponent::ClearGameplayTags()
+void UYcHealthComponent::ClearGameplayTags()
 {
 	if (!AbilitySystemComponent) return;
 	
@@ -204,17 +204,17 @@ void UYcShooterHealthComponent::ClearGameplayTags()
 	AbilitySystemComponent->SetLooseGameplayTagCount(YcGameplayTags::Status_Death_Dead, 0);
 }
 
-void UYcShooterHealthComponent::HandleHealthChanged(AActor* DamageInstigator, AActor* DamageCauser, const FGameplayEffectSpec* DamageEffectSpec, float DamageMagnitude, float OldValue, float NewValue)
+void UYcHealthComponent::HandleHealthChanged(AActor* DamageInstigator, AActor* DamageCauser, const FGameplayEffectSpec* DamageEffectSpec, float DamageMagnitude, float OldValue, float NewValue)
 {
 	OnHealthChanged.Broadcast(this, OldValue, NewValue, DamageInstigator);
 }
 
-void UYcShooterHealthComponent::HandleMaxHealthChanged(AActor* DamageInstigator, AActor* DamageCauser, const FGameplayEffectSpec* DamageEffectSpec, float DamageMagnitude, float OldValue, float NewValue)
+void UYcHealthComponent::HandleMaxHealthChanged(AActor* DamageInstigator, AActor* DamageCauser, const FGameplayEffectSpec* DamageEffectSpec, float DamageMagnitude, float OldValue, float NewValue)
 {
 	OnMaxHealthChanged.Broadcast(this, OldValue, NewValue, DamageInstigator);
 }
 
-void UYcShooterHealthComponent::HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageCauser, const FGameplayEffectSpec* DamageEffectSpec, float DamageMagnitude, float OldValue, float NewValue)
+void UYcHealthComponent::HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageCauser, const FGameplayEffectSpec* DamageEffectSpec, float DamageMagnitude, float OldValue, float NewValue)
 {
 	// 这段代码只能在服务端执行
 #if WITH_SERVER_CODE
@@ -260,7 +260,7 @@ void UYcShooterHealthComponent::HandleOutOfHealth(AActor* DamageInstigator, AAct
 #endif // #if WITH_SERVER_CODE
 }
 
-void UYcShooterHealthComponent::OnRep_DeathState(EYcDeathState OldDeathState)
+void UYcHealthComponent::OnRep_DeathState(EYcDeathState OldDeathState)
 {
 	// 客户端的StartDeath和FinishDeath都是通过DeathState的属性同步触发
 	const EYcDeathState NewDeathState = DeathState;
@@ -271,7 +271,7 @@ void UYcShooterHealthComponent::OnRep_DeathState(EYcDeathState OldDeathState)
 	if (OldDeathState > NewDeathState)
 	{
 		// 服务器试图让我们返回，但我们已经预测超过了服务器状态
-		UE_LOG(LogYcShooterCore, Warning, TEXT("UYcShooterHealthComponent: Predicted past server death state [%d] -> [%d] for owner [%s]."), (uint8)OldDeathState, (uint8)NewDeathState, *GetNameSafe(GetOwner()));
+		UE_LOG(LogYcGameplay, Warning, TEXT("UYcShooterHealthComponent: Predicted past server death state [%d] -> [%d] for owner [%s]."), (uint8)OldDeathState, (uint8)NewDeathState, *GetNameSafe(GetOwner()));
 		return;
 	}
 
@@ -290,7 +290,7 @@ void UYcShooterHealthComponent::OnRep_DeathState(EYcDeathState OldDeathState)
 		}
 		else
 		{
-			UE_LOG(LogYcShooterCore, Error, TEXT("UYcShooterHealthComponent: Invalid death transition [%d] -> [%d] for owner [%s]."), (uint8)OldDeathState, (uint8)NewDeathState, *GetNameSafe(GetOwner()));
+			UE_LOG(LogYcGameplay, Error, TEXT("UYcShooterHealthComponent: Invalid death transition [%d] -> [%d] for owner [%s]."), (uint8)OldDeathState, (uint8)NewDeathState, *GetNameSafe(GetOwner()));
 		}
 	}
 	else if (OldDeathState == EYcDeathState::DeathStarted)
@@ -302,7 +302,7 @@ void UYcShooterHealthComponent::OnRep_DeathState(EYcDeathState OldDeathState)
 		}
 		else
 		{
-			UE_LOG(LogYcShooterCore, Error, TEXT("UYcShooterHealthComponent: Invalid death transition [%d] -> [%d] for owner [%s]."), (uint8)OldDeathState, (uint8)NewDeathState, *GetNameSafe(GetOwner()));
+			UE_LOG(LogYcGameplay, Error, TEXT("UYcShooterHealthComponent: Invalid death transition [%d] -> [%d] for owner [%s]."), (uint8)OldDeathState, (uint8)NewDeathState, *GetNameSafe(GetOwner()));
 		}
 	}
 

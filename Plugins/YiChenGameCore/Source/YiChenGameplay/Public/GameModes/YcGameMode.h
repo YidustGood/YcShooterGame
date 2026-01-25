@@ -6,6 +6,13 @@
 #include "YcExperienceDefinition.h"
 #include "YcGameMode.generated.h"
 
+/**
+ * 登录后事件，当玩家或机器人加入游戏时触发，以及在无缝和非无缝旅行后触发
+ *
+ * 这是在玩家完成初始化后调用的
+ */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnYcGameModePlayerInitialized, AGameModeBase* /*GameMode*/, AController* /*NewPlayer*/);
+
 enum class ECommonUserOnlineContext : uint8;
 enum class ECommonUserPrivilege : uint8;
 class UCommonUserInfo;
@@ -37,6 +44,7 @@ public:
 	virtual void FinishRestartPlayer(AController* NewPlayer, const FRotator& StartRotation) override;
 	virtual bool PlayerCanRestart_Implementation(APlayerController* Player) override;
 	virtual void GenericPlayerInitialization(AController* NewPlayer) override;
+	virtual void FailedToRestartPlayer(AController* NewPlayer) override;
 	//~End of AGameModeBase interface
 	
 	/**
@@ -78,6 +86,24 @@ protected:
 	 */
 	void OnExperienceLoaded(const UYcExperienceDefinition* CurrentExperience);
 	///////////// ~Game Experience 相关 /////////////
+
+	
+	///////////// 玩家重生相关 /////////////
+public:
+	/**
+	 * 请求在下一帧重生指定的玩家或AI
+	 * @param Controller 要重生的控制器
+	 * @param bForceReset 如果为true，控制器将在本帧重置（放弃当前占有的Pawn）
+	 */
+	UFUNCTION(BlueprintCallable)
+	void RequestPlayerRestartNextFrame(AController* Controller, bool bForceReset = false);
+
+	/** 通用版本的PlayerCanRestart，可用于玩家和AI */
+	virtual bool ControllerCanRestart(AController* Controller);
+
+	/** 玩家初始化完成时调用的委托 */
+	FOnYcGameModePlayerInitialized OnGameModePlayerInitialized;
+	///////////// ~玩家重生相关 /////////////
 	
 	////////////// Dedicated Server 相关 /////////////
 protected:

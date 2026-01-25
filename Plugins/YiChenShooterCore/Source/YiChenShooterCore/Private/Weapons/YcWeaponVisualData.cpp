@@ -47,6 +47,22 @@ TSoftObjectPtr<UAnimSequence> UYcWeaponVisualData::GetPoseAnim(FGameplayTag Pose
 	return nullptr;
 }
 
+TSoftObjectPtr<UNiagaraSystem> UYcWeaponVisualData::GetVFXEffect(FGameplayTag VFXTag) const
+{
+	if (!VFXTag.IsValid())
+	{
+		return nullptr;
+	}
+
+	// 查找特效
+	if (const TSoftObjectPtr<UNiagaraSystem>* Effect = VFXEffects.Find(VFXTag))
+	{
+		return *Effect;
+	}
+
+	return nullptr;
+}
+
 bool UYcWeaponVisualData::K2_GetActionVisual(FGameplayTag ActionTag, FYcWeaponActionVisual& OutActionVisual) const
 {
 	if (const FYcWeaponActionVisual* Found = GetActionVisual(ActionTag))
@@ -78,5 +94,55 @@ TArray<FGameplayTag> UYcWeaponVisualData::GetAllPoseTags() const
 {
 	TArray<FGameplayTag> Tags;
 	PoseAnims.GetKeys(Tags);
+	return Tags;
+}
+
+TSoftObjectPtr<UNiagaraSystem> UYcWeaponVisualData::K2_GetVFXEffect(FGameplayTag VFXTag) const
+{
+	return GetVFXEffect(VFXTag);
+}
+
+bool UYcWeaponVisualData::HasVFXEffect(FGameplayTag VFXTag) const
+{
+	return VFXTag.IsValid() && VFXEffects.Contains(VFXTag);
+}
+
+TArray<FGameplayTag> UYcWeaponVisualData::GetAllVFXTags() const
+{
+	TArray<FGameplayTag> Tags;
+	VFXEffects.GetKeys(Tags);
+	return Tags;
+}
+
+TSoftObjectPtr<USoundBase> UYcWeaponVisualData::GetSoundEffect(FGameplayTag SoundTag) const
+{
+	if (!SoundTag.IsValid())
+	{
+		return nullptr;
+	}
+
+	// 查找音效
+	if (const TSoftObjectPtr<USoundBase>* Sound = SoundEffects.Find(SoundTag))
+	{
+		return *Sound;
+	}
+
+	return nullptr;
+}
+
+TSoftObjectPtr<USoundBase> UYcWeaponVisualData::K2_GetSoundEffect(FGameplayTag SoundTag) const
+{
+	return GetSoundEffect(SoundTag);
+}
+
+bool UYcWeaponVisualData::HasSoundEffect(FGameplayTag SoundTag) const
+{
+	return SoundTag.IsValid() && SoundEffects.Contains(SoundTag);
+}
+
+TArray<FGameplayTag> UYcWeaponVisualData::GetAllSoundTags() const
+{
+	TArray<FGameplayTag> Tags;
+	SoundEffects.GetKeys(Tags);
 	return Tags;
 }

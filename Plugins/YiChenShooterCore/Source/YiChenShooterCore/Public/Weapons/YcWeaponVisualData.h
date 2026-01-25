@@ -11,6 +11,8 @@ class UStaticMesh;
 class USkeletalMesh;
 class UAnimSequence;
 class UAnimInstance;
+class UNiagaraSystem;
+class USoundBase;
 
 /** 武器视觉资产标签 */
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Yc_Asset_Item_WeaponVisualData);
@@ -105,6 +107,31 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Visual|Pose", meta = (AssetBundles = "EquipmentVisual", Categories = "Asset", ForceInlineRow))
 	TMap<FGameplayTag, TSoftObjectPtr<UAnimSequence>> PoseAnims;
 
+	/**
+	 * 武器特效
+	 * 通过 GameplayTag 索引，支持自定义特效类型
+	 * 推荐 Tag 格式：
+	 * - Asset.Weapon.VFX.MuzzleFlash（枪口火焰）
+	 * - Asset.Weapon.VFX.Shell（弹壳抛出）
+	 * - Asset.Weapon.VFX.Impact（弹着点）
+	 * - Asset.Weapon.VFX.Tracer（弹道轨迹）
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Visual|VFX", meta = (AssetBundles = "EquipmentVisual", Categories = "Asset", ForceInlineRow))
+	TMap<FGameplayTag, TSoftObjectPtr<UNiagaraSystem>> VFXEffects;
+
+	/**
+	 * 武器音效
+	 * 通过 GameplayTag 索引，支持自定义音效类型
+	 * 推荐 Tag 格式：
+	 * - Asset.Weapon.Sound.Fire（开火音效）
+	 * - Asset.Weapon.Sound.Fire.Suppressed（消音器开火音效）
+	 * - Asset.Weapon.Sound.Reload（换弹音效）
+	 * - Asset.Weapon.Sound.DryFire（空枪音效）
+	 * - Asset.Weapon.Sound.Impact（弹着点音效）
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Visual|Sound", meta = (AssetBundles = "EquipmentVisual", Categories = "Asset", ForceInlineRow))
+	TMap<FGameplayTag, TSoftObjectPtr<USoundBase>> SoundEffects;
+
 	// ================================================================================
 	// 武器特有辅助函数 - C++ 版本
 	// ================================================================================
@@ -122,6 +149,20 @@ public:
 	 * @return 动画序列软引用
 	 */
 	TSoftObjectPtr<UAnimSequence> GetPoseAnim(FGameplayTag PoseTag) const;
+
+	/**
+	 * 获取特效
+	 * @param VFXTag 特效标签（如 Asset.Weapon.VFX.MuzzleFlash）
+	 * @return 特效系统软引用
+	 */
+	TSoftObjectPtr<UNiagaraSystem> GetVFXEffect(FGameplayTag VFXTag) const;
+
+	/**
+	 * 获取音效
+	 * @param SoundTag 音效标签（如 Asset.Weapon.Sound.Fire）
+	 * @return 音效软引用
+	 */
+	TSoftObjectPtr<USoundBase> GetSoundEffect(FGameplayTag SoundTag) const;
 
 	// ================================================================================
 	// 武器特有辅助函数 - 蓝图版本
@@ -161,4 +202,44 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Visual")
 	TArray<FGameplayTag> GetAllPoseTags() const;
+
+	/**
+	 * 获取特效（蓝图版本）
+	 * @param VFXTag 特效标签
+	 * @return 特效系统软引用
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Visual", meta = (DisplayName = "Get VFX Effect"))
+	TSoftObjectPtr<UNiagaraSystem> K2_GetVFXEffect(FGameplayTag VFXTag) const;
+
+	/**
+	 * 检查是否存在指定的特效
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Visual")
+	bool HasVFXEffect(FGameplayTag VFXTag) const;
+
+	/**
+	 * 获取所有特效的标签
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Visual")
+	TArray<FGameplayTag> GetAllVFXTags() const;
+
+	/**
+	 * 获取音效（蓝图版本）
+	 * @param SoundTag 音效标签
+	 * @return 音效软引用
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Visual", meta = (DisplayName = "Get Sound Effect"))
+	TSoftObjectPtr<USoundBase> K2_GetSoundEffect(FGameplayTag SoundTag) const;
+
+	/**
+	 * 检查是否存在指定的音效
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Visual")
+	bool HasSoundEffect(FGameplayTag SoundTag) const;
+
+	/**
+	 * 获取所有音效的标签
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Visual")
+	TArray<FGameplayTag> GetAllSoundTags() const;
 };

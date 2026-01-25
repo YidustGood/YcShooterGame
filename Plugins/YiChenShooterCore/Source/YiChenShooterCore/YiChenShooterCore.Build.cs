@@ -52,7 +52,8 @@ public class YiChenShooterCore : ModuleRules
 				"YiChenInventory",
 				"AIModule",
 				"ModularGameplayActors",
-				"NetCore"
+				"NetCore",
+				"Niagara"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

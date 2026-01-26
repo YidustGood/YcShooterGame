@@ -1,6 +1,8 @@
 ﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 #include "Weapons/YcHitScanWeaponInstance.h"
+
+#include "YcAbilitySystemComponent.h"
 #include "Weapons/YcWeaponMessages.h"
 #include "Weapons/Fragments/YcFragment_WeaponStats.h"
 #include "Weapons/Attachments/YcFragment_WeaponAttachments.h"
@@ -67,6 +69,9 @@ void UYcHitScanWeaponInstance::OnEquipped()
 	bHasFirstShotAccuracy = true;
 	CurrentShotCount = 0;
 	StationaryTime = 0.0f;
+	
+	// 应用配件的 BlockedAbilityTags 到 ASC
+	ApplyAttachmentTagsToASC();
 }
 
 void UYcHitScanWeaponInstance::OnUnequipped()
@@ -78,6 +83,9 @@ void UYcHitScanWeaponInstance::OnUnequipped()
 	CurrentADSSpread = ComputedStats.ADSBaseSpread;
 	CurrentShotCount = 0;
 	AccumulatedRecoil = FVector2D::ZeroVector;
+	
+	// 移除配件的 BlockedAbilityTags 从 ASC
+	RemoveAttachmentTagsFromASC();
 }
 
 
@@ -611,12 +619,99 @@ FGameplayTagContainer UYcHitScanWeaponInstance::GetWeaponTagsByCategory(FGamepla
 
 void UYcHitScanWeaponInstance::ApplyAttachmentTagsToASC()
 {
-	// @TODO 实现ApplyAttachmentTagsToASC
+	// 获取 Pawn 和 ASC
+	APawn* OwnerPawn = GetPawn();
+	if (!OwnerPawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ApplyAttachmentTagsToASC: No owner pawn"));
+		return;
+	}
+	
+	UYcAbilitySystemComponent* ASC = UYcAbilitySystemComponent::GetAbilitySystemComponentFromActor(OwnerPawn);
+	if (!ASC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ApplyAttachmentTagsToASC: Failed to get ASC from pawn %s"), *OwnerPawn->GetName());
+		return;
+	}
+	
+	// 收集所有配件的 BlockedAbilityTags
+	FGameplayTagContainer AllBlockedAbilityTags;
+	
+	if (AttachmentComponent)
+	{
+		const TArray<FYcAttachmentInstance>& Attachments = AttachmentComponent->GetAllAttachments();
+		
+		for (const FYcAttachmentInstance& Attachment : Attachments)
+		{
+			if (!Attachment.IsValid())
+			{
+				continue;
+			}
+			
+			// 获取配件定义
+			const FYcAttachmentDefinition* AttachmentDef = Attachment.GetDefinition();
+			if (!AttachmentDef)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("ApplyAttachmentTagsToASC: Failed to get attachment definition for %s"), 
+					*Attachment.AttachmentRegistryId.ToString());
+				continue;
+			}
+			
+			// 收集 BlockedAbilityTags
+			AllBlockedAbilityTags.AppendTags(AttachmentDef->BlockedAbilityTags);
+		}
+	}
+	
+	// 如果有需要阻止的能力 Tag，添加到 ASC
+	if (AllBlockedAbilityTags.Num() > 0)
+	{
+		// 使用 Loose GameplayTag 机制添加阻止标签
+		// 这些标签会被技能的 ActivationBlockedTags 检查，阻止技能激活
+		ASC->K2_YcAddLooseGameplayTags(AllBlockedAbilityTags);
+		
+		// 缓存已应用的 Tag，以便卸载时清理
+		CachedBlockedAbilityTags = AllBlockedAbilityTags;
+		
+		UE_LOG(LogTemp, Verbose, TEXT("ApplyAttachmentTagsToASC: Applied blocked ability tags: %s"), 
+			*AllBlockedAbilityTags.ToStringSimple());
+	}
 }
 
 void UYcHitScanWeaponInstance::RemoveAttachmentTagsFromASC()
 {
-	// @TODO 实现RemoveAttachmentTagsFromASC
+	// 如果没有缓存的阻止能力 Tag，直接返回
+	if (CachedBlockedAbilityTags.Num() == 0)
+	{
+		return;
+	}
+	
+	// 获取 Pawn 和 ASC
+	APawn* OwnerPawn = GetPawn();
+	if (!OwnerPawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("RemoveAttachmentTagsFromASC: No owner pawn"));
+		// 即使没有 Pawn，也清空缓存
+		CachedBlockedAbilityTags.Reset();
+		return;
+	}
+	
+	UYcAbilitySystemComponent* ASC = UYcAbilitySystemComponent::GetAbilitySystemComponentFromActor(OwnerPawn);
+	if (!ASC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("RemoveAttachmentTagsFromASC: Failed to get ASC from pawn %s"), *OwnerPawn->GetName());
+		// 即使没有 ASC，也清空缓存
+		CachedBlockedAbilityTags.Reset();
+		return;
+	}
+	
+	// 从 ASC 移除之前添加的阻止标签
+	ASC->K2_YcRemoveLooseGameplayTags(CachedBlockedAbilityTags);
+	
+	UE_LOG(LogTemp, Verbose, TEXT("RemoveAttachmentTagsFromASC: Removed blocked ability tags: %s"), 
+		*CachedBlockedAbilityTags.ToStringSimple());
+	
+	// 清空缓存
+	CachedBlockedAbilityTags.Reset();
 }
 
 void UYcHitScanWeaponInstance::UpdateWeaponTags()

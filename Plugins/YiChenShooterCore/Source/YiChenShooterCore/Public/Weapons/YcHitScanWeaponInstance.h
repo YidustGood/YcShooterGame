@@ -257,7 +257,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category="Weapon|Tags")
 	FGameplayTagContainer GetWeaponTagsByCategory(FGameplayTag CategoryTag) const;
 
-	/** @TODO ASC 集成 */
+	/**
+	 * WeaponTag系统与玩家ASC集成, 以实现武器可以阻止玩家激活某些技能等逻辑
+	 * @TODO 目前仅再武器装备/卸载的时候应用/移除, 如果在武器装备期间动态调整安装的配件不会生效, 这以后再看是否需要做
+	 */
 	void ApplyAttachmentTagsToASC();
 	void RemoveAttachmentTagsFromASC();
 

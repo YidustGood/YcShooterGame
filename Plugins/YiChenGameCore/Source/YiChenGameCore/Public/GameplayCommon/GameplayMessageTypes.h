@@ -79,9 +79,9 @@ struct FAbilitySystemLifeCycleMessage
 	
 	/** 消息所属Actor, 监听方通过对比Owner可以判断是否为自己的ASC生命周期消息, 以此保证处理正确的ASC对象生命周期 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<AActor> Owner;
+	TObjectPtr<AActor> Owner = nullptr;
 	
 	/** 技能系统组件对象指针 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	UObject* ASC;
+	UObject* ASC = nullptr;
 };

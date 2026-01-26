@@ -24,7 +24,7 @@ struct FYcScreenSpaceHitLocation
 	
 	/** 视口屏幕空间中的命中位置 */
 	UPROPERTY(BlueprintReadOnly)
-	FVector2D Location;
+	FVector2D Location = FVector2D::ZeroVector;
 	
 	/** 命中区域（头部/身体/四肢等） */
 	UPROPERTY(BlueprintReadOnly)

@@ -19,11 +19,11 @@ struct YICHENINVENTORY_API FYcDataAssetLifecycleMessage
 	
 	/** 已加载的数据资产指针 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="DataAsset")
-	TObjectPtr<UPrimaryDataAsset> LoadedDataAsset;
+	TObjectPtr<UPrimaryDataAsset> LoadedDataAsset = nullptr;
 	
 	/** 相关对象（通常是触发加载的物品实例） */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="DataAsset")
-	UObject* RelatedObject;
+	UObject* RelatedObject = nullptr;
 	
 	/** 资产标签，用于标识资产类型 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="DataAsset")

@@ -19,5 +19,5 @@ struct YICHENEQUIPMENT_API FEquipmentFragment_QuickBarSlot : public FYcEquipment
 	GENERATED_BODY()
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	int32 SlotIndex;
+	int32 SlotIndex = 0;
 };

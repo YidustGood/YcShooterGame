@@ -923,6 +923,12 @@ bool UYcWeaponAttachmentComponent::Internal_InstallAttachment(
 	// 通知属性变化
 	NotifyStatsChanged();
 	
+	// 更新武器 Tag
+	if (UYcHitScanWeaponInstance* Weapon = WeaponInstance.Get())
+	{
+		Weapon->UpdateWeaponTags();
+	}
+	
 	return true;
 }
 
@@ -968,6 +974,12 @@ bool UYcWeaponAttachmentComponent::Internal_UninstallAttachment(FGameplayTag Slo
 	
 	// 通知属性变化
 	NotifyStatsChanged();
+	
+	// 更新武器 Tag
+	if (UYcHitScanWeaponInstance* Weapon = WeaponInstance.Get())
+	{
+		Weapon->UpdateWeaponTags();
+	}
 	
 	return true;
 }

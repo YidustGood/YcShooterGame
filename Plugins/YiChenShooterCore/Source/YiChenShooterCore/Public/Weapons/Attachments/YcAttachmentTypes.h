@@ -582,6 +582,25 @@ struct YICHENSHOOTERCORE_API FYcAttachmentDefinition : public FTableRowBase
 	FGameplayTag UnlockChallengeTag;
 
 	// ═══════════════════════════════════════════════════════════════
+	// 8. GameplayTag 系统
+	// ═══════════════════════════════════════════════════════════════
+	
+	/** 安装后赋予武器的 Tag */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="8.GameplayTag",
+		meta=(Categories="Weapon.Feature"))
+	FGameplayTagContainer GrantedTags;
+	
+	/** 安装后从武器移除的 Tag（用于互斥） */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="8.GameplayTag",
+		meta=(Categories="Weapon.Feature"))
+	FGameplayTagContainer RemovedTags;
+	
+	/** 安装后阻止的角色能力 Tag */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="8.GameplayTag", AdvancedDisplay,
+		meta=(Categories="Ability"))
+	FGameplayTagContainer BlockedAbilityTags;
+
+	// ═══════════════════════════════════════════════════════════════
 	// 辅助方法
 	// ═══════════════════════════════════════════════════════════════
 	

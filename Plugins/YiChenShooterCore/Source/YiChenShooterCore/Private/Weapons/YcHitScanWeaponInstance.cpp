@@ -5,16 +5,29 @@
 #include "Weapons/Fragments/YcFragment_WeaponStats.h"
 #include "Weapons/Attachments/YcFragment_WeaponAttachments.h"
 #include "Weapons/Attachments/YcWeaponAttachmentComponent.h"
+#include "Weapons/Attachments/YcAttachmentTypes.h"
 #include "YiChenEquipment/Public/YcEquipmentDefinition.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameFramework/Pawn.h"
+#include "Net/UnrealNetwork.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcHitScanWeaponInstance)
 
 UYcHitScanWeaponInstance::UYcHitScanWeaponInstance(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
+}
+
+void UYcHitScanWeaponInstance::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	
+	FDoRepLifetimeParams SharedParams;
+	SharedParams.bIsPushBased = true;
+	
+	// WeaponTag变化在对局中不会很频繁使用Push Model优化, 减少对比开销
+	DOREPLIFETIME_WITH_PARAMS_FAST(UYcHitScanWeaponInstance, WeaponTags, SharedParams);
 }
 
 void UYcHitScanWeaponInstance::OnEquipmentInstanceCreated(const FYcEquipmentDefinition& Definition)
@@ -557,4 +570,112 @@ float UYcHitScanWeaponInstance::GetBurstIntervalMultiplier() const
 		return WeaponStatsFragment->BurstIntervalMultiplier;
 	}
 	return 2.0f;
+}
+
+// ==================== GameplayTag 系统实现 ====================
+
+bool UYcHitScanWeaponInstance::HasWeaponTag(FGameplayTag Tag) const
+{
+	return WeaponTags.HasTag(Tag);
+}
+
+bool UYcHitScanWeaponInstance::HasAnyWeaponTags(const FGameplayTagContainer& Tags) const
+{
+	return WeaponTags.HasAny(Tags);
+}
+
+bool UYcHitScanWeaponInstance::HasAllWeaponTags(const FGameplayTagContainer& Tags) const
+{
+	return WeaponTags.HasAll(Tags);
+}
+
+FGameplayTagContainer UYcHitScanWeaponInstance::GetWeaponTags() const
+{
+	return WeaponTags;
+}
+
+FGameplayTagContainer UYcHitScanWeaponInstance::GetWeaponTagsByCategory(FGameplayTag CategoryTag) const
+{
+	FGameplayTagContainer FilteredTags;
+	
+	for (const FGameplayTag& Tag : WeaponTags)
+	{
+		if (Tag.MatchesTag(CategoryTag))
+		{
+			FilteredTags.AddTag(Tag);
+		}
+	}
+	
+	return FilteredTags;
+}
+
+void UYcHitScanWeaponInstance::ApplyAttachmentTagsToASC()
+{
+	// @TODO 实现ApplyAttachmentTagsToASC
+}
+
+void UYcHitScanWeaponInstance::RemoveAttachmentTagsFromASC()
+{
+	// @TODO 实现RemoveAttachmentTagsFromASC
+}
+
+void UYcHitScanWeaponInstance::UpdateWeaponTags()
+{
+	// 保存旧的 Tag 容器用于变化检测
+	FGameplayTagContainer OldTags = WeaponTags;
+	
+	// 从 BaseTags 开始
+	FGameplayTagContainer NewTags = BaseTags;
+	
+	// 收集所有配件的 GrantedTags 和 RemovedTags
+	FGameplayTagContainer AllGrantedTags;
+	FGameplayTagContainer AllRemovedTags;
+	
+	if (AttachmentComponent)
+	{
+		const TArray<FYcAttachmentInstance>& Attachments = AttachmentComponent->GetAllAttachments();
+		
+		for (const FYcAttachmentInstance& Attachment : Attachments)
+		{
+			if (!Attachment.IsValid())
+			{
+				continue;
+			}
+			
+			// 获取配件定义
+			const FYcAttachmentDefinition* AttachmentDef = Attachment.GetDefinition();
+			if (!AttachmentDef)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("UpdateWeaponTags: Failed to get attachment definition for %s"), 
+					*Attachment.AttachmentRegistryId.ToString());
+				continue;
+			}
+			
+			// 收集 GrantedTags
+			AllGrantedTags.AppendTags(AttachmentDef->GrantedTags);
+			
+			// 收集 RemovedTags
+			AllRemovedTags.AppendTags(AttachmentDef->RemovedTags);
+		}
+	}
+	
+	// 计算最终 Tag: BaseTags + GrantedTags - RemovedTags
+	NewTags.AppendTags(AllGrantedTags);
+	NewTags.RemoveTags(AllRemovedTags);
+	
+	// 检查是否实际发生变化
+	if (!NewTags.HasAllExact(OldTags) || !OldTags.HasAllExact(NewTags))
+	{
+		// Tag 发生了变化
+		WeaponTags = NewTags;
+		
+		// 标记属性为脏以触发网络复制
+		MARK_PROPERTY_DIRTY_FROM_NAME(UYcHitScanWeaponInstance, WeaponTags, this);
+		
+		// 广播事件
+		OnWeaponTagsChanged.Broadcast(WeaponTags);
+		
+		UE_LOG(LogTemp, Verbose, TEXT("UpdateWeaponTags: %s, Tags: %s"), 
+			*GetName(), *WeaponTags.ToStringSimple());
+	}
 }

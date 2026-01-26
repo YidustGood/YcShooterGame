@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "YcWeaponInstance.h"
 #include "Weapons/Fragments/YcFragment_WeaponStats.h"
 #include "YcHitScanWeaponInstance.generated.h"
@@ -226,6 +227,47 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Weapon|Recoil")
 	void ResetShotCount() { CurrentShotCount = 0; }
 
+	// ==================== GameplayTag 系统 ====================
+	
+	/** 武器当前的所有 Tag（复制到客户端） */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Weapon|Tags")
+	FGameplayTagContainer WeaponTags;
+
+	/** 武器基础 Tag（不复制，本地初始化） */
+	UPROPERTY(BlueprintReadOnly, Category="Weapon|Tags")
+	FGameplayTagContainer BaseTags;
+
+	/** 更新武器 Tag */
+	UFUNCTION(BlueprintCallable, Category="Weapon|Tags")
+	void UpdateWeaponTags();
+
+	/** Tag 查询接口 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category="Weapon|Tags")
+	bool HasWeaponTag(FGameplayTag Tag) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category="Weapon|Tags")
+	bool HasAnyWeaponTags(const FGameplayTagContainer& Tags) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category="Weapon|Tags")
+	bool HasAllWeaponTags(const FGameplayTagContainer& Tags) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category="Weapon|Tags")
+	FGameplayTagContainer GetWeaponTags() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category="Weapon|Tags")
+	FGameplayTagContainer GetWeaponTagsByCategory(FGameplayTag CategoryTag) const;
+
+	/** @TODO ASC 集成 */
+	void ApplyAttachmentTagsToASC();
+	void RemoveAttachmentTagsFromASC();
+
+	/** Tag 变化事件 */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponTagsChanged, 
+		const FGameplayTagContainer&, NewTags);
+
+	UPROPERTY(BlueprintAssignable, Category="Weapon|Tags")
+	FOnWeaponTagsChanged OnWeaponTagsChanged;
+
 	// ==================== 累计后坐力（用于视角恢复） ====================
 	
 	/** 获取累计后坐力偏移 */
@@ -286,6 +328,9 @@ public:
 
 	/** 静止时间累计（用于首发精准度） */
 	float StationaryTime = 0.0f;
+
+	/** 缓存的阻止能力 Tag */
+	FGameplayTagContainer CachedBlockedAbilityTags;
 
 
 private:

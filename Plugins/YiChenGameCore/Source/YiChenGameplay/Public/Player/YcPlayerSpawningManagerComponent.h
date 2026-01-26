@@ -5,7 +5,7 @@
 #include "Components/GameStateComponent.h"
 #include "YcPlayerSpawningManagerComponent.generated.h"
 
-
+class APlayerStart;
 class AYcPlayerStart;
 /**
  * 玩家生成管理组件

@@ -620,15 +620,23 @@ void UYcWeaponAttachmentComponent::AddDynamicSlots(const FYcAttachmentDefinition
 			DefaultAttachmentsToInstall.Add(TPair<FGameplayTag, FDataRegistryId>(NewSlot.SlotType, ProvidedSlot.DefaultAttachment));
 		}
 		
-		UE_LOG(LogYcShooterCore, Log, TEXT("AddDynamicSlots: 添加动态槽位 %s (由 %s 提供) [%s]"), 
+		UE_LOG(LogYcAttachment, Log, TEXT("AddDynamicSlots: 添加动态槽位 %s (由 %s 提供) [%s]"), 
 			*NewSlot.SlotType.ToString(), *ProviderSlotType.ToString(),
 			bIsServer ? TEXT("Server") : TEXT("Client"));
 	}
 	
-	// 仅服务端：安装动态槽位的默认配件
-	for (const auto& Pair : DefaultAttachmentsToInstall)
+	// 仅服务端：延迟安装动态槽位的默认配件
+	// 延迟到下一帧，确保提供者配件的视觉网格体已创建完成
+	if (DefaultAttachmentsToInstall.Num() > 0)
 	{
-		Internal_InstallAttachment(Pair.Value, Pair.Key);
+		FTimerHandle TimerHandle;
+		GetWorld()->GetTimerManager().SetTimerForNextTick([this, DefaultAttachmentsToInstall]()
+		{
+			for (const auto& Pair : DefaultAttachmentsToInstall)
+			{
+				Internal_InstallAttachment(Pair.Value, Pair.Key);
+			}
+		});
 	}
 }
 

@@ -2,11 +2,12 @@
 
 #include "Weapons/Attachments/YcAttachmentTypes.h"
 #include "Weapons/Attachments/YcWeaponAttachmentComponent.h"
+#include "Weapons/YcWeaponActor.h"
 #include "DataRegistrySubsystem.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcAttachmentTypes)
 
-DEFINE_LOG_CATEGORY_STATIC(LogYcAttachment, Log, All);
+DEFINE_LOG_CATEGORY(LogYcAttachment);
 
 // ═══════════════════════════════════════════════════════════════
 // FYcAttachmentInstance 方法实现
@@ -104,6 +105,9 @@ void FYcAttachmentArray::PreReplicatedRemove(const TArrayView<int32> RemovedIndi
 
 void FYcAttachmentArray::PostReplicatedAdd(const TArrayView<int32> AddedIndices, int32 FinalSize)
 {
+	// 收集所有待处理的配件实例
+	TArray<FYcAttachmentInstance> PendingInstances;
+	
 	for (const int32 Index : AddedIndices)
 	{
 		FYcAttachmentInstance& Instance = Items[Index];
@@ -112,11 +116,9 @@ void FYcAttachmentArray::PostReplicatedAdd(const TArrayView<int32> AddedIndices,
 			*Instance.SlotType.ToString(),
 			Instance.IsValid() ? TEXT("true") : TEXT("false"));
 		
-		// 跳过无效的实例（空槽位）- 但仍然需要处理动态槽位
+		// 跳过无效的实例（空槽位）
 		if (!Instance.IsValid())
 		{
-			// 空槽位也需要通知，以便客户端同步槽位结构
-			// 但不需要处理配件安装逻辑
 			continue;
 		}
 		
@@ -125,10 +127,99 @@ void FYcAttachmentArray::PostReplicatedAdd(const TArrayView<int32> AddedIndices,
 		
 		UE_LOG(LogYcAttachment, Log, TEXT("PostReplicatedAdd: %s"), *Instance.GetDebugString());
 		
-		if (OwnerComponent)
+		PendingInstances.Add(Instance);
+	}
+	
+	if (PendingInstances.Num() == 0 || !OwnerComponent)
+	{
+		return;
+	}
+	
+	// 获取武器Actor
+	AYcWeaponActor* WeaponActor = Cast<AYcWeaponActor>(OwnerComponent->GetOwner());
+	if (!WeaponActor)
+	{
+		UE_LOG(LogYcAttachment, Warning, 
+			TEXT("PostReplicatedAdd: OwnerComponent的Owner不是AYcWeaponActor"));
+		return;
+	}
+	
+	// 检查武器是否已初始化（WeaponMesh已设置）
+	if (WeaponActor->IsWeaponInitialized())
+	{
+		// 武器已初始化，按依赖关系排序后批量处理
+		ProcessAttachmentsInOrder(PendingInstances);
+	}
+	else
+	{
+		// 武器未初始化，绑定委托等待初始化完成
+		UE_LOG(LogYcAttachment, Log, 
+			TEXT("PostReplicatedAdd: 武器未初始化，等待OnWeaponInitialized委托，待处理配件数: %d"),
+			PendingInstances.Num());
+		
+		// 捕获待处理配件列表
+		TWeakObjectPtr<UYcWeaponAttachmentComponent> WeakComponent = OwnerComponent;
+		
+		WeaponActor->OnWeaponInitializedDelegate.AddLambda([WeakComponent, PendingInstances]()
 		{
-			OwnerComponent->HandleAttachmentAdded(Instance);
+			if (WeakComponent.IsValid())
+			{
+				UE_LOG(LogYcAttachment, Log, 
+					TEXT("PostReplicatedAdd: 武器初始化完成，批量处理 %d 个配件"),
+					PendingInstances.Num());
+				
+				// 按依赖关系排序后批量处理
+				FYcAttachmentArray* Array = &WeakComponent->AttachmentArray;
+				Array->ProcessAttachmentsInOrder(PendingInstances);
+			}
+		});
+	}
+}
+
+void FYcAttachmentArray::ProcessAttachmentsInOrder(TArray<FYcAttachmentInstance> Instances)
+{
+	if (!OwnerComponent)
+	{
+		return;
+	}
+	
+	// 按依赖关系排序：先处理被依赖的配件，再处理依赖它们的配件
+	Instances.Sort([](const FYcAttachmentInstance& A, const FYcAttachmentInstance& B)
+	{
+		const FYcAttachmentDefinition* DefA = A.GetDefinition();
+		const FYcAttachmentDefinition* DefB = B.GetDefinition();
+		
+		if (!DefA || !DefB)
+		{
+			return false;
 		}
+		
+		// 如果 B 依赖 A（B 要附加到 A 的槽位上），则 A 应该排在前面
+		if (DefB->AttachTarget == EYcAttachmentTarget::AttachmentSlot && 
+			DefB->TargetSlotType == A.SlotType)
+		{
+			return true;
+		}
+		
+		// 如果 A 依赖 B，则 B 应该排在前面
+		if (DefA->AttachTarget == EYcAttachmentTarget::AttachmentSlot && 
+			DefA->TargetSlotType == B.SlotType)
+		{
+			return false;
+		}
+		
+		// 默认保持原顺序
+		return false;
+	});
+	
+	// 按排序后的顺序处理配件
+	for (const FYcAttachmentInstance& Instance : Instances)
+	{
+		UE_LOG(LogYcAttachment, Log, 
+			TEXT("ProcessAttachmentsInOrder: 处理配件 - %s"),
+			*Instance.GetDebugString());
+		
+		OwnerComponent->HandleAttachmentAdded(Instance);
 	}
 }
 

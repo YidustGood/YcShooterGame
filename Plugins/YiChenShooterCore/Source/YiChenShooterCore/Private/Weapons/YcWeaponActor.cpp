@@ -18,7 +18,7 @@
 AYcWeaponActor::AYcWeaponActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
-	SetReplicates(true);
+	bReplicates = true;
 
 	// 根组件
 	WeaponRoot = CreateDefaultSubobject<USceneComponent>(TEXT("WeaponRoot"));
@@ -96,10 +96,41 @@ void AYcWeaponActor::RefreshAllAttachmentVisuals()
 	// 先销毁所有现有的配件网格体
 	DestroyAllAttachmentMeshes();
 
-	// 获取所有已安装的配件并重建视觉
+	// 获取所有已安装的配件
 	const TArray<FYcAttachmentInstance>& Attachments = AttachmentComponent->GetAllAttachments();
 	
-	for (const FYcAttachmentInstance& Instance : Attachments)
+	// 按依赖关系排序：先创建被依赖的配件，再创建依赖它们的配件
+	TArray<FYcAttachmentInstance> SortedAttachments = Attachments;
+	SortedAttachments.Sort([](const FYcAttachmentInstance& A, const FYcAttachmentInstance& B)
+	{
+		const FYcAttachmentDefinition* DefA = A.GetDefinition();
+		const FYcAttachmentDefinition* DefB = B.GetDefinition();
+		
+		if (!DefA || !DefB)
+		{
+			return false;
+		}
+		
+		// 如果 B 依赖 A（B 要附加到 A 的槽位上），则 A 应该排在前面
+		if (DefB->AttachTarget == EYcAttachmentTarget::AttachmentSlot && 
+			DefB->TargetSlotType == A.SlotType)
+		{
+			return true;
+		}
+		
+		// 如果 A 依赖 B，则 B 应该排在前面
+		if (DefA->AttachTarget == EYcAttachmentTarget::AttachmentSlot && 
+			DefA->TargetSlotType == B.SlotType)
+		{
+			return false;
+		}
+		
+		// 默认保持原顺序
+		return false;
+	});
+	
+	// 按排序后的顺序创建配件网格体
+	for (const FYcAttachmentInstance& Instance : SortedAttachments)
 	{
 		if (!Instance.IsValid())
 		{
@@ -144,20 +175,35 @@ void AYcWeaponActor::OnEquipmentInstRep(UYcEquipmentInstance* EquipmentInst)
 			WeaponInst->RecalculateStats();
 		}
 	}
+	
+	// 标记武器已初始化并广播委托
+	// 注意：委托触发时，所有绑定的Lambda会同时执行
+	// 为了确保配件按依赖关系正确创建，我们需要在委托中批量处理
+	bWeaponInitialized = true;
+	OnWeaponInitializedDelegate.Broadcast();
+	
+	UE_LOG(LogYcShooterCore, Log, 
+	TEXT("[%s] OnEquipmentInstRep: 武器初始化完成 [%s]"),
+	*GetName(), HasAuthority() ? TEXT("Server") : TEXT("Client"));
 
 	// 调用蓝图扩展点
 	K2_OnWeaponInitialized(EquipmentInst);
+}
+
+bool AYcWeaponActor::IsWeaponInitialized() const
+{
+	return bWeaponInitialized && GetWeaponInstance() != nullptr && WeaponMesh->GetSkeletalMeshAsset() != nullptr;
 }
 
 UStaticMeshComponent* AYcWeaponActor::CreateAttachmentMesh(FGameplayTag SlotType, const FYcAttachmentDefinition* AttachmentDef)
 {
 	if (!SlotType.IsValid() || !AttachmentDef)
 	{
-		UE_LOG(LogYcShooterCore, Warning, 
+		UE_LOG(LogYcAttachment, Warning, 
 			TEXT("[%s] CreateAttachmentMesh: 无效的槽位或配件定义"), *GetName());
 		return nullptr;
 	}
-
+	
 	// 如果该槽位已有网格体，先销毁
 	if (SlotToMeshMap.Contains(SlotType))
 	{
@@ -169,7 +215,7 @@ UStaticMeshComponent* AYcWeaponActor::CreateAttachmentMesh(FGameplayTag SlotType
 	if (!MeshAsset)
 	{
 		// 配件没有网格体是允许的（纯属性配件）
-		UE_LOG(LogYcShooterCore, Verbose, 
+		UE_LOG(LogYcAttachment, Verbose, 
 			TEXT("[%s] CreateAttachmentMesh: 槽位 %s 的配件没有网格体资源"), 
 			*GetName(), *SlotType.ToString());
 		return nullptr;
@@ -181,7 +227,7 @@ UStaticMeshComponent* AYcWeaponActor::CreateAttachmentMesh(FGameplayTag SlotType
 	
 	if (!NewMeshComp)
 	{
-		UE_LOG(LogYcShooterCore, Error, 
+		UE_LOG(LogYcAttachment, Error, 
 			TEXT("[%s] CreateAttachmentMesh: 创建网格体组件失败，槽位: %s"), 
 			*GetName(), *SlotType.ToString());
 		return nullptr;
@@ -198,15 +244,20 @@ UStaticMeshComponent* AYcWeaponActor::CreateAttachmentMesh(FGameplayTag SlotType
 	// 注册组件
 	NewMeshComp->RegisterComponent();
 	
+	// 根据武器装备状态设置初始可见性
+	const bool bShouldBeVisible = ShouldAttachmentsBeVisible();
+	NewMeshComp->SetVisibility(bShouldBeVisible, true);
+	
 	// 添加到映射
 	SlotToMeshMap.Add(SlotType, NewMeshComp);
 
 	// 应用隐藏槽位设置
 	ApplyHiddenSlots(AttachmentDef, true);
 
-	UE_LOG(LogYcShooterCore, Log, 
-		TEXT("[%s] CreateAttachmentMesh: 为槽位 %s 创建了配件网格体 (%s)"), 
-		*GetName(), *SlotType.ToString(), *AttachmentDef->DisplayName.ToString());
+	UE_LOG(LogYcAttachment, Log, 
+		TEXT("[%s] CreateAttachmentMesh: 为槽位 %s 创建了配件网格体 (%s)，初始可见性: %s"), 
+		*GetName(), *SlotType.ToString(), *AttachmentDef->DisplayName.ToString(),
+		bShouldBeVisible ? TEXT("可见") : TEXT("隐藏"));
 
 	return NewMeshComp;
 }
@@ -231,7 +282,7 @@ void AYcWeaponActor::DestroyAttachmentMesh(FGameplayTag SlotType)
 	// 销毁组件
 	MeshComp->DestroyComponent();
 
-	UE_LOG(LogYcShooterCore, Log, 
+	UE_LOG(LogYcAttachment, Log, 
 		TEXT("[%s] DestroyAttachmentMesh: 销毁了槽位 %s 的配件网格体"), 
 		*GetName(), *SlotType.ToString());
 }
@@ -300,8 +351,10 @@ bool AYcWeaponActor::ResolveAttachmentParent(const FYcAttachmentDefinition* Atta
 				return true;
 			}
 			
-			UE_LOG(LogYcShooterCore, Warning, 
-				TEXT("[%s] ResolveAttachmentParent: 目标槽位 %s 没有网格体组件，回退到武器网格体"), 
+			// 注意：此警告不应该出现，因为动态槽位的默认配件安装已延迟到下一帧
+			// 如果仍然出现，说明配件依赖关系配置有问题
+			UE_LOG(LogYcAttachment, Error, 
+				TEXT("[%s] ResolveAttachmentParent: 目标槽位 %s 没有网格体组件！这可能是配件依赖配置错误，回退到武器网格体"), 
 				*GetName(), *AttachmentDef->TargetSlotType.ToString());
 		}
 		// 回退到武器骨骼
@@ -338,7 +391,7 @@ void AYcWeaponActor::OnAttachmentInstalled(FGameplayTag SlotType, const FDataReg
 	const FYcAttachmentDefinition* AttachmentDef = AttachmentComponent->GetAttachmentDefInSlot(SlotType);
 	if (!AttachmentDef)
 	{
-		UE_LOG(LogYcShooterCore, Warning, 
+		UE_LOG(LogYcAttachment, Warning, 
 			TEXT("[%s] OnAttachmentInstalled: 槽位 %s 无法获取配件定义"), 
 			*GetName(), *SlotType.ToString());
 		return;
@@ -347,7 +400,7 @@ void AYcWeaponActor::OnAttachmentInstalled(FGameplayTag SlotType, const FDataReg
 	// 创建配件网格体
 	CreateAttachmentMesh(SlotType, AttachmentDef);
 
-	UE_LOG(LogYcShooterCore, Log, 
+	UE_LOG(LogYcAttachment, Log, 
 		TEXT("[%s] OnAttachmentInstalled: 配件 %s 已安装到槽位 %s"), 
 		*GetName(), *AttachmentDef->DisplayName.ToString(), *SlotType.ToString());
 }
@@ -369,7 +422,7 @@ void AYcWeaponActor::OnAttachmentUninstalled(FGameplayTag SlotType, const FDataR
 	// 销毁配件网格体
 	DestroyAttachmentMesh(SlotType);
 
-	UE_LOG(LogYcShooterCore, Log, 
+	UE_LOG(LogYcAttachment, Log, 
 		TEXT("[%s] OnAttachmentUninstalled: 槽位 %s 的配件已卸载"), 
 		*GetName(), *SlotType.ToString());
 }
@@ -398,15 +451,8 @@ void AYcWeaponActor::InitializeAttachmentSystem(UYcEquipmentInstance* EquipmentI
 	
 	// 关联配件组件到武器实例
 	WeaponInst->SetAttachmentComponent(AttachmentComponent);
-	
-	// 服务端：刷新所有配件视觉（显示默认配件）
-	// 客户端：视觉更新通过 Fast Array 回调触发
-	if (HasAuthority())
-	{
-		RefreshAllAttachmentVisuals();
-	}
 
-	UE_LOG(LogYcShooterCore, Log, 
+	UE_LOG(LogYcAttachment, Log, 
 		TEXT("[%s] InitializeAttachmentSystem: 配件系统初始化完成，槽位数量: %d [%s]"), 
 		*GetName(), AttachmentsFragment->AttachmentSlots.Num(),
 		HasAuthority() ? TEXT("Server") : TEXT("Client"));
@@ -422,4 +468,19 @@ void AYcWeaponActor::BindAttachmentEvents()
 	// 绑定配件安装/卸载事件
 	AttachmentComponent->OnAttachmentInstalled.AddDynamic(this, &AYcWeaponActor::OnAttachmentInstalled);
 	AttachmentComponent->OnAttachmentUninstalled.AddDynamic(this, &AYcWeaponActor::OnAttachmentUninstalled);
+}
+
+bool AYcWeaponActor::ShouldAttachmentsBeVisible() const
+{
+	// 获取武器实例
+	const UYcWeaponInstance* WeaponInst = GetWeaponInstance();
+	if (!WeaponInst)
+	{
+		// 武器实例未设置，默认隐藏
+		return false;
+	}
+	
+	// 根据装备状态判断
+	const EYcEquipmentState EquipmentState = WeaponInst->GetEquipmentState();
+	return EquipmentState == EYcEquipmentState::Equipped;
 }

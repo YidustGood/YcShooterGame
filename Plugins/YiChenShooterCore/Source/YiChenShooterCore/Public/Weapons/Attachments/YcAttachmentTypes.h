@@ -14,6 +14,8 @@ class UYcWeaponAttachmentComponent;
 struct FYcAttachmentDefinition;
 struct FYcAttachmentArray;
 
+YICHENSHOOTERCORE_API DECLARE_LOG_CATEGORY_EXTERN(LogYcAttachment, Log, All);
+
 /**
  * EYcAttachmentTarget - 配件附加目标类型
  * 
@@ -337,6 +339,13 @@ struct YICHENSHOOTERCORE_API FYcAttachmentArray : public FFastArraySerializer
 		int32 Index = FindIndexBySlot(SlotType);
 		return Index != INDEX_NONE ? &Items[Index] : nullptr;
 	}
+
+private:
+	/** 
+	 * 按依赖关系排序并处理配件列表
+	 * 确保父配件先于子配件创建（例如Barrel先于Muzzle）
+	 */
+	void ProcessAttachmentsInOrder(TArray<FYcAttachmentInstance> Instances);
 };
 
 /** 启用 NetDeltaSerialize */

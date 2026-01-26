@@ -113,8 +113,10 @@ protected:
 	 * 装备实例复制回调（内部使用）
 	 * 处理配件系统初始化等核心逻辑，然后调用 K2_OnWeaponInitialized
 	 * 
-	 * 注意: 此回调可能晚于 Actor 的某些网络复制事件，
-	 * 例如武器默认配件可能在此回调前就已同步到客户端
+	 * 网络复制时序说明：
+	 * - 服务端：此回调在装备创建时立即触发
+	 * - 客户端：此回调可能晚于 AttachmentArray 的 FastArray 回调
+	 *   因此在此回调中会刷新所有配件视觉，确保配件网格体正确创建
 	 */
 	UFUNCTION()
 	void OnEquipmentInstRep(UYcEquipmentInstance* EquipmentInst);
@@ -126,6 +128,25 @@ protected:
 	 */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Weapon", meta = (DisplayName = "On Weapon Initialized"))
 	void K2_OnWeaponInitialized(UYcEquipmentInstance* EquipmentInst);
+
+public:
+	// ════════════════════════════════════════════════════════════════════════
+	// 初始化委托（用于处理复制时序问题）
+	// ════════════════════════════════════════════════════════════════════════
+
+	/**
+	 * 武器初始化完成委托
+	 * 当武器的EquipmentInst和WeaponMesh都设置完成后触发
+	 * 用于配件系统等待武器完全初始化后再创建配件网格体
+	 */
+	DECLARE_MULTICAST_DELEGATE(FOnWeaponInitialized);
+	FOnWeaponInitialized OnWeaponInitializedDelegate;
+
+	/** 检查武器是否已初始化（EquipmentInst有效且WeaponMesh已设置） */
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	bool IsWeaponInitialized() const;
+	
+protected:
 
 	// ════════════════════════════════════════════════════════════════════════
 	// 配件视觉系统 - 内部实现
@@ -238,4 +259,13 @@ private:
 
 	/** 绑定配件变化事件 */
 	void BindAttachmentEvents();
+
+	/** 
+	 * 检查配件是否应该可见
+	 * 根据武器的装备状态判断
+	 */
+	bool ShouldAttachmentsBeVisible() const;
+
+	/** 武器是否已初始化标记 */
+	bool bWeaponInitialized = false;
 };

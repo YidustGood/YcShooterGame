@@ -2,11 +2,13 @@
 
 #pragma once
 
+#include "AbilitySystemInterface.h"
 #include "ModularGameState.h"
 #include "YcGameState.generated.h"
 
 struct FYcGameVerbMessage;
 class UYcExperienceManagerComponent;
+class UYcAbilitySystemComponent;
 
 /**
  * 游戏状态类
@@ -16,11 +18,20 @@ class UYcExperienceManagerComponent;
  * 作为GameState的扩展，支持模块化架构。
  */
 UCLASS(Config = Game)
-class YICHENGAMEPLAY_API AYcGameState : public AModularGameStateBase
+class YICHENGAMEPLAY_API AYcGameState : public AModularGameStateBase, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 public:
 	AYcGameState(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+	
+	//~AActor interface
+	/* 组件初始化完成后设置ASC组件的Avatar为自己 */
+	virtual void PostInitializeComponents() override;
+	//~End of AActor interface
+	
+	//~IAbilitySystemInterface
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+	//~End of IAbilitySystemInterface
 	
 	/**
 	 * 向所有客户端发送不可靠消息（可能丢失）
@@ -49,5 +60,23 @@ private:
 	UPROPERTY()
 	TObjectPtr<UYcExperienceManagerComponent> ExperienceManagerComponent;
 	
-	// @TODO: 为GameState接入ASC组件，以便通过AbilitySystem来组织和控制游戏对局阶段的逻辑
+	/**
+	 * 游戏级别的能力系统组件
+	 * 
+	 * 功能说明：
+	 * 用于处理游戏全局范围的GAS功能，主要用于播放全局性的Gameplay Cues（游戏提示效果）。
+	 * 
+	 * 典型应用场景：
+	 * - 对局阶段：通过GA来组织游戏对局的阶段
+	 * - 环境状态：毒圈收缩、安全区提示、全局Buff/Debuff效果
+	 * - 全局音效：游戏开始/结束音效、回合切换音效
+	 * - 全局特效：天气变化、昼夜循环、全场景光效
+	 * - 全局UI提示：击杀播报、任务完成通知、系统公告
+	 * 
+	 * 设计考量：
+	 * 与PlayerState/Pawn上的ASC不同，此组件不绑定到特定玩家或角色，
+	 * 而是作为游戏全局状态的一部分，用于触发影响所有玩家的视听效果。
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "YcGameCore|GameState")
+	TObjectPtr<UYcAbilitySystemComponent> AbilitySystemComponent;
 };

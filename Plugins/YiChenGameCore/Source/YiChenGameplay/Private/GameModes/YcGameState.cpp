@@ -3,6 +3,7 @@
 
 #include "GameModes/YcGameState.h"
 
+#include "YcAbilitySystemComponent.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameModes/YcExperienceManagerComponent.h"
 #include "GameplayCommon/YcGameVerbMessage.h"
@@ -15,6 +16,23 @@ AYcGameState::AYcGameState(const FObjectInitializer& ObjectInitializer) : Super(
 	PrimaryActorTick.bStartWithTickEnabled = true;
 	
 	ExperienceManagerComponent = CreateDefaultSubobject<UYcExperienceManagerComponent>(TEXT("ExperienceManagerComponent"));
+	
+	AbilitySystemComponent = ObjectInitializer.CreateDefaultSubobject<UYcAbilitySystemComponent>(this, TEXT("AbilitySystemComponent"));
+	AbilitySystemComponent->SetIsReplicated(true);
+	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
+}
+
+void AYcGameState::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	check(AbilitySystemComponent);
+	AbilitySystemComponent->InitAbilityActorInfo(/*Owner=*/ this, /*Avatar=*/ this); // 初始化设置ASC的ActorInfo
+}
+
+UAbilitySystemComponent* AYcGameState::GetAbilitySystemComponent() const
+{
+	return AbilitySystemComponent;
 }
 
 void AYcGameState::MulticastMessageToClients_Implementation(const FYcGameVerbMessage Message)

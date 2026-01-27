@@ -8,6 +8,7 @@
 #include "GameFramework/GameplayMessageSubsystem.h"
 
 #include "GameplayCommon/ExperienceMessageTypes.h"
+#include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcGamePhaseComponent)
@@ -28,9 +29,11 @@ void UYcGamePhaseComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(UYcGamePhaseComponent, CurrentPhaseIndex);
 }
 
-UYcGamePhaseComponent* UYcGamePhaseComponent::GetGamePhaseComponent(AGameStateBase* GameState)
+UYcGamePhaseComponent* UYcGamePhaseComponent::GetGamePhaseComponent(const UObject* WorldContextObject)
 {
+	const AGameStateBase* GameState = UGameplayStatics::GetGameState(WorldContextObject);
 	if (GameState == nullptr) return nullptr;
+	
 	return GameState->FindComponentByClass<UYcGamePhaseComponent>();
 }
 
@@ -84,7 +87,10 @@ void UYcGamePhaseComponent::OnGamePhaseMessage(FGameplayTag Channel, const FGame
 void UYcGamePhaseComponent::OnExperienceLoaded(FGameplayTag Channel, const FExperienceLoadedMessage& Message)
 {
 	// 游戏体验加载完成后自动开启第一个游戏阶段（从 GamePhases[0] 开始）
-	StartNextPhase();
+	if (bAutoStartPhaseOnExceptionLoaded)
+	{
+		StartNextPhase();
+	}
 }
 
 void UYcGamePhaseComponent::StartNextPhase()
@@ -96,6 +102,17 @@ void UYcGamePhaseComponent::StartNextPhase()
 	CurrentPhaseIndex++;
 	auto& PhaseSubsystem = UYcGamePhaseSubsystem::Get(this);
 	PhaseSubsystem.StartPhase(GamePhases[CurrentPhaseIndex].PhaseAbilityClass);
+}
+
+void UYcGamePhaseComponent::StartNextPhaseWithEndCallback(const FYcGamePhaseDynamicDelegate& PhaseEndedDelegate)
+{
+	ensure(GetOwner()->HasAuthority() == true);
+	
+	// 确保存在下一阶段定义，且不会越界访问
+	if (GamePhases.IsEmpty() || (CurrentPhaseIndex + 1) >= GamePhases.Num()) return;
+	CurrentPhaseIndex++;
+	auto& PhaseSubsystem = UYcGamePhaseSubsystem::Get(this);
+	PhaseSubsystem.K2_StartPhase(GamePhases[CurrentPhaseIndex].PhaseAbilityClass, PhaseEndedDelegate);
 }
 
 FGameplayTag UYcGamePhaseComponent::GetCurrentPhase()

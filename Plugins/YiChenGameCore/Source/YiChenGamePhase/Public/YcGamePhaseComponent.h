@@ -53,9 +53,14 @@ public:
 
 	/**
 	 * 获取YcGamePhaseComponent的工具函数
+	 * 全局便捷使用的获取组件函数, UYcGamePhaseComponent组件在一场对局中只会挂载在GameState上
 	 */
-	UFUNCTION(BlueprintCallable, Category = "GamePhase")
-	static UYcGamePhaseComponent* GetGamePhaseComponent(AGameStateBase* GameState);
+	UFUNCTION(BlueprintCallable, Category = "GamePhase", meta = (WorldContext = "WorldContextObject"))
+	static UYcGamePhaseComponent* GetGamePhaseComponent(const UObject* WorldContextObject);
+	
+	/** 是否在Exception加载完成后自动开始第一个游戏阶段 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	bool bAutoStartPhaseOnExceptionLoaded;
 	
 	/**
 	 * 组件开始播放时调用
@@ -69,6 +74,14 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
 	void StartNextPhase();
+	
+	/**
+	 * 按照顺序开始下一个游戏阶段（不会跳跃）, 并在阶段结束时触发回调
+	 * 使用 GamePhases 数组中当前索引的下一个阶段定义来驱动阶段切换
+	 * @param PhaseEndedDelegate 阶段结束回调
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
+	void StartNextPhaseWithEndCallback(const FYcGamePhaseDynamicDelegate& PhaseEndedDelegate);
 	
 	/**
 	 * 获取当前游戏阶段的标签

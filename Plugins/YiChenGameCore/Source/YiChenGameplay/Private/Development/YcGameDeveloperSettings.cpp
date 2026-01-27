@@ -65,4 +65,15 @@ void UYcGameDeveloperSettings::PostInitProperties()
 }
 #endif
 
+bool UYcGameDeveloperSettings::ShouldSkipDirectlyToGameplay()
+{
+#if WITH_EDITOR
+	if (GIsEditor)
+	{
+		return !GetDefault<UYcGameDeveloperSettings>()->bTestFullGameFlowInPIE;
+	}
+#endif
+	return false;
+}
+
 #undef LOCTEXT_NAMESPACE

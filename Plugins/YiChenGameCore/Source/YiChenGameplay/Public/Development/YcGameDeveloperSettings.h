@@ -58,6 +58,17 @@ public:
 	UPROPERTY(config, EditAnywhere, Category=YcGameCore)
 	TArray<FYcCheatToRun> CheatsToRun;
 	
+	/**
+	 * PIE模式下是否执行完整游戏流程
+	 * 
+	 * true: 执行完整流程（包括等待玩家、加载界面、游戏阶段切换等）
+	 * false: 跳过等待阶段，直接进入游戏玩法（加快测试迭代速度）
+	 * 
+	 * 用途：开发期间可设为false快速测试玩法，正式测试时设为true验证完整流程
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, config, Category=SC)
+	bool bTestFullGameFlowInPIE = false;
+	
 public:
 #if WITH_EDITORONLY_DATA
 	/** 常用地图列表，这些地图可以通过编辑器工具栏快捷访问 */
@@ -70,17 +81,30 @@ public:
 	YICHENGAMEPLAY_API void OnPlayInEditorStarted() const;
 
 private:
+	/** 应用开发者设置（在配置变更时调用） */
 	void ApplySettings();
 #endif
 
 public:
 	//~UObject interface
 #if WITH_EDITOR
+	/** 当属性在编辑器中被修改时调用 */
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+	/** 当配置文件重新加载后调用 */
 	virtual void PostReloadConfig(FProperty* PropertyThatWasLoaded) override;
+	/** 对象属性初始化完成后调用 */
 	virtual void PostInitProperties() override;
 #endif
 	//~End of UObject interface
 	
-	
+public:
+	/**
+	 * 是否应该跳过游戏流程直接进入玩法
+	 * 
+	 * @return true表示跳过等待阶段直接开始游戏，false表示执行完整游戏流程
+	 * 
+	 * 用途：供游戏代码查询当前是否处于快速测试模式
+	 */
+	UFUNCTION(BlueprintCallable, Category="YcGameCore")
+	static bool ShouldSkipDirectlyToGameplay();
 };

@@ -12,8 +12,10 @@ class UYcGameplayAbility_WeaponInspect : UYcGameplayAbility_WeaponBase
 	void OnAbilityAdded()
 	{
 		Super::OnAbilityAdded();
-
-		WeaponVisualDataCache.GetActionVisual(GameplayTags::Asset_Weapon_Action_Inspect, InspectActionVisual);
+		if (WeaponVisualDataCache != nullptr)
+		{
+			WeaponVisualDataCache.GetActionVisual(GameplayTags::Asset_Weapon_Action_Inspect, InspectActionVisual);
+		}
 	}
 
 	UFUNCTION(BlueprintOverride)

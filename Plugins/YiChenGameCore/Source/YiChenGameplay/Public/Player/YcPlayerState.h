@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "AbilitySystemInterface.h"
 #include "ModularPlayerState.h"
+#include "YcGameplayTagStack.h"
 #include "YcPlayerState.generated.h"
 
 class AYcPlayerController;
@@ -79,5 +80,85 @@ private:
 	
 	// @TODO 断线重连数据备份与恢复机制
 	// @TODO 队伍机制
-	// @TODO 基于GameplayTag且支持网络复制的StatTagStack功能, 可用来记录一些PS的数值数据
+	
+public:
+	/**
+	 * 状态标签堆栈系统
+	 * 
+	 * 功能说明：
+	 * 基于GameplayTag的堆栈计数系统，支持网络复制，用于记录玩家状态的数值数据。
+	 * 
+	 * 典型应用场景：
+	 * - 击杀数/死亡数统计：Tag.Stats.Kills, Tag.Stats.Deaths
+	 * - 连杀计数：Tag.Stats.KillStreak（可用于触发连杀奖励）
+	 * - 任务进度：Tag.Quest.CollectedItems（收集类任务进度）
+	 * - 货币/资源：Tag.Currency.Gold, Tag.Currency.Gems
+	 * - 状态层数：Tag.Status.Buff.Strength（可叠加的增益效果层数）
+	 * - 成就进度：Tag.Achievement.Progress（某个成就的完成进度）
+	 * 
+	 * 优势：
+	 * - 自动网络同步，无需手动编写复制代码
+	 * - 基于Tag的灵活性，易于扩展新的统计类型
+	 * - 堆栈机制天然支持累加/递减操作
+	 */
+
+	/**
+	 * 添加状态标签堆栈
+	 * 为指定的GameplayTag增加堆栈数量
+	 * 
+	 * @param Tag 要操作的GameplayTag
+	 * @param StackCount 要添加的堆栈数量（小于1时不执行任何操作）
+	 * 
+	 * 示例：AddStatTagStack(Tag.Stats.Kills, 1) // 击杀数+1
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category=Teams)
+	void AddStatTagStack(FGameplayTag Tag, int32 StackCount);
+
+	/**
+	 * 移除状态标签堆栈
+	 * 从指定的GameplayTag减少堆栈数量
+	 * 
+	 * @param Tag 要操作的GameplayTag
+	 * @param StackCount 要移除的堆栈数量（小于1时不执行任何操作）
+	 * 
+	 * 示例：RemoveStatTagStack(Tag.Currency.Gold, 100) // 消耗100金币
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category=Teams)
+	void RemoveStatTagStack(FGameplayTag Tag, int32 StackCount);
+
+	/**
+	 * 获取状态标签堆栈数量
+	 * 返回指定GameplayTag的当前堆栈计数
+	 * 
+	 * @param Tag 要查询的GameplayTag
+	 * @return 堆栈数量（如果Tag不存在则返回0）
+	 * 
+	 * 示例：int32 Kills = GetStatTagStackCount(Tag.Stats.Kills) // 获取当前击杀数
+	 */
+	UFUNCTION(BlueprintCallable, Category=Teams)
+	int32 GetStatTagStackCount(FGameplayTag Tag) const;
+
+	/**
+	 * 检查是否拥有状态标签
+	 * 判断指定的GameplayTag是否存在且至少有1层堆栈
+	 * 
+	 * @param Tag 要检查的GameplayTag
+	 * @return 如果存在至少一层堆栈则返回true，否则返回false
+	 * 
+	 * 示例：if (HasStatTag(Tag.Status.InCombat)) // 检查是否处于战斗状态
+	 */
+	UFUNCTION(BlueprintCallable, Category=Teams)
+	bool HasStatTag(FGameplayTag Tag) const;
+	
+private:
+	/**
+	 * 状态标签堆栈容器
+	 * 存储所有状态标签及其对应的堆栈数量，支持网络复制
+	 * 
+	 * 网络复制说明：
+	 * - 服务器端修改会自动同步到所有客户端
+	 * - 客户端只能读取，不能直接修改（通过RPC调用服务器端的Add/Remove方法）
+	 */
+	UPROPERTY(VisibleInstanceOnly, Replicated)
+	FYcGameplayTagStackContainer StatTags;
 };

@@ -134,3 +134,23 @@ void AYcPlayerState::OnExperienceLoaded(const UYcExperienceDefinition* CurrentEx
 void AYcPlayerState::OnRep_PawnData()
 {
 }
+
+void AYcPlayerState::AddStatTagStack(const FGameplayTag Tag, const int32 StackCount)
+{
+	StatTags.AddStack(Tag, StackCount);
+}
+
+void AYcPlayerState::RemoveStatTagStack(const FGameplayTag Tag, const int32 StackCount)
+{
+	StatTags.RemoveStack(Tag, StackCount);
+}
+
+int32 AYcPlayerState::GetStatTagStackCount(const FGameplayTag Tag) const
+{
+	return StatTags.GetStackCount(Tag);
+}
+
+bool AYcPlayerState::HasStatTag(const FGameplayTag Tag) const
+{
+	return StatTags.ContainsTag(Tag);
+}

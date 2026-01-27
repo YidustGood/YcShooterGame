@@ -14,7 +14,10 @@ public class YiChenGameplay : ModuleRules
                 "GameplayAbilities", 
                 "CommonLoadingScreen",
                 "ModularGameplayActors",
-                "DataRegistry"
+                "DataRegistry", 
+                "YiChenGameCore",
+                "YiChenAbility", 
+                "GameFeatures"
             }
         );
 

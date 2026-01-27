@@ -3,6 +3,8 @@
 
 #include "GameFeatures/YcGameFeaturePolicy.h"
 
+#include "GameFeatures/YcGameFeature_AddGameplayCuePaths.h"
+
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcGameFeaturePolicy)
 
 UYcGameFeaturePolicy::UYcGameFeaturePolicy(const FObjectInitializer& ObjectInitializer)
@@ -17,9 +19,9 @@ UYcGameFeaturePolicy& UYcGameFeaturePolicy::Get()
 
 void UYcGameFeaturePolicy::InitGameFeatureManager()
 {
-	//@TODO gf
+	//@TODO HotfixManager
 	// Observers.Add(NewObject<UYcGameFeature_HotfixManager>());
-	// Observers.Add(NewObject<UYcGameFeature_AddGameplayCuePaths>());
+	Observers.Add(NewObject<UYcGameFeature_AddGameplayCuePaths>());
 
 	UGameFeaturesSubsystem& Subsystem = UGameFeaturesSubsystem::Get();
 	for (UObject* Observer : Observers)

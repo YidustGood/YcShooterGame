@@ -23,6 +23,10 @@ class YICHENGAMEPLAY_API AYcCharacter : public AModularCharacter, public IAbilit
 public:
 	AYcCharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 	
+	//~AActor interface
+	virtual void Reset() override;
+	//~End of AActor interface
+	
 	// 获取YcPlayerController
 	UFUNCTION(BlueprintCallable, Category = "YcGameCore|Character")
 	AYcPlayerController* GetYcPlayerController() const;

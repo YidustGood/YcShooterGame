@@ -37,6 +37,16 @@ AYcCharacter::AYcCharacter(const FObjectInitializer& ObjectInitializer)
 	HealthComponent->OnDeathFinished.AddDynamic(this, &ThisClass::OnDeathFinished);
 }
 
+void AYcCharacter::Reset()
+{
+	// 自定义重置逻辑, 以便走符合项目框架逻辑的销毁逻辑
+	DisableMovementAndCollision();
+
+	K2_OnReset();
+	
+	UninitAndDestroy();
+}
+
 AYcPlayerController* AYcCharacter::GetYcPlayerController() const
 {
 	if (!IsPlayerControlled()) return nullptr; // 确保是玩家控制的角色

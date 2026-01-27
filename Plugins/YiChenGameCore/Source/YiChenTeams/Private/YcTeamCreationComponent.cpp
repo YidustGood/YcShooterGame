@@ -12,6 +12,7 @@
 #include "GameFramework/PlayerState.h"
 #include "GameplayCommon/ExperienceMessageTypes.h"
 #include "GameplayCommon/GameplayMessageTypes.h"
+#include "Misc/DataValidation.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcTeamCreationComponent)
 
@@ -30,6 +31,33 @@ EDataValidationResult UYcTeamCreationComponent::IsDataValid(FDataValidationConte
 	EDataValidationResult Result = Super::IsDataValid(Context);
 
 	//@TODO: TEAMS: 验证所有队伍资产是否设置了相同的属性！
+
+	// 验证 BalancedTeams 模式下 TeamsToCreate 不为空
+	if (AllocationMode == EYcTeamAllocationMode::BalancedTeams && TeamsToCreate.Num() == 0)
+	{
+		Context.AddError(FText::FromString(TEXT("BalancedTeams mode requires at least one team in TeamsToCreate")));
+		Result = EDataValidationResult::Invalid;
+	}
+
+	// 验证 PublicTeamInfoClass 是否设置
+	if (PublicTeamInfoClass == nullptr)
+	{
+		Context.AddWarning(FText::FromString(TEXT("PublicTeamInfoClass is not set")));
+		if (Result == EDataValidationResult::Valid)
+		{
+			Result = EDataValidationResult::NotValidated;
+		}
+	}
+
+	// 验证 FFA 模式下 FFAStartingTeamId 是否过低
+	if (AllocationMode == EYcTeamAllocationMode::FreeForAll && FFAStartingTeamId < 10)
+	{
+		Context.AddWarning(FText::FromString(TEXT("FFAStartingTeamId < 10 may conflict with predefined teams")));
+		if (Result == EDataValidationResult::Valid)
+		{
+			Result = EDataValidationResult::NotValidated;
+		}
+	}
 
 	return Result;
 }
@@ -62,6 +90,13 @@ void UYcTeamCreationComponent::OnExperienceLoaded(FGameplayTag Channel, const FE
 
 void UYcTeamCreationComponent::ServerCreateTeams()
 {
+	// 只在 BalancedTeams 模式下创建预定义的团队
+	// FreeForAll 和 Custom 模式不需要预先创建团队
+	if (AllocationMode != EYcTeamAllocationMode::BalancedTeams)
+	{
+		return;
+	}
+	
 	// 遍历配置的团队列表，逐个创建团队
 	for (const auto& KVP : TeamsToCreate)
 	{
@@ -95,25 +130,56 @@ void UYcTeamCreationComponent::ServerChooseTeamForPlayer(APlayerState* PS)
 		return;
 	}
 	
-	// 如果是观众，设置为无团队
+	// 观众始终分配为 NoTeam，不受分配模式影响
 	if (PS->IsOnlyASpectator())
 	{
 		TeamAgent->SetGenericTeamId(FGenericTeamId::NoTeam);
+		return;
 	}
-	else
+	
+	// 根据分配模式选择不同的团队分配策略
+	FGenericTeamId AssignedTeamId;
+	
+	switch (AllocationMode)
 	{
-		// 为正常玩家分配到人数最少的团队，以保持团队平衡
-		const FGenericTeamId TeamID = IntegerToGenericTeamId(GetLeastPopulatedTeamID());
-		TeamAgent->SetGenericTeamId(TeamID);
+		case EYcTeamAllocationMode::BalancedTeams:
+		{
+			// 平衡模式：分配到人数最少的预定义团队
+			const int32 TeamId = GetLeastPopulatedTeamID();
+			AssignedTeamId = IntegerToGenericTeamId(TeamId);
+			break;
+		}
+		
+		case EYcTeamAllocationMode::FreeForAll:
+		{
+			// FFA 模式：为每个玩家分配唯一的 TeamId
+			const int32 TeamId = AllocateFFATeamId();
+			AssignedTeamId = IntegerToGenericTeamId(TeamId);
+			
+			// 根据配置决定是否为 FFA 玩家创建 TeamInfo Actor
+			if (bCreateTeamInfoForFFAPlayers)
+			{
+				ServerCreateTeam(TeamId, nullptr);
+			}
+			break;
+		}
+		
+		case EYcTeamAllocationMode::Custom:
+		{
+			// 自定义模式：调用蓝图可重载函数处理分配逻辑
+			K2_CustomTeamAllocation(PS);
+			return; // 自定义逻辑负责设置 TeamId，直接返回
+		}
 	}
+	
+	// 设置分配的团队 ID
+	TeamAgent->SetGenericTeamId(AssignedTeamId);
 }
 
 void UYcTeamCreationComponent::ServerCreateTeam(const int32 TeamId, UYcTeamAsset* TeamAsset) const
 {
 	check(HasAuthority());
 	
-	// 确保团队资源资产不为空
-	ensure(TeamAsset != nullptr);
 	const UYcTeamSubsystem& TeamSubsystem = UYcTeamSubsystem::Get(this);
 	// 确保团队ID不重复
 	ensureMsgf(!TeamSubsystem.DoesTeamExist(TeamId), TEXT("队伍重复创建!"));
@@ -128,9 +194,15 @@ void UYcTeamCreationComponent::ServerCreateTeam(const int32 TeamId, UYcTeamAsset
 	// 生成团队公开信息Actor
 	AYcTeamPublicInfo* NewTeamPublicInfo = World->SpawnActor<AYcTeamPublicInfo>(PublicTeamInfoClass, SpawnInfo);
 	checkf(NewTeamPublicInfo != nullptr, TEXT("Failed to create public team actor from class %s"), *GetPathNameSafe(*PublicTeamInfoClass));
-	// 设置团队ID和资源资产，这会触发自动注册到子系统
+	// 设置团队ID，这会触发自动注册到子系统
 	NewTeamPublicInfo->SetTeamId(TeamId);
-	NewTeamPublicInfo->SetTeamAsset(TeamAsset);
+	
+	// TeamAsset 可能为 nullptr（用于 FFA 模式）
+	// 只有在 TeamAsset 不为空时才设置
+	if (TeamAsset != nullptr)
+	{
+		NewTeamPublicInfo->SetTeamAsset(TeamAsset);
+	}
 	
 	// @TODO 创建队伍私有信息对象
 }
@@ -199,5 +271,17 @@ int32 UYcTeamCreationComponent::GetLeastPopulatedTeamID() const
 	}
 	
 	return BestTeamId;
+}
+
+int32 UYcTeamCreationComponent::AllocateFFATeamId()
+{
+	// 首次调用时，将计数器初始化为起始值
+	if (FFATeamIdCounter == 0)
+	{
+		FFATeamIdCounter = FFAStartingTeamId;
+	}
+	
+	// 返回当前值并递增，为下一个玩家准备
+	return FFATeamIdCounter++;
 }
 #endif	// WITH_SERVER_CODE

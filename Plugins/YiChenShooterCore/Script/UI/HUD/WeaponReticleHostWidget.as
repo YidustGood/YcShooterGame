@@ -18,15 +18,24 @@ class UWeaponReticleHostWidget : UCommonUserWidget
 	TArray<UUserWidget> SpawnedWidgets;
 
 	UFUNCTION(BlueprintOverride)
-	void OnInitialized()
+	void Construct()
 	{
-		// AS脚本RegisterListener返回的handler必须在EndPlay或者合适的时机被清理掉,否则会引起崩溃!!!
-		QuickBarActiveItemListenerHandle = UGameplayMessageSubsystem::Get().RegisterListener(
-			GameplayTags::Yc_QuickBar_Message_ActiveIndexChanged,
-			this,
-			n"OnQuickBarActiveIndexChanged",
-			FYcQuickBarActiveIndexChangedMessage(),
-			EGameplayMessageMatch::ExactMatch);
+		{
+			// AS脚本RegisterListener返回的handler必须在EndPlay或者合适的时机被清理掉,否则会引起崩溃!!!
+			QuickBarActiveItemListenerHandle = UGameplayMessageSubsystem::Get().RegisterListener(
+				GameplayTags::Yc_QuickBar_Message_ActiveIndexChanged,
+				this,
+				n"OnQuickBarActiveIndexChanged",
+				FYcQuickBarActiveIndexChangedMessage(),
+				EGameplayMessageMatch::ExactMatch);
+		}
+	}
+
+	UFUNCTION(BlueprintOverride)
+	void Destruct()
+	{
+		ClearExistingWidgets();
+		QuickBarActiveItemListenerHandle.Unregister();
 	}
 
 	/**
@@ -60,8 +69,6 @@ class UWeaponReticleHostWidget : UCommonUserWidget
 		{
 			UUserWidget UserWidget = WidgetBlueprint::CreateWidget(Widget, OwningPlayer);
 			SpawnedWidgets.Add(UserWidget);
-			auto ReticleWidget = Cast<UWeaponReticleWidget>(UserWidget);
-			// ReticleWidget.InitializeFromWeapon(NewWeapon);
 			auto OverlaySlot = WidgetStack.AddChildToOverlay(UserWidget);
 			OverlaySlot.SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
 			OverlaySlot.SetVerticalAlignment(EVerticalAlignment::VAlign_Fill);

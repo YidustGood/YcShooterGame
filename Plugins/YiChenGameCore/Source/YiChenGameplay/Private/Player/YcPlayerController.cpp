@@ -6,8 +6,10 @@
 #include "AbilitySystemGlobals.h"
 #include "EngineUtils.h"
 #include "YcAbilitySystemComponent.h"
+#include "YcTeamAgentInterface.h"
 #include "Player/YcCheatManager.h"
 #include "Player/YcPlayerState.h"
+#include "YiChenGameplay.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcPlayerController)
 
@@ -105,4 +107,78 @@ void AYcPlayerController::ServerCheat_Implementation(const FString& Msg)
 bool AYcPlayerController::ServerCheat_Validate(const FString& Msg)
 {
 	return true;
+}
+
+void AYcPlayerController::SetGenericTeamId(const FGenericTeamId& NewTeamID)
+{
+	// Controller 不允许直接设置队伍ID
+	// 队伍ID应该通过 PlayerState 来设置
+	UE_LOG(LogYcGameplay, Error, TEXT("You can't set the team ID on a player controller (%s); it's driven by the associated player state"), *GetPathNameSafe(this));
+}
+
+FGenericTeamId AYcPlayerController::GetGenericTeamId() const
+{
+	// 性能优化：直接从 PlayerState 获取
+	// 这是高频调用的接口，避免使用 FindTeamAgentFromActor
+	if (const IYcTeamAgentInterface* TeamAgent = Cast<IYcTeamAgentInterface>(PlayerState))
+	{
+		return TeamAgent->GetGenericTeamId();
+	}
+	return FGenericTeamId::NoTeam;
+}
+
+FOnYcTeamIndexChangedDelegate* AYcPlayerController::GetOnTeamIndexChangedDelegate()
+{
+	// 从 PlayerState 获取队伍变更委托
+	if (IYcTeamAgentInterface* TeamAgent = Cast<IYcTeamAgentInterface>(PlayerState))
+	{
+		return TeamAgent->GetOnTeamIndexChangedDelegate();
+	}
+	return nullptr;
+}
+
+ETeamAttitude::Type AYcPlayerController::GetTeamAttitudeTowards(const AActor& Other) const
+{
+	// 性能优化：直接获取双方的队伍ID进行比较
+	const FGenericTeamId MyTeamID = GetGenericTeamId();
+	if (MyTeamID == FGenericTeamId::NoTeam)
+	{
+		return ETeamAttitude::Neutral;
+	}
+	
+	// 获取目标的队伍ID
+	FGenericTeamId OtherTeamID = FGenericTeamId::NoTeam;
+	
+	// 情况1：目标是 Pawn（最常见）
+	if (const APawn* OtherPawn = Cast<APawn>(&Other))
+	{
+		if (const AController* OtherController = OtherPawn->GetController())
+		{
+			if (const IYcTeamAgentInterface* OtherTeamAgent = Cast<IYcTeamAgentInterface>(OtherController->PlayerState))
+			{
+				OtherTeamID = OtherTeamAgent->GetGenericTeamId();
+			}
+		}
+	}
+	// 情况2：目标是 Controller
+	else if (const AController* OtherController = Cast<AController>(&Other))
+	{
+		if (const IYcTeamAgentInterface* OtherTeamAgent = Cast<IYcTeamAgentInterface>(OtherController->PlayerState))
+		{
+			OtherTeamID = OtherTeamAgent->GetGenericTeamId();
+		}
+	}
+	// 情况3：目标直接实现了接口（如带 TeamComponent 的 Actor）
+	else if (const IYcTeamAgentInterface* OtherTeamAgent = Cast<IYcTeamAgentInterface>(&Other))
+	{
+		OtherTeamID = OtherTeamAgent->GetGenericTeamId();
+	}
+
+	// 比较队伍ID并返回态度
+	if (OtherTeamID == FGenericTeamId::NoTeam)
+	{
+		return ETeamAttitude::Neutral;
+	}
+	
+	return (OtherTeamID.GetId() != MyTeamID.GetId()) ? ETeamAttitude::Hostile : ETeamAttitude::Friendly;
 }

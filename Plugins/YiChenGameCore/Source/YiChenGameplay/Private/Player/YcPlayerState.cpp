@@ -5,6 +5,7 @@
 
 #include "YcAbilitySet.h"
 #include "YcAbilitySystemComponent.h"
+#include "YcTeamAgentInterface.h"
 #include "YiChenGameplay.h"
 #include "Player/YcPlayerController.h"
 #include "Character/YcPawnData.h"
@@ -35,7 +36,11 @@ void AYcPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	
 	FDoRepLifetimeParams SharedParams;
 	SharedParams.bIsPushBased = true;
+	
 	DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, PawnData, SharedParams);
+	DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, MyTeamID, SharedParams);
+	DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, MySquadID, SharedParams);
+	DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, StatTags, SharedParams);
 }
 
 AYcPlayerController* AYcPlayerState::GetYcPlayerController() const
@@ -153,4 +158,86 @@ int32 AYcPlayerState::GetStatTagStackCount(const FGameplayTag Tag) const
 bool AYcPlayerState::HasStatTag(const FGameplayTag Tag) const
 {
 	return StatTags.ContainsTag(Tag);
+}
+
+void AYcPlayerState::SetGenericTeamId(const FGenericTeamId& NewTeamID)
+{
+	// 仅在服务器端允许设置队伍ID
+	if (GetLocalRole() != ROLE_Authority)
+	{
+		return;
+	}
+
+	// 如果队伍ID没有变化，直接返回
+	if (MyTeamID == NewTeamID)
+	{
+		return;
+	}
+
+	// 保存旧的队伍ID用于广播变更事件
+	const FGenericTeamId OldTeamID = MyTeamID;
+
+	// 更新队伍ID并标记为脏数据（触发网络复制）
+	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, MyTeamID, this);
+	MyTeamID = NewTeamID;
+
+	// 广播队伍变更事件
+	ConditionalBroadcastTeamChanged(this, OldTeamID, MyTeamID);
+}
+
+FGenericTeamId AYcPlayerState::GetGenericTeamId() const
+{
+	return MyTeamID;
+}
+
+FOnYcTeamIndexChangedDelegate* AYcPlayerState::GetOnTeamIndexChangedDelegate()
+{
+	return &OnTeamChangedDelegate;
+}
+
+int32 AYcPlayerState::GetTeamId() const
+{
+	// 将通用队伍ID转换为整数形式
+	return GenericTeamIdToInteger(MyTeamID);
+}
+
+int32 AYcPlayerState::GetSquadId() const
+{
+	return MySquadID;
+}
+
+void AYcPlayerState::K2_SetTeamID(int32 NewTeamID)
+{
+	SetGenericTeamId(IntegerToGenericTeamId(NewTeamID));
+}
+
+void AYcPlayerState::SetSquadID(int32 NewSquadID)
+{
+	// 仅在服务器端允许设置小队ID
+	if (GetLocalRole() != ROLE_Authority)
+	{
+		return;
+	}
+
+	// 如果小队ID没有变化，直接返回
+	if (MySquadID == NewSquadID)
+	{
+		return;
+	}
+
+	// 更新小队ID并标记为脏数据（触发网络复制）
+	MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, MySquadID, this);
+	MySquadID = NewSquadID;
+}
+
+void AYcPlayerState::OnRep_MyTeamID(FGenericTeamId OldTeamID)
+{
+	// 当队伍ID通过网络复制到客户端时，广播队伍变更事件
+	ConditionalBroadcastTeamChanged(this, OldTeamID, MyTeamID);
+}
+
+void AYcPlayerState::OnRep_MySquadID(int32 OldSquadId)
+{
+	// 当小队ID通过网络复制到客户端时，可以在这里处理相关的客户端逻辑
+	// 例如：更新UI显示、刷新小队成员列表等
 }

@@ -8,8 +8,8 @@
 #include "YcTeamComponent.generated.h"
 
 /**
- * 团队组件, 一般挂载给PlayerState, 这样玩家就拥有了团队系统所需的功能
- * 这个组件提供常规的团队接口实现, 能够满足基本的团队功能需求, 如果需要定制更复杂的团队功能可以通过直接实现IYcTeamAgentInterface接口进行定制
+ * 团队组件, 挂载给需要团队功能的Actor, 这样就拥有了团队系统所需的功能
+ * 这个组件提供常规的团队接口实现, 能够满足基本的团队功能需求, 如果需要更优的性能以及定制更复杂的团队功能可以通过直接实现IYcTeamAgentInterface接口进行定制
  */
 UCLASS(ClassGroup=(YiChenTeams), meta=(BlueprintSpawnableComponent))
 class YICHENTEAMS_API UYcTeamComponent : public UActorComponent, public IYcTeamAgentInterface

@@ -3,6 +3,8 @@
 
 #include "Character/YcCharacter.h"
 #include "YcAbilitySystemComponent.h"
+#include "YcTeamAgentInterface.h"
+#include "YcTeamSubsystem.h"
 #include "Character/YcHealthComponent.h"
 #include "Character/YcPawnExtensionComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -12,6 +14,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Player/YcPlayerController.h"
 #include "Player/YcPlayerState.h"
+#include "YiChenGameplay.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcCharacter)
 
@@ -188,4 +191,101 @@ void AYcCharacter::DisableMovementAndCollision()
 	UCharacterMovementComponent* MoveComp = CastChecked<UCharacterMovementComponent>(GetCharacterMovement());
 	MoveComp->StopMovementImmediately();
 	MoveComp->DisableMovement();
+}
+
+void AYcCharacter::SetGenericTeamId(const FGenericTeamId& NewTeamID)
+{
+	// Character 不允许直接设置队伍ID
+	// 队伍ID应该通过 Controller 的 PlayerState 来设置
+	UE_LOG(LogYcGameplay, Error, TEXT("You can't set the team ID on a character (%s); it's driven by the associated player state"), *GetPathNameSafe(this));
+}
+
+FGenericTeamId AYcCharacter::GetGenericTeamId() const
+{
+	// 性能优化：直接从 Controller 的 PlayerState 获取
+	// 避免使用 UYcTeamSubsystem::FindTeamAgentFromActor 的多次类型转换和查找开销
+	const AController* MyController = GetController();
+	if (MyController == nullptr)
+	{
+		return FGenericTeamId::NoTeam;
+	}
+	
+	// 直接转换 PlayerState，这是最快的方式
+	if (const IYcTeamAgentInterface* TeamAgent = Cast<IYcTeamAgentInterface>(MyController->PlayerState))
+	{
+		return TeamAgent->GetGenericTeamId();
+	}
+	
+	return FGenericTeamId::NoTeam;
+}
+
+FOnYcTeamIndexChangedDelegate* AYcCharacter::GetOnTeamIndexChangedDelegate()
+{
+	// 从 Controller 的 PlayerState 获取
+	AController* MyController = GetController();
+	if (MyController == nullptr)
+	{
+		return nullptr;
+	}
+	
+	if (IYcTeamAgentInterface* TeamAgent = Cast<IYcTeamAgentInterface>(MyController->PlayerState))
+	{
+		return TeamAgent->GetOnTeamIndexChangedDelegate();
+	}
+	
+	UE_LOG(LogYcGameplay, Warning, TEXT("GetOnTeamIndexChangedDelegate called on character (%s) with no valid team agent"), *GetPathNameSafe(this));
+	return nullptr;
+}
+
+ETeamAttitude::Type AYcCharacter::GetTeamAttitudeTowards(const AActor& Other) const
+{
+	// 性能优化：直接获取双方的队伍ID进行比较
+	// 避免复杂的查找逻辑和多次虚函数调用
+	
+	// 获取自己的队伍ID
+	const FGenericTeamId MyTeamID = GetGenericTeamId();
+	if (MyTeamID == FGenericTeamId::NoTeam)
+	{
+		return ETeamAttitude::Neutral;
+	}
+	
+	// 获取目标的队伍ID（优化：直接尝试最常见的情况）
+	FGenericTeamId OtherTeamID = FGenericTeamId::NoTeam;
+	
+	// 情况1：目标是 Pawn（最常见）
+	if (const APawn* OtherPawn = Cast<APawn>(&Other))
+	{
+		if (const AController* OtherController = OtherPawn->GetController())
+		{
+			if (const IYcTeamAgentInterface* OtherTeamAgent = Cast<IYcTeamAgentInterface>(OtherController->PlayerState))
+			{
+				OtherTeamID = OtherTeamAgent->GetGenericTeamId();
+			}
+		}
+	}
+	// 情况2：目标是 Controller
+	else if (const AController* OtherController = Cast<AController>(&Other))
+	{
+		if (const IYcTeamAgentInterface* OtherTeamAgent = Cast<IYcTeamAgentInterface>(OtherController->PlayerState))
+		{
+			OtherTeamID = OtherTeamAgent->GetGenericTeamId();
+		}
+	}
+	// 情况3：特殊情况（如投射物、陷阱等），使用 FindTeamAgentFromActor
+	else
+	{
+		TScriptInterface<IYcTeamAgentInterface> OtherTeamAgent;
+		if (UYcTeamSubsystem::FindTeamAgentFromActor(const_cast<AActor*>(&Other), OtherTeamAgent))
+		{
+			OtherTeamID = OtherTeamAgent->GetGenericTeamId();
+		}
+	}
+
+	// 比较队伍ID并返回态度
+	if (OtherTeamID == FGenericTeamId::NoTeam)
+	{
+		return ETeamAttitude::Neutral;
+	}
+	
+	return (OtherTeamID.GetId() != MyTeamID.GetId()) ? ETeamAttitude::Hostile : ETeamAttitude::Friendly;
 }

@@ -125,7 +125,7 @@ public:
 	bool ChangeTeamForActor(AActor* ActorToChange, int32 NewTeamId);
 	
 	/**
-	 * 从Actor中查找团队代理接口
+	 * 从Actor中查找团队代理接口, 虽然方便, 但是尽量不要在高频调用的性能铭感路径下用这个接口
 	 * @param PossibleTeamActor 可能包含团队接口的Actor
 	 * @param OutTeamAgent 输出的团队代理接口
 	 * @return 找到团队代理接口返回true，否则返回false
@@ -134,7 +134,7 @@ public:
 	static bool FindTeamAgentFromActor(AActor* PossibleTeamActor, TScriptInterface<IYcTeamAgentInterface>& OutTeamAgent);
 	
 	/**
-	 * 从Actor的组件中查找团队代理接口
+	 * 从Actor的组件中查找团队代理接口, 虽然方便, 但是尽量不要在高频调用的性能铭感路径下用这个接口
 	 * @param PossibleTeamActor 可能包含团队接口的Actor
 	 * @param OutTeamAgent 输出的团队代理接口
 	 * @return 找到团队代理接口返回true，否则返回false
@@ -143,14 +143,14 @@ public:
 	static bool FindTeamAgentFromActorComponents(AActor* PossibleTeamActor, TScriptInterface<IYcTeamAgentInterface>& OutTeamAgent);
 	
 	/**
-	 * 查找对象所属的团队ID
+	 * 查找对象所属的团队ID, 虽然方便, 但是尽量不要在高频调用的性能铭感路径下用这个接口
 	 * @param TestObject 要测试的对象
 	 * @return 对象所属的团队ID，如果不属于任何团队则返回INDEX_NONE
 	 */
 	static int32 FindTeamFromObject(UObject* TestObject);
 	
 	/**
-	 * 查找Actor所属的团队ID
+	 * 查找Actor所属的团队ID, 虽然方便, 但是尽量不要在高频调用的性能铭感路径下用这个接口
 	 * @param TestActor 要测试的Actor
 	 * @param bIsPartOfTeam 输出参数，表示是否属于某个团队
 	 * @param TeamId 输出参数，团队ID

@@ -6,6 +6,7 @@
 #include "AbilitySystemInterface.h"
 #include "ModularPlayerState.h"
 #include "YcGameplayTagStack.h"
+#include "YcTeamAgentInterface.h"
 #include "YcPlayerState.generated.h"
 
 class AYcPlayerController;
@@ -14,10 +15,21 @@ class UYcPawnData;
 class UYcExperienceDefinition;
 
 /**
- * 插件Gameplay框架提供的玩家状态基类, 与插件其它模块系统协同工作
+ * 插件Gameplay框架提供的玩家状态基类
+ * 
+ * 功能说明：
+ * - 与插件其它模块系统协同工作
+ * - 实现能力系统接口（IAbilitySystemInterface）
+ * - 实现队伍系统接口（IYcTeamAgentInterface）, AI系统可能会频繁用到队伍接口, 直接在PlayerState实现性能好一些, 就不使用UYcTeamComponent了
+ * - 管理玩家的持久化状态（跨Pawn生命周期）
+ * 
+ * 队伍系统说明：
+ * - PlayerState 是队伍信息的核心存储位置
+ * - Controller 和 Character 都从 PlayerState 获取队伍信息
+ * - 支持网络复制，确保客户端和服务器端的队伍信息一致
  */
 UCLASS(Config = Game)
-class YICHENGAMEPLAY_API AYcPlayerState : public AModularPlayerState, public IAbilitySystemInterface
+class YICHENGAMEPLAY_API AYcPlayerState : public AModularPlayerState, public IAbilitySystemInterface, public IYcTeamAgentInterface
 {
 	GENERATED_BODY()
 	
@@ -32,6 +44,56 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "YcGameCore|PlayerState")
 	UYcAbilitySystemComponent* GetYcAbilitySystemComponent() const { return AbilitySystemComponent; }
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+	//~IYcTeamAgentInterface interface
+	/**
+	 * 设置玩家的队伍ID
+	 * 注意：此函数只能在服务器端调用
+	 * @param NewTeamID 新的队伍ID
+	 */
+	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override;
+	
+	/**
+	 * 获取玩家的队伍ID
+	 * @return 当前队伍ID
+	 */
+	virtual FGenericTeamId GetGenericTeamId() const override;
+	
+	/**
+	 * 获取队伍变更委托
+	 * @return 队伍变更委托指针
+	 */
+	virtual FOnYcTeamIndexChangedDelegate* GetOnTeamIndexChangedDelegate() override;
+	
+	/**
+	 * 获取玩家的队伍ID（整数形式）
+	 * @return 队伍ID的整数值，如果未分配队伍则返回 INDEX_NONE
+	 */
+	virtual int32 GetTeamId() const override;
+	//~End of IYcTeamAgentInterface interface
+	
+	/**
+	 * 获取玩家所属的小队ID
+	 * @return 小队ID的整数值
+	 */
+	UFUNCTION(BlueprintCallable, Category = "YcGameCore|PlayerState")
+	int32 GetSquadId() const;
+
+	/**
+	 * 蓝图可调用的设置玩家的队伍ID
+	 * 注意：此函数只能在服务器端调用
+	 * @param NewTeamID 新的队伍ID
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "YcGameCore|PlayerState", DisplayName = "SetTeamID")
+	void K2_SetTeamID(int32 NewTeamID);
+
+	/**
+	 * 设置玩家的小队ID
+	 * 注意：此函数只能在服务器端调用
+	 * @param NewSquadID 新的小队ID
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "YcGameCore|PlayerState")
+	void SetSquadID(int32 NewSquadID);
 	
 	/** 设置PawnData,设置成功后会将PawnData的AbilitySets授予这个Player State的ASC组件 */
 	void SetPawnData(const UYcPawnData* InPawnData);
@@ -56,12 +118,43 @@ private:
 	void OnExperienceLoaded(const UYcExperienceDefinition* CurrentExperience);
 	
 protected:
+	/** 队伍ID复制属性变更时的回调函数 */
+	UFUNCTION()
+	void OnRep_MyTeamID(FGenericTeamId OldTeamID);
+	
+	/** 小队ID复制属性变更时的回调函数 */
+	UFUNCTION()
+	void OnRep_MySquadID(int32 OldSquadId);
+	
 	UFUNCTION()
 	void OnRep_PawnData();
 	
 	/** 玩家Pawn的数据包，当游戏体验加载完成后从体验定义实例中获取 */
 	UPROPERTY(VisibleInstanceOnly, ReplicatedUsing = OnRep_PawnData)
 	TObjectPtr<const UYcPawnData> PawnData;
+	
+private:
+	/** 
+	 * 玩家的队伍ID
+	 * 这是游戏中作为主导的TeamId
+	 * Controller、Character等类中获取TeamId都是从PlayerState中获取
+	 * 使用基于推送的网络复制
+	 */
+	UPROPERTY(VisibleInstanceOnly, ReplicatedUsing=OnRep_MyTeamID)
+	FGenericTeamId MyTeamID;
+
+	/** 
+	 * 小队ID
+	 * 如果需要的话一个队伍中可以分为多个小队
+	 * 参考战地大战场模式，盟军就是大队伍，小队则是盟军的一个子队
+	 * 使用基于推送的网络复制
+	 */
+	UPROPERTY(VisibleInstanceOnly, ReplicatedUsing=OnRep_MySquadID)
+	int32 MySquadID;
+	
+	/** 队伍索引变更委托，当玩家的队伍ID发生变化时触发 */
+	UPROPERTY()
+	FOnYcTeamIndexChangedDelegate OnTeamChangedDelegate;
 	
 private:
 	/** 

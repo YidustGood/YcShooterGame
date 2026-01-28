@@ -15,8 +15,6 @@ FYcFragment_WeaponStats::FYcFragment_WeaponStats()
 	, BurstIntervalMultiplier(2.0f)
 	// 伤害参数
 	, BaseDamage(25.0f)
-	, HeadshotMultiplier(2.0f)
-	, ArmorPenetration(0.0f)
 	// 弹药参数
 	, MagazineSize(30)
 	, MaxReserveAmmo(120)

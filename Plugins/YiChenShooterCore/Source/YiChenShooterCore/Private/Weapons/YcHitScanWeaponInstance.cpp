@@ -9,6 +9,7 @@
 #include "Weapons/Attachments/YcWeaponAttachmentComponent.h"
 #include "Weapons/Attachments/YcAttachmentTypes.h"
 #include "YiChenEquipment/Public/YcEquipmentDefinition.h"
+#include "Physics/YcPhysicalMaterialWithTags.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameFramework/Pawn.h"
@@ -88,6 +89,68 @@ void UYcHitScanWeaponInstance::OnUnequipped()
 	RemoveAttachmentTagsFromASC();
 }
 
+float UYcHitScanWeaponInstance::GetDistanceAttenuation(float Distance, const FGameplayTagContainer* SourceTags,
+	const FGameplayTagContainer* TargetTags) const
+{
+	if (!WeaponStatsFragment)
+	{
+		return 1.0f;
+	}
+
+	// 如果没有配置伤害衰减曲线，返回 1.0（无衰减）
+	if (WeaponStatsFragment->DamageFalloffCurve.GetRichCurveConst()->IsEmpty())
+	{
+		return 1.0f;
+	}
+
+	// 计算距离百分比（相对于最大射程）
+	const float MaxRange = ComputedStats.MaxDamageRange;
+	if (MaxRange <= 0.0f)
+	{
+		return 1.0f;
+	}
+
+	const float DistancePercent = FMath::Clamp(Distance / MaxRange, 0.0f, 1.0f);
+
+	// 从曲线中采样伤害倍率
+	const float DamageMultiplier = WeaponStatsFragment->DamageFalloffCurve.GetRichCurveConst()->Eval(DistancePercent);
+
+	// 确保倍率在合理范围内
+	return FMath::Clamp(DamageMultiplier, 0.0f, 1.0f);
+}
+
+float UYcHitScanWeaponInstance::GetPhysicalMaterialAttenuation(const UPhysicalMaterial* PhysicalMaterial,
+	const FGameplayTagContainer* SourceTags, const FGameplayTagContainer* TargetTags) const
+{
+	// 默认倍率为 1.0（基础伤害）
+	float DamageMultiplier = 1.0f;
+
+	// 尝试转换为带 Tag 的物理材质
+	const UYcPhysicalMaterialWithTags* TaggedMaterial = Cast<UYcPhysicalMaterialWithTags>(PhysicalMaterial);
+	if (!TaggedMaterial || TaggedMaterial->Tags.IsEmpty())
+	{
+		// 如果不是带 Tag 的物理材质，或者没有 Tag，返回默认倍率
+		return DamageMultiplier;
+	}
+
+	// 遍历命中区域伤害倍率映射表，查找匹配的 Tag
+	for (const auto& Pair : ComputedStats.HitZoneDamageMultipliers)
+	{
+		const FGameplayTag& ZoneTag = Pair.Key;
+		const float Multiplier = Pair.Value;
+
+		// 检查物理材质是否包含此区域 Tag
+		if (TaggedMaterial->Tags.HasTag(ZoneTag))
+		{
+			// 找到匹配的 Tag，使用对应的倍率
+			DamageMultiplier = Multiplier;
+			break; // 使用第一个匹配的倍率
+		}
+	}
+
+	return DamageMultiplier;
+}
+
 
 void UYcHitScanWeaponInstance::RecalculateStats()
 {
@@ -107,8 +170,9 @@ void UYcHitScanWeaponInstance::RecalculateStats()
 	ComputedStats.FireRate = Stats.FireRate;
 
 	ComputedStats.BaseDamage = Stats.BaseDamage;
-	ComputedStats.HeadshotMultiplier = Stats.HeadshotMultiplier;
-	ComputedStats.ArmorPenetration = Stats.ArmorPenetration;
+
+	// 复制命中区域伤害倍率映射表
+	ComputedStats.HitZoneDamageMultipliers = Stats.HitZoneDamageMultipliers;
 
 	ComputedStats.MagazineSize = Stats.MagazineSize;
 	ComputedStats.MaxReserveAmmo = Stats.MaxReserveAmmo;
@@ -187,6 +251,49 @@ void UYcHitScanWeaponInstance::ApplyAttachmentModifiers()
 	APPLY_ATTACHMENT_MODIFIER(BaseDamage, "Weapon.Stat.Damage.Base");
 	APPLY_ATTACHMENT_MODIFIER(HeadshotMultiplier, "Weapon.Stat.Damage.HeadshotMultiplier");
 	APPLY_ATTACHMENT_MODIFIER(ArmorPenetration, "Weapon.Stat.Damage.ArmorPenetration");
+
+	// 命中区域伤害倍率（批量应用配件修正）
+	// 为每个命中区域倍率应用配件修改器
+	// 例如：穿甲弹可以提升护甲部位的伤害倍率
+	if (!ComputedStats.HitZoneDamageMultipliers.IsEmpty())
+	{
+		// 构建基础值映射表
+		TMap<FGameplayTag, float> BaseMultipliers;
+		for (const auto& Pair : ComputedStats.HitZoneDamageMultipliers)
+		{
+			// 为每个命中区域构建对应的 Stat Tag
+			// 例如：Gameplay.Character.Zone.Head -> Weapon.Stat.Damage.Zone.Head
+			const FString ZoneTagString = Pair.Key.ToString();
+			const FString StatTagString = ZoneTagString.Replace(TEXT("Gameplay.Character.Zone"), TEXT("Weapon.Stat.Damage.Zone"));
+			const FGameplayTag StatTag = FGameplayTag::RequestGameplayTag(FName(*StatTagString), false);
+			
+			if (StatTag.IsValid())
+			{
+				BaseMultipliers.Add(StatTag, Pair.Value);
+			}
+		}
+
+		// 批量应用配件修改器
+		if (!BaseMultipliers.IsEmpty())
+		{
+			const TMap<FGameplayTag, float> ModifiedMultipliers = AttachmentComponent->CalculateFinalStatValues(BaseMultipliers);
+			
+			// 更新命中区域倍率
+			for (const auto& Pair : ModifiedMultipliers)
+			{
+				// 将 Stat Tag 转换回 Zone Tag
+				// 例如：Weapon.Stat.Damage.Zone.Head -> Gameplay.Character.Zone.Head
+				const FString StatTagString = Pair.Key.ToString();
+				const FString ZoneTagString = StatTagString.Replace(TEXT("Weapon.Stat.Damage.Zone"), TEXT("Gameplay.Character.Zone"));
+				const FGameplayTag ZoneTag = FGameplayTag::RequestGameplayTag(FName(*ZoneTagString), false);
+				
+				if (ZoneTag.IsValid())
+				{
+					ComputedStats.HitZoneDamageMultipliers.Add(ZoneTag, Pair.Value);
+				}
+			}
+		}
+	}
 
 	// 弹药参数
 	APPLY_ATTACHMENT_MODIFIER(MagazineSize, "Weapon.Stat.Magazine.Size");

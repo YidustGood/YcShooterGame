@@ -2,8 +2,8 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
+#include "YcAbilitySourceInterface.h"
 #include "YcWeaponInstance.h"
 #include "Weapons/Fragments/YcFragment_WeaponStats.h"
 #include "YcHitScanWeaponInstance.generated.h"
@@ -34,6 +34,13 @@ struct YICHENSHOOTERCORE_API FYcComputedWeaponStats
 	UPROPERTY(BlueprintReadOnly) float BaseDamage = 25.0f;
 	UPROPERTY(BlueprintReadOnly) float HeadshotMultiplier = 2.0f;
 	UPROPERTY(BlueprintReadOnly) float ArmorPenetration = 0.0f;
+
+	/** 
+	 * 命中区域伤害倍率映射表（计算后）
+	 * Key: 命中区域 GameplayTag
+	 * Value: 伤害倍率（基础 + 配件修正）
+	 */
+	UPROPERTY(BlueprintReadOnly) TMap<FGameplayTag, float> HitZoneDamageMultipliers;
 
 	// ==================== 弹药参数 ====================
 	UPROPERTY(BlueprintReadOnly) int32 MagazineSize = 30;
@@ -99,7 +106,7 @@ struct YICHENSHOOTERCORE_API FYcComputedWeaponStats
  * - 配件变化时调用 RecalculateStats() 重新计算
  */
 UCLASS()
-class YICHENSHOOTERCORE_API UYcHitScanWeaponInstance : public UYcWeaponInstance
+class YICHENSHOOTERCORE_API UYcHitScanWeaponInstance : public UYcWeaponInstance , public IYcAbilitySourceInterface
 {
 	GENERATED_BODY()
 
@@ -111,6 +118,13 @@ public:
 	virtual void OnEquipped() override;
 	virtual void OnUnequipped() override;
 	//~ End of UYcEquipmentInstance 接口
+	
+	//~IYcAbilitySourceInterface interface
+	/** 获取伤害衰减系数 */
+	virtual float GetDistanceAttenuation(float Distance, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const override;
+	/** 获取不同物理材质的伤害系数 */
+	virtual float GetPhysicalMaterialAttenuation(const UPhysicalMaterial* PhysicalMaterial, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const override;
+	//~End of IYcAbilitySourceInterface interface
 
 	/** 每帧更新，处理扩散恢复和后坐力恢复 */
 	void Tick(float DeltaSeconds);

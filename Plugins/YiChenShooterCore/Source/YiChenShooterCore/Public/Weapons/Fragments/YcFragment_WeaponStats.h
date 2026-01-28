@@ -4,6 +4,7 @@
 
 #include "Fragments/YcEquipmentFragment.h"
 #include "Curves/CurveFloat.h"
+#include "NativeGameplayTags.h"
 #include "YcFragment_WeaponStats.generated.h"
 
 /**
@@ -139,17 +140,7 @@ struct YICHENSHOOTERCORE_API FYcFragment_WeaponStats : public FYcEquipmentFragme
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="2.伤害|基础", 
 		meta=(DisplayName="基础伤害", ClampMin=0.0))
 	float BaseDamage;
-
-	/** 爆头伤害倍率 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="2.伤害|倍率", 
-		meta=(DisplayName="爆头倍率", ClampMin=1.0))
-	float HeadshotMultiplier;
-
-	/** 护甲穿透率（0-1） */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="2.伤害|穿透", 
-		meta=(DisplayName="护甲穿透率", ClampMin=0.0, ClampMax=1.0))
-	float ArmorPenetration;
-
+	
 	/** 
 	 * 伤害衰减曲线
 	 * X轴：距离百分比（0-1，相对于MaxDamageRange）
@@ -158,6 +149,37 @@ struct YICHENSHOOTERCORE_API FYcFragment_WeaponStats : public FYcEquipmentFragme
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="2.伤害|衰减", 
 		meta=(DisplayName="伤害衰减曲线"))
 	FRuntimeFloatCurve DamageFalloffCurve;
+
+	// ════════════════════════════════════════════════════════════════════════
+	// 命中区域伤害倍率（基于 GameplayTag）
+	// ════════════════════════════════════════════════════════════════════════
+
+	/**
+	 * 命中区域伤害倍率映射表
+	 * Key: 命中区域 GameplayTag（如 Gameplay.Character.Zone.Head）
+	 * Value: 伤害倍率（1.0 = 基础伤害，2.0 = 双倍伤害）
+	 * 
+	 * 工作原理：
+	 * 1. 射线检测命中后，从 HitResult.PhysMaterial 获取物理材质
+	 * 2. 转换为 UYcPhysicalMaterialWithTags，读取其 Tags
+	 * 3. 遍历此映射表，查找匹配的 Tag
+	 * 4. 应用对应的伤害倍率
+	 * 
+	 * 配置示例：
+	 * - Gameplay.Character.Zone.Head      : 2.0  (爆头双倍伤害)
+	 * - Gameplay.Character.Zone.Body      : 1.0  (身体基础伤害)
+	 * - Gameplay.Character.Zone.Limb      : 0.8  (四肢减少伤害)
+	 * - Gameplay.Character.Zone.Weakness  : 3.0  (弱点三倍伤害)
+	 * 
+	 * 注意：
+	 * - 如果物理材质的 Tag 不在映射表中，使用默认倍率 1.0
+	 * - 如果物理材质有多个匹配的 Tag，使用第一个匹配的倍率
+	 * - HeadshotMultiplier 已废弃，请使用此映射表配置头部伤害
+	 * - 配件可以修改这些倍率（如穿甲弹提升护甲部位伤害）
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="2.伤害|命中区域倍率", 
+		meta=(DisplayName="命中区域伤害倍率表", Categories="Gameplay.Character.Zone"))
+	TMap<FGameplayTag, float> HitZoneDamageMultipliers;
 
 	// ════════════════════════════════════════════════════════════════════════
 	// 弹药参数

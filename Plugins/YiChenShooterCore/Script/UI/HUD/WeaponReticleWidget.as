@@ -16,15 +16,9 @@ struct FHitCharacterMessage
 /** 武器准星Widget */
 class UWeaponReticleWidget : UCommonUserWidget
 {
-	// Widget Anim
-	// UPROPERTY(NotEditable, Transient, meta = (BindWidgetAnim), Category = "Animation")
-	// UWidgetAnimation AimDownSights;
-
-	// UPROPERTY(NotEditable, Transient, meta = (BindWidgetAnim), Category = "Animation")
-	// UWidgetAnimation Elimination;
-
-	// UPROPERTY(BindWidget)
-	// UImage EliminationMarker;
+	// 准星Anim
+	UPROPERTY(NotEditable, Transient, meta = (BindWidgetAnim), Category = "Animation")
+	UWidgetAnimation AimDownSights;
 
 	/** 命中玩家标记图片 */
 	UPROPERTY(BindWidget)
@@ -59,13 +53,13 @@ class UWeaponReticleWidget : UCommonUserWidget
 	void Construct()
 	{
 		auto GameplayMessage = UGameplayMessageSubsystem::Get();
-		// 监听ADS消息
-		// ADSListennerHandler = GameplayMessage.RegisterListener(
-		// 	FGameplayTag::RequestGameplayTag(n"Gameplay.Message.ADS"),
-		// 	this,
-		// 	n"OnADS",
-		// 	FUIVisibilityMessage(),
-		// 	EGameplayMessageMatch::ExactMatch);
+		// 监听ADS状态改变消息, 以同步更新准星UI
+		ADSListennerHandler = GameplayMessage.RegisterListener(
+			GameplayTags::Message_Weapon_ADS_StateChanged,
+			this,
+			n"OnADSStateChanged",
+			FYcWeaponADSMessage(),
+			EGameplayMessageMatch::ExactMatch);
 
 		// 监听消灭玩家消息
 		EliminationListennerHandler = GameplayMessage.RegisterListener(
@@ -98,24 +92,26 @@ class UWeaponReticleWidget : UCommonUserWidget
 
 	// 处理瞄准时准心动画
 	UFUNCTION()
-	private void OnADS(FGameplayTag ActualTag, FUIVisibilityMessage Data)
+	private void OnADSStateChanged(FGameplayTag ActualTag, FYcWeaponADSMessage Data)
 	{
-		if (GetOwningPlayer() != Data.Controller)
+		// 只响应自己的
+		if (GetOwningPlayer() != Data.PlayerController)
 			return;
 
 		// ADS状态禁用准心
-		// if (IsAnimationPlayingForward(AimDownSights))
-		// {
-		// 	StopAnimation(AimDownSights);
-		// }
-		// if (Data.bVisibility)
-		// {
-		// 	PlayAnimationForward(AimDownSights);
-		// }
-		// else
-		// {
-		// 	PlayAnimationReverse(AimDownSights);
-		// }
+		if (IsAnimationPlayingForward(AimDownSights))
+		{
+			StopAnimation(AimDownSights);
+		}
+
+		if (Data.bIsAiming)
+		{
+			PlayAnimationForward(AimDownSights);
+		}
+		else
+		{
+			PlayAnimationReverse(AimDownSights);
+		}
 	}
 
 	UFUNCTION()
@@ -140,6 +136,9 @@ class UWeaponReticleWidget : UCommonUserWidget
 	UFUNCTION()
 	private void OnEliminate(FGameplayTag ActualTag, FYcGameVerbMessage Data)
 	{
+		if (Data.Instigator != GetOwningPlayer())
+			return;
+
 		PlayAnimation(EliminationMarkerFade);
 
 		auto PS = Cast<AYcPlayerState>(Data.Instigator);
@@ -147,13 +146,6 @@ class UWeaponReticleWidget : UCommonUserWidget
 		bool bFlag2 = Data.Target != PS;
 		if (bFlag1 && bFlag2)
 		{
-			// if (IsAnimationPlayingForward(Elimination))
-			// {
-			// 	StopAnimation(Elimination);
-			// 	SetAnimationCurrentTime(Elimination, 0);
-			// }
-			// PlayAnimationForward(Elimination);
-
 			if (EliminationSound != nullptr)
 			{
 				Gameplay::PlaySound2D(EliminationSound);

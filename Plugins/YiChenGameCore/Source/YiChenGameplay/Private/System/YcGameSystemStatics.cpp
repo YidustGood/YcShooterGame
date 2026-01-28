@@ -37,3 +37,58 @@ void UYcGameSystemStatics::PlayNextGame(const UObject* WorldContextObject, bool 
 	const bool bShouldSkipGameNotify = false;
 	World->ServerTravel(URL, bAbsolute, bShouldSkipGameNotify);
 }
+
+FString UYcGameSystemStatics::GetBuildVersion()
+{
+	return  FApp::GetBuildVersion();
+}
+
+double UYcGameSystemStatics::GetGameTime()
+{
+	return FApp::GetGameTime();
+}
+
+FString UYcGameSystemStatics::GetGameVersion()
+{
+	FString Version;
+	if (!GConfig)
+	{
+		return "";
+	}
+	GConfig->GetString(
+		TEXT("/Script/EngineSettings.GeneralProjectSettings"),
+		TEXT("ProjectVersion"),
+		Version,
+		GGameIni
+	);
+	return Version;
+}
+
+FString UYcGameSystemStatics::GetCommandLine()
+{
+	return FCommandLine::Get();
+}
+
+bool UYcGameSystemStatics::GetMatchedCommandLine(const FString& Key, FString& OutValue)
+{
+	if (FParse::Value(FCommandLine::Get(), GetData(Key), OutValue))
+	{
+		return true;
+	}
+	return false;
+}
+
+bool UYcGameSystemStatics::HasMatchedCommandLine(const FString& Key)
+{
+	FString OutValue;
+	if (FParse::Value(FCommandLine::Get(), GetData(Key), OutValue))
+	{
+		return true;
+	}
+	return false;
+}
+
+bool UYcGameSystemStatics::IsPlayInEditor()
+{
+	return GIsPlayInEditorWorld;
+}

@@ -15,6 +15,12 @@ class UYcGameplayAbility_WeaponHitScanFire : UYcGameplayAbility_HitScanWeapon
 
 	default ActivationPolicy = EYcAbilityActivationPolicy::WhileInputActive;
 
+	// 添加EventTrigger, 便于AI等系统触发射击能力
+	FAbilityTriggerData TriggerData;
+	default TriggerData.TriggerTag = GameplayTags::InputTag_Weapon_Fire;
+	default TriggerData.TriggerSource = EGameplayAbilityTriggerSource::GameplayEvent;
+	default AbilityTriggers.Add(TriggerData);
+
 	UPROPERTY()
 	TSubclassOf<UGameplayEffect> DamageGE;
 

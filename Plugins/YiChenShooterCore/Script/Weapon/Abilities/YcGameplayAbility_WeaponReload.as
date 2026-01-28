@@ -10,6 +10,12 @@ class UYcGameplayAbility_WeaponReload : UYcGameplayAbility_WeaponBase
 	default CancelAbilitiesWithTag.AddTag(GameplayTags::InputTag_Weapon_Fire);
 	default CancelAbilitiesWithTag.AddTag(GameplayTags::InputTag_Weapon_Inspect);
 
+	// 添加EventTrigger, 便于AI等系统触发换弹能力
+	FAbilityTriggerData TriggerData;
+	default TriggerData.TriggerTag = GameplayTags::InputTag_Weapon_Reload;
+	default TriggerData.TriggerSource = EGameplayAbilityTriggerSource::GameplayEvent;
+	default AbilityTriggers.Add(TriggerData);
+
 	// 弹夹为空时的换弹动作
 	FYcWeaponActionVisual ReloadEmptyActionVisual;
 	// 弹夹不为空时的战术换弹动作

@@ -50,7 +50,19 @@ class UYcGameplayAbility_WeaponHitScanFire : UYcGameplayAbility_HitScanWeapon
 	}
 
 	UFUNCTION(BlueprintOverride)
+	void ActivateAbilityFromEvent(FGameplayEventData EventData)
+	{
+		ActivateFire();
+	}
+
+	UFUNCTION(BlueprintOverride)
 	void ActivateAbility()
+	{
+		ActivateFire();
+	}
+
+	// 激活开火函数, 包装起来方便上面两个激活途径调用
+	private void ActivateFire()
 	{
 		auto WaitInputRelease = AngelscriptAbilityTask::WaitInputRelease(this);
 		WaitInputRelease.OnRelease.AddUFunction(this, n"OnInputRelease");

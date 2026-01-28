@@ -23,7 +23,8 @@ FName UYcGameDeveloperSettings::GetCategoryName() const
 #if WITH_EDITOR
 void UYcGameDeveloperSettings::OnPlayInEditorStarted() const
 {
-	// 当设置了体验覆盖时，在进入 PIE 时弹出提示通知，提醒开发者当前使用的是覆盖体验
+	// 当设置了Experience覆盖时，在进入PIE时弹出提示通知
+	// 提醒开发者当前使用的是覆盖Experience而非地图默认配置
 	if (ExperienceOverride.IsValid())
 	{
 		FNotificationInfo Info(FText::Format(
@@ -38,6 +39,7 @@ void UYcGameDeveloperSettings::OnPlayInEditorStarted() const
 void UYcGameDeveloperSettings::ApplySettings()
 {
 	// TODO: 在此处根据配置同步和应用对应的控制台变量或运行时设置
+	// 例如：应用图形设置、性能设置等
 }
 
 void UYcGameDeveloperSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
@@ -68,11 +70,14 @@ void UYcGameDeveloperSettings::PostInitProperties()
 bool UYcGameDeveloperSettings::ShouldSkipDirectlyToGameplay()
 {
 #if WITH_EDITOR
+	// 仅在编辑器PIE模式下生效
+	// 根据bTestFullGameFlowInPIE的反向值决定是否跳过
 	if (GIsEditor)
 	{
 		return !GetDefault<UYcGameDeveloperSettings>()->bTestFullGameFlowInPIE;
 	}
 #endif
+	// 非编辑器模式下始终执行完整流程
 	return false;
 }
 

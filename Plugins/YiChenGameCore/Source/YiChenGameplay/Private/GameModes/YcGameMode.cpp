@@ -22,6 +22,7 @@
 #include "Character/YcPawnExtensionComponent.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameplayCommon/GameplayMessageTypes.h"
+#include "Player/YcAIController.h"
 #include "Player/YcPlayerSpawningManagerComponent.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcGameMode)
@@ -349,7 +350,10 @@ void AYcGameMode::RequestPlayerRestartNextFrame(AController* Controller, bool bF
 	{
 		GetWorldTimerManager().SetTimerForNextTick(PC, &APlayerController::ServerRestartPlayer_Implementation);
 	}
-	// @TODO 处理Bot重生逻辑
+	else if (AYcAIController* AIController = Cast<AYcAIController>(Controller))
+	{
+		GetWorldTimerManager().SetTimerForNextTick(AIController, &AYcAIController::ServerRestartController);
+	}
 }
 
 bool AYcGameMode::ControllerCanRestart(AController* Controller)

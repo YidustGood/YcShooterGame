@@ -17,7 +17,8 @@ public class YiChenGameplay : ModuleRules
                 "DataRegistry", 
                 "YiChenGameCore",
                 "YiChenAbility", 
-                "GameFeatures"
+                "GameFeatures",
+                "YiChenTeams"
             }
         );
 
@@ -43,6 +44,7 @@ public class YiChenGameplay : ModuleRules
                 "GameplayMessageRuntime", 
                 "UIExtension",
                 "PhysicsCore",
+                "AIModule",
             }
         );
     }

@@ -6,6 +6,7 @@
 #include "YcAbilitySourceInterface.h"
 #include "YcWeaponInstance.h"
 #include "Weapons/Fragments/YcFragment_WeaponStats.h"
+#include "Tickable.h"
 #include "YcHitScanWeaponInstance.generated.h"
 
 struct FYcRecoilPatternPoint;
@@ -104,9 +105,13 @@ struct YICHENSHOOTERCORE_API FYcComputedWeaponStats
  * 【配件系统预留】
  * - ComputedStats 缓存计算后的数值
  * - 配件变化时调用 RecalculateStats() 重新计算
+ * 
+ * 【Tick 系统】
+ * - 实现 FTickableGameObject 接口，支持自动 Tick
+ * - 用于更新扩散恢复、后坐力恢复等状态
  */
 UCLASS()
-class YICHENSHOOTERCORE_API UYcHitScanWeaponInstance : public UYcWeaponInstance , public IYcAbilitySourceInterface
+class YICHENSHOOTERCORE_API UYcHitScanWeaponInstance : public UYcWeaponInstance , public IYcAbilitySourceInterface, public FTickableGameObject
 {
 	GENERATED_BODY()
 
@@ -119,15 +124,21 @@ public:
 	virtual void OnUnequipped() override;
 	//~ End of UYcEquipmentInstance 接口
 	
+	//~ FTickableGameObject 接口
+	virtual void Tick(float DeltaTime) override;
+	virtual TStatId GetStatId() const override;
+	virtual bool IsTickable() const override;
+	virtual bool IsTickableInEditor() const override { return false; }
+	virtual bool IsTickableWhenPaused() const override { return false; }
+	virtual UWorld* GetTickableGameObjectWorld() const override { return GetWorld(); }
+	//~ End of FTickableGameObject 接口
+	
 	//~IYcAbilitySourceInterface interface
 	/** 获取伤害衰减系数 */
 	virtual float GetDistanceAttenuation(float Distance, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const override;
 	/** 获取不同物理材质的伤害系数 */
 	virtual float GetPhysicalMaterialAttenuation(const UPhysicalMaterial* PhysicalMaterial, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const override;
 	//~End of IYcAbilitySourceInterface interface
-
-	/** 每帧更新，处理扩散恢复和后坐力恢复 */
-	void Tick(float DeltaSeconds);
 
 	// ==================== 射击事件 ====================
 	

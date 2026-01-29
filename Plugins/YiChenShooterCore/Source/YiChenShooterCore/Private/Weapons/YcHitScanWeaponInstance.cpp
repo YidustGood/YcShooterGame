@@ -20,6 +20,15 @@
 UYcHitScanWeaponInstance::UYcHitScanWeaponInstance(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
+	// 初始化运行时状态
+	CurrentHipFireSpread = 0.0f;
+	CurrentADSSpread = 0.0f;
+	CurrentSpreadMultiplier = 1.0f;
+	bHasFirstShotAccuracy = true;
+	CurrentShotCount = 0;
+	AccumulatedRecoil = FVector2D::ZeroVector;
+	LastFireTime = 0.0;
+	StationaryTime = 0.0f;
 }
 
 void UYcHitScanWeaponInstance::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -347,6 +356,17 @@ void UYcHitScanWeaponInstance::Tick(float DeltaSeconds)
 	UpdateStateMultipliers();
 }
 
+TStatId UYcHitScanWeaponInstance::GetStatId() const
+{
+	RETURN_QUICK_DECLARE_CYCLE_STAT(UYcHitScanWeaponInstance, STATGROUP_Tickables);
+}
+
+bool UYcHitScanWeaponInstance::IsTickable() const
+{
+	// 只有在装备状态下才 Tick
+	return GetEquipmentState() == EYcEquipmentState::Equipped && !IsTemplate();
+}
+
 void UYcHitScanWeaponInstance::OnFired(bool bIsAiming)
 {
 	const UWorld* World = GetWorld();
@@ -424,11 +444,10 @@ FVector2D UYcHitScanWeaponInstance::GetRecoilForCurrentShot(bool bIsAiming, bool
 
 float UYcHitScanWeaponInstance::GetCurrentSpreadAngle(bool bIsAiming) const
 {
-	if (bIsAiming)
-	{
-		return CurrentADSSpread;
-	}
-	return CurrentHipFireSpread;
+	float BaseSpread = bIsAiming ? CurrentADSSpread : CurrentHipFireSpread;
+	
+	// 应用状态乘数（移动、跳跃、下蹲）
+	return BaseSpread * CurrentSpreadMultiplier;
 }
 
 float UYcHitScanWeaponInstance::GetCurrentSpreadMultiplier() const

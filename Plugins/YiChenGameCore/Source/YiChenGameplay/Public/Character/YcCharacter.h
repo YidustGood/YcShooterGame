@@ -12,6 +12,7 @@ class AYcPlayerState;
 class UYcAbilitySystemComponent;
 class UYcPawnExtensionComponent;
 class UYcHealthComponent;
+class UYcMovementSyncComponent;
 
 /**
  * 本插件使用的基础角色Pawn类
@@ -134,9 +135,15 @@ protected:
 	//// ~处理玩家生命周期相关的 ////
 	
 private:
+	/** Pawn扩展功能维护组件, 协调各功能组件初始化 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "YcGameCore|Character", Meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UYcPawnExtensionComponent> PawnExtComponent;
 	
+	/** 健康组件, 让角色有生命值和生死的能力 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "YcGameCore|Character", Meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UYcHealthComponent> HealthComponent;
+	
+	/** 移动同步组件, 用于同步GE对移动功能的效果修改 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "YcGameCore|Character", Meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UYcMovementSyncComponent> MovementSyncComponent;
 };

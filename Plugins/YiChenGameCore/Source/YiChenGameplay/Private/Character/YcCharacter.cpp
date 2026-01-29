@@ -7,6 +7,7 @@
 #include "YcTeamSubsystem.h"
 #include "Character/YcHealthComponent.h"
 #include "Character/YcPawnExtensionComponent.h"
+#include "Character/YcMovementSyncComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
@@ -38,6 +39,9 @@ AYcCharacter::AYcCharacter(const FObjectInitializer& ObjectInitializer)
 	HealthComponent = CreateDefaultSubobject<UYcHealthComponent>(TEXT("HealthComponent"));
 	HealthComponent->OnDeathStarted.AddDynamic(this, &ThisClass::OnDeathStarted);
 	HealthComponent->OnDeathFinished.AddDynamic(this, &ThisClass::OnDeathFinished);
+	
+	// 创建MovementSyncComponent组件，用于同步AttributeSet中的移动速度到CharacterMovementComponent
+	MovementSyncComponent = CreateDefaultSubobject<UYcMovementSyncComponent>(TEXT("MovementSyncComponent"));
 }
 
 void AYcCharacter::Reset()

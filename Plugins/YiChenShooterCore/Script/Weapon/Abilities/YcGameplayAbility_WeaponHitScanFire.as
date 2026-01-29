@@ -78,22 +78,17 @@ class UYcGameplayAbility_WeaponHitScanFire : UYcGameplayAbility_HitScanWeapon
 	{
 		ApplyLastShotRecoil();
 
-		// 播放手臂射击动画
-		auto PlayMontageTask =
-			AsYcGameCoreGameTask::PlayMontageOnSkeletalMeshAndWait(
-				this,
-				n"",
-				nullptr,
-				n"FPCharacter", // 第一人称手臂模型上要添加"FPCharacter"这个Tag才可以找到,
-				FireHipActionVisual.FPCharacterAnimMontage.Get(),
-				FGameplayTagContainer());
-		PlayMontageTask.ReadyForActivation();
-
 		// 通知武器Actor播放射击动画
 		FGameplayEventData Payload;
 		Payload.EventTag = GameplayTags::InputTag_Weapon_Fire;
 		Payload.OptionalObject = FireHipActionVisual.FPWeaponAnimMontage.Get();
 		AbilitySystem::SendGameplayEventToActor(GetAvatarActorFromActorInfo(), GameplayTags::InputTag_Weapon_Fire, Payload);
+
+		// 通知玩家角色播放第一人称模型射击动画
+		FGameplayEventData CharacterPayloadFP;
+		CharacterPayloadFP.EventTag = GameplayTags::GameplayEvent_Character_PlayMontageFP;
+		CharacterPayloadFP.OptionalObject = FireHipActionVisual.FPCharacterAnimMontage.Get();
+		AbilitySystem::SendGameplayEventToActor(GetAvatarActorFromActorInfo(), GameplayTags::GameplayEvent_Character_PlayMontageFP, CharacterPayloadFP);
 	}
 
 	UFUNCTION()

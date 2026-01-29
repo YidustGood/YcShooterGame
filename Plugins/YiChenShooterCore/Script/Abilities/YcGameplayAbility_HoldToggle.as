@@ -1,3 +1,4 @@
+/** 技能按键激活模式 */
 enum EYcAbilityPressActiveMode
 {
 	Hold,  // 持续按住激活技能
@@ -6,13 +7,25 @@ enum EYcAbilityPressActiveMode
 
 /**
  * 基于按键按住或者按键切换驱动的技能基类
+ * 提供了激活时应用一组GE的能力, 结束时自动取消GE
  */
 class UYcGameplayAbility_HoldToggle : UYcGameplayAbility
 {
 
 	//@TODO 这个值可以与输入按键设置系统做集成关联, 以实现用户自由设置按住/切换的输入模式
+	UPROPERTY(EditDefaultsOnly)
 	EYcAbilityPressActiveMode AbilityPressActiveMode;
 	default AbilityPressActiveMode = EYcAbilityPressActiveMode::Toggle;
+
+	/** 激活技能应用的GE列表, 技能结束后自动取消 */
+	UPROPERTY(EditDefaultsOnly)
+	TArray<TSubclassOf<UGameplayEffect>> ActiveGameplayEffects;
+
+	/**
+	 * 当前应用的GameplayEffect句柄列表
+	 * 用于在技能结束时移除效果
+	 */
+	private TArray<FActiveGameplayEffectHandle> ActivatedEffectHandles;
 
 	UFUNCTION(BlueprintOverride)
 	void OnAbilityAdded()
@@ -39,12 +52,32 @@ class UYcGameplayAbility_HoldToggle : UYcGameplayAbility
 			WaitInputPress.OnPress.AddUFunction(this, n"OnPress");
 			WaitInputPress.ReadyForActivation();
 		}
+
+		// 激活配置的GE列表
+		for (auto& Effect : ActiveGameplayEffects)
+		{
+			// 创建 GameplayEffect Spec
+			FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(Effect);
+
+			// 应用到自己
+			ActivatedEffectHandles.Add(ApplyGameplayEffectSpecToOwner(SpecHandle));
+		}
+
 		OnActivateAbilityEvent();
 	}
 
 	UFUNCTION(BlueprintOverride)
 	void OnEndAbility(bool bWasCancelled)
 	{
+		// 从 ASC 移除效果
+		auto ASC = GetYcAbilitySystemComponentFromActorInfo();
+		for (auto& Handle : ActivatedEffectHandles)
+		{
+			ASC.RemoveActiveGameplayEffect(Handle);
+		}
+		// 清除句柄
+		ActivatedEffectHandles.Empty();
+
 		OnEndAbilityEvent();
 	}
 

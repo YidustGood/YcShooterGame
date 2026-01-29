@@ -64,11 +64,9 @@ public:
 	/**
 	 * 开始射击
 	 * 根据武器的射击模式（全自动/半自动/点射）自动处理射击逻辑
-	 * @param bIsAiming 是否处于瞄准状态
-	 * @param bIsCrouching 是否蹲下
 	 */
 	UFUNCTION(BlueprintCallable, Category="Weapon|Firing")
-	void StartFiring(bool bIsAiming = false, bool bIsCrouching = false);
+	void StartFiring();
 
 	/**
 	 * 停止射击
@@ -81,6 +79,10 @@ public:
 	/** 检查是否正在射击 */
 	UFUNCTION(BlueprintCallable, Category="Weapon|Firing")
 	bool IsFiring() const { return bIsFiring; }
+
+	/** 检查是否正在瞄准 (ADS) */
+	UFUNCTION(BlueprintCallable, Category="Weapon|Firing")
+	bool IsAiming() const;
 
 	// ════════════════════════════════════════════════════════════════════════
 	// 蓝图事件回调

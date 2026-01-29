@@ -111,6 +111,18 @@ UYcHitScanWeaponInstance* UYcGameplayAbility_HitScanWeapon::GetWeaponInstance() 
 	return Cast<UYcHitScanWeaponInstance>(GetAssociatedEquipment());
 }
 
+bool UYcGameplayAbility_HitScanWeapon::IsAiming() const
+{
+	// 查询 ASC 的 Status.Weapon.ADS 标签
+	const UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+	if (ASC)
+	{
+		static const FGameplayTag ADSTag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Weapon.ADS"));
+		return ASC->HasMatchingGameplayTag(ADSTag);
+	}
+	return false;
+}
+
 bool UYcGameplayAbility_HitScanWeapon::CanActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags,
 	const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
@@ -821,7 +833,7 @@ FTransform UYcGameplayAbility_HitScanWeapon::GetTargetingTransform(const APawn* 
 
 // ==================== 射击控制 ====================
 
-void UYcGameplayAbility_HitScanWeapon::StartFiring(bool bIsAiming, bool bIsCrouching)
+void UYcGameplayAbility_HitScanWeapon::StartFiring()
 {
 	// 如果已经在射击中，忽略
 	if (bIsFiring)
@@ -836,8 +848,7 @@ void UYcGameplayAbility_HitScanWeapon::StartFiring(bool bIsAiming, bool bIsCrouc
 	}
 
 	// 缓存射击状态
-	bCurrentShotIsAiming = bIsAiming;
-	bCurrentShotIsCrouching = bIsCrouching;
+	bCurrentShotIsCrouching = false; // @TODO 实现下蹲状态获取
 	bIsFiring = true;
 	bWantsToStopFiring = false;
 	CurrentBurstShotCount = 0;
@@ -967,7 +978,7 @@ void UYcGameplayAbility_HitScanWeapon::FireShot()
 	OnShotFired(CurrentBurstShotCount);
 
 	// 执行实际射击
-	StartHitScanWeaponTargeting(bCurrentShotIsAiming, bCurrentShotIsCrouching);
+	StartHitScanWeaponTargeting(IsAiming(), bCurrentShotIsCrouching);
 
 	// 更新连射计数
 	CurrentBurstShotCount++;

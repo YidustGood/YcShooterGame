@@ -72,6 +72,17 @@ class UWeaponReticleHostWidget : UCommonUserWidget
 			auto OverlaySlot = WidgetStack.AddChildToOverlay(UserWidget);
 			OverlaySlot.SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
 			OverlaySlot.SetVerticalAlignment(EVerticalAlignment::VAlign_Fill);
+
+			// 如果是 WeaponReticleWidget，初始化武器实例
+			auto ReticleWidget = Cast<UWeaponReticleWidget>(UserWidget);
+			if (ReticleWidget != nullptr)
+			{
+				auto WeaponInstance = Cast<UYcWeaponInstance>(EquipmentInst);
+				if (WeaponInstance != nullptr)
+				{
+					ReticleWidget.InitializeFromWeapon(WeaponInstance);
+				}
+			}
 		}
 	}
 

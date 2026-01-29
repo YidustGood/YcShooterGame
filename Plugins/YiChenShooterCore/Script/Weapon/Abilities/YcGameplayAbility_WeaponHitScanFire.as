@@ -89,6 +89,10 @@ class UYcGameplayAbility_WeaponHitScanFire : UYcGameplayAbility_HitScanWeapon
 		CharacterPayloadFP.EventTag = GameplayTags::GameplayEvent_Character_PlayMontageFP;
 		CharacterPayloadFP.OptionalObject = FireHipActionVisual.FPCharacterAnimMontage.Get();
 		AbilitySystem::SendGameplayEventToActor(GetAvatarActorFromActorInfo(), GameplayTags::GameplayEvent_Character_PlayMontageFP, CharacterPayloadFP);
+
+		// @TODO 后续有事件再来优化一下射击技能的自动结束机制
+		// 如果是AIBot那么没法触发OnInputRelease, 所以我们直接在这里检查如果是AI控制器直接自动结束射击技能, 避免AI无法进行下一次射击
+		CheckAIEndFire();
 	}
 
 	UFUNCTION()
@@ -123,6 +127,14 @@ class UYcGameplayAbility_WeaponHitScanFire : UYcGameplayAbility_HitScanWeapon
 		if (HitMessage.HitResult.bBlockingHit)
 		{
 			ExecuteGameplayCueWithParams(GameplayCueTag_Impact, GCNParameter);
+		}
+	}
+
+	void CheckAIEndFire()
+	{
+		if (GetControllerFromActorInfo().IsA(AAIController))
+		{
+			EndAbility();
 		}
 	}
 }

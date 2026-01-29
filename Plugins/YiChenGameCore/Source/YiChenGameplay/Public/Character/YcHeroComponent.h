@@ -150,6 +150,12 @@ protected:
 	 * @param InputActionValue 输入动作值
 	 */
 	void Input_Crouch(const FInputActionValue& InputActionValue);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="YcGameCore|Input")
+	void K2_OnMove(const FInputActionValue& InputActionValue);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category="YcGameCore|Input")
+	void K2_OnLookMouse(const FInputActionValue& InputActionValue);
 	///////////////// ~输入相关 /////////////////
 	
 private:

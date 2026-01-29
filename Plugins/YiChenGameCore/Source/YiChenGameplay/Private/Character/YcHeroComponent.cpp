@@ -363,6 +363,9 @@ void UYcHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 			OwnerPawn->AddMovementInput(MovementDirection, Value.Y);
 		}
 	}
+	
+	// 调用蓝图实现, 以便有让蓝图子类有机会根据输入做一些特殊效果, 例如移动时根据输入值做武器的摆动效果
+	K2_OnMove(InputActionValue);
 }
 
 void UYcHeroComponent::Input_LookMouse(const FInputActionValue& InputActionValue)
@@ -380,6 +383,9 @@ void UYcHeroComponent::Input_LookMouse(const FInputActionValue& InputActionValue
 	{
 		OwnerPawn->AddControllerPitchInput(Value.Y);
 	}
+	
+	// 调用蓝图实现, 以便有让蓝图子类有机会根据输入做一些特殊效果, 例如移动视角时根据输入值做武器的摆动效果
+	K2_OnLookMouse(InputActionValue);
 }
 
 void UYcHeroComponent::Input_LookStick(const FInputActionValue& InputActionValue)

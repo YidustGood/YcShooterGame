@@ -3,24 +3,18 @@ class UYcGameplayAbility_CharacterSprint : UYcGameplayAbility_HoldToggle
 {
 	default AbilityPressActiveMode = EYcAbilityPressActiveMode::Toggle;
 
+	// 设置技能规则标签
 	default AbilityTags.AddTag(GameplayTags::InputTag_Move_Sprint);
 	default ActivationOwnedTags.AddTag(GameplayTags::Character_State_Movement_Sprint);
 	default ActivationBlockedTags.AddLeafTag(GameplayTags::InputTag_Weapon_Fire);
+	default ActivationBlockedTags.AddLeafTag(GameplayTags::InputTag_Weapon_ADS);
 	default ActivationBlockedTags.AddLeafTag(GameplayTags::Ability_NoSprint);
-
-	/** 奔跑速度 */
-	UPROPERTY(EditDefaultsOnly)
-	float SprintSpeed = 680;
-
-	/** 普通走路速度 */
-	UPROPERTY(EditDefaultsOnly)
-	float NormalWalkSpeed = 500;
 
 	UFUNCTION(BlueprintOverride)
 	void OnActivateAbilityEvent()
 	{
 		Super::OnActivateAbilityEvent();
-		SetCharacterMoveSpeed(SprintSpeed);
+		StopMontage();
 
 		// 启动持续检查任务，监测是否应该取消奔跑
 		StartSprintConditionCheck();
@@ -30,7 +24,7 @@ class UYcGameplayAbility_CharacterSprint : UYcGameplayAbility_HoldToggle
 	void OnEndAbilityEvent()
 	{
 		Super::OnEndAbilityEvent();
-		SetCharacterMoveSpeed(NormalWalkSpeed);
+		StopMontage();
 	}
 
 	// 持续检查奔跑条件，不满足时自动结束能力
@@ -47,7 +41,8 @@ class UYcGameplayAbility_CharacterSprint : UYcGameplayAbility_HoldToggle
 		auto ASC = GetAbilitySystemComponentFromActorInfo();
 
 		// 检查是否有 NotForward 标签，如果有则取消奔跑
-		if (ASC.HasMatchingGameplayTag(GameplayTags::Character_State_Movement_NotForward))
+		if (ASC.HasMatchingGameplayTag(GameplayTags::Character_State_Movement_NotForward) ||
+			ASC.HasMatchingGameplayTag(GameplayTags::InputTag_Weapon_ADS))
 		{
 			EndAbility();
 			return;
@@ -57,24 +52,9 @@ class UYcGameplayAbility_CharacterSprint : UYcGameplayAbility_HoldToggle
 		StartSprintConditionCheck();
 	}
 
-	void SetCharacterMoveSpeed(float NewMaxWalkSpeed)
+	/** 停止蒙太奇动画 */
+	void StopMontage()
 	{
-		ACharacter Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
-		if (Character == nullptr)
-		{
-			Error("请确保UYcGameplayAbility_CharacterSprint激活时的AvatarActor是玩家控制的角色");
-			EndAbility();
-			return;
-		}
-
-		Print(f"UYcGameplayAbility_CharacterSprint调整移速:{NewMaxWalkSpeed}");
-
-		auto CharacterMovement = Character.CharacterMovement;
-
-		auto ASC = GetAbilitySystemComponentFromActorInfo();
-
-		CharacterMovement.MaxWalkSpeed = NewMaxWalkSpeed;
-
 		USkeletalMeshComponent FPCharacter = GetAvatarActorFromActorInfo().FindComponentByTag(USkeletalMeshComponent, n"FPCharacter");
 		if (IsValid(FPCharacter))
 		{
@@ -84,16 +64,6 @@ class UYcGameplayAbility_CharacterSprint : UYcGameplayAbility_HoldToggle
 		{
 			Error("UYcGameplayAbility_CharacterSprint::SetCharacterMoveSpeed: 获取FPCharacer骨骼网格体组件失败!");
 		}
-
-		// if (NewMaxWalkSpeed == SprintSpeed)
-		// {
-		// 	ASC.RemoveLooseGameplayTag(GameplayTags::Character_State_Movement_Walk, 999);
-		// 	ASC.AddLooseGameplayTag(GameplayTags::Character_State_Movement_Sprint);
-		// }
-		// else
-		// {
-		// 	ASC.RemoveLooseGameplayTag(GameplayTags::Character_State_Movement_Sprint, 999);
-		// 	ASC.AddLooseGameplayTag(GameplayTags::Character_State_Movement_Walk);
-		// }
+		// @TODO 目前只做了第一人称的蒙太奇动画停止, 还需要做第三人称的
 	}
 }

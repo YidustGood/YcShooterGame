@@ -180,6 +180,14 @@ class UWeaponReticleWidget : UCommonUserWidget
 			return;
 		if (Data.HitResult.Actor == nullptr)
 			return;
+
+		// 命中队友不做命中反馈
+		auto TeamSubsystem = UYcTeamSubsystem::Get();
+		if (TeamSubsystem.CompareTeams(GetOwningPlayer(), Data.HitResult.Actor) == EYcTeamComparison::OnSameTeam)
+		{
+			return;
+		}
+
 		auto HealthComponent = Data.HitResult.Actor.GetComponentByClass(UYcHealthComponent);
 		if (HealthComponent == nullptr)
 			return;
@@ -195,7 +203,14 @@ class UWeaponReticleWidget : UCommonUserWidget
 	UFUNCTION()
 	private void OnEliminate(FGameplayTag ActualTag, FYcGameVerbMessage Data)
 	{
-		if (Data.Instigator != GetOwningPlayer())
+		// 如果死亡的是自己那么就移除掉准星UI
+		if (Data.Target == GetOwningPlayer().PlayerState)
+		{
+			RemoveFromParent();
+			return;
+		}
+
+		if (Data.Instigator != GetOwningPlayer().PlayerState)
 			return;
 
 		PlayAnimation(EliminationMarkerFade);

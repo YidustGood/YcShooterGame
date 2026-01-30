@@ -11,8 +11,6 @@
 
 #include "PrimaryGameLayout.generated.h"
 
-#define UE_API COMMONGAME_API
-
 class APlayerController;
 class UClass;
 class UCommonActivatableWidgetContainerBase;
@@ -34,21 +32,21 @@ enum class EAsyncWidgetLayerState : uint8
  * The primary game UI layout of your game.  This widget class represents how to layout, push and display all layers
  * of the UI for a single player.  Each player in a split-screen game will receive their own primary game layout.
  */
-UCLASS(MinimalAPI, Abstract, meta = (DisableNativeTick))
-class UPrimaryGameLayout : public UCommonUserWidget
+UCLASS(Abstract, meta = (DisableNativeTick))
+class COMMONGAME_API UPrimaryGameLayout : public UCommonUserWidget
 {
 	GENERATED_BODY()
 
 public:
-	static UE_API UPrimaryGameLayout* GetPrimaryGameLayoutForPrimaryPlayer(const UObject* WorldContextObject);
-	static UE_API UPrimaryGameLayout* GetPrimaryGameLayout(APlayerController* PlayerController);
-	static UE_API UPrimaryGameLayout* GetPrimaryGameLayout(ULocalPlayer* LocalPlayer);
+	static UPrimaryGameLayout* GetPrimaryGameLayoutForPrimaryPlayer(const UObject* WorldContextObject);
+	static UPrimaryGameLayout* GetPrimaryGameLayout(APlayerController* PlayerController);
+	static UPrimaryGameLayout* GetPrimaryGameLayout(ULocalPlayer* LocalPlayer);
 
 public:
-	UE_API UPrimaryGameLayout(const FObjectInitializer& ObjectInitializer);
+	UPrimaryGameLayout(const FObjectInitializer& ObjectInitializer);
 
 	/** A dormant root layout is collapsed and responds only to persistent actions registered by the owning player */
-	UE_API void SetIsDormant(bool Dormant);
+	void SetIsDormant(bool Dormant);
 	bool IsDormant() const { return bIsDormant; }
 
 public:
@@ -112,19 +110,19 @@ public:
 	}
 
 	// Find the widget if it exists on any of the layers and remove it from the layer.
-	UE_API void FindAndRemoveWidgetFromLayer(UCommonActivatableWidget* ActivatableWidget);
+	void FindAndRemoveWidgetFromLayer(UCommonActivatableWidget* ActivatableWidget);
 
 	// Get the layer widget for the given layer tag.
-	UE_API UCommonActivatableWidgetContainerBase* GetLayerWidget(FGameplayTag LayerName);
+	UCommonActivatableWidgetContainerBase* GetLayerWidget(FGameplayTag LayerName);
 
 protected:
 	/** Register a layer that widgets can be pushed onto. */
 	UFUNCTION(BlueprintCallable, Category="Layer")
-	UE_API void RegisterLayer(UPARAM(meta = (Categories = "UI.Layer")) FGameplayTag LayerTag, UCommonActivatableWidgetContainerBase* LayerWidget);
+	void RegisterLayer(UPARAM(meta = (Categories = "UI.Layer")) FGameplayTag LayerTag, UCommonActivatableWidgetContainerBase* LayerWidget);
 	
-	UE_API virtual void OnIsDormantChanged();
+	virtual void OnIsDormantChanged();
 
-	UE_API void OnWidgetStackTransitioning(UCommonActivatableWidgetContainerBase* Widget, bool bIsTransitioning);
+	void OnWidgetStackTransitioning(UCommonActivatableWidgetContainerBase* Widget, bool bIsTransitioning);
 	
 private:
 	bool bIsDormant = false;
@@ -137,5 +135,3 @@ private:
 	UPROPERTY(Transient, meta = (Categories = "UI.Layer"))
 	TMap<FGameplayTag, TObjectPtr<UCommonActivatableWidgetContainerBase>> Layers;
 };
-
-#undef UE_API

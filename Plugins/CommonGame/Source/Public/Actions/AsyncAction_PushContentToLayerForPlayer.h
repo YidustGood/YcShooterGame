@@ -8,8 +8,6 @@
 
 #include "AsyncAction_PushContentToLayerForPlayer.generated.h"
 
-#define UE_API COMMONGAME_API
-
 class APlayerController;
 class UCommonActivatableWidget;
 class UObject;
@@ -21,18 +19,18 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPushContentToLayerForPlayerAsyncDel
 /**
  * 
  */
-UCLASS(MinimalAPI, BlueprintType)
-class UAsyncAction_PushContentToLayerForPlayer : public UCancellableAsyncAction
+UCLASS(BlueprintType)
+class COMMONGAME_API UAsyncAction_PushContentToLayerForPlayer : public UCancellableAsyncAction
 {
 	GENERATED_UCLASS_BODY()
 
 public:
-	UE_API virtual void Cancel() override;
+	virtual void Cancel() override;
 
 	UFUNCTION(BlueprintCallable, BlueprintCosmetic, meta=(WorldContext = "WorldContextObject", BlueprintInternalUseOnly="true"))
-	static UE_API UAsyncAction_PushContentToLayerForPlayer* PushContentToLayerForPlayer(APlayerController* OwningPlayer, UPARAM(meta = (AllowAbstract=false)) TSoftClassPtr<UCommonActivatableWidget> WidgetClass, UPARAM(meta = (Categories = "UI.Layer")) FGameplayTag LayerName, bool bSuspendInputUntilComplete = true);
+	static UAsyncAction_PushContentToLayerForPlayer* PushContentToLayerForPlayer(APlayerController* OwningPlayer, UPARAM(meta = (AllowAbstract=false)) TSoftClassPtr<UCommonActivatableWidget> WidgetClass, UPARAM(meta = (Categories = "UI.Layer")) FGameplayTag LayerName, bool bSuspendInputUntilComplete = true);
 
-	UE_API virtual void Activate() override;
+	virtual void Activate() override;
 
 public:
 
@@ -51,5 +49,3 @@ private:
 
 	TSharedPtr<FStreamableHandle> StreamingHandle;
 };
-
-#undef UE_API

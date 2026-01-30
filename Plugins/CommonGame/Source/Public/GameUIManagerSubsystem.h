@@ -7,8 +7,6 @@
 
 #include "GameUIManagerSubsystem.generated.h"
 
-#define UE_API COMMONGAME_API
-
 class FSubsystemCollectionBase;
 class UCommonLocalPlayer;
 class UGameUIPolicy;
@@ -21,27 +19,27 @@ class UObject;
  * If you just need the basic functionality you will start by sublcassing this
  * subsystem in your own game.
  */
-UCLASS(MinimalAPI, Abstract, config = Game)
-class UGameUIManagerSubsystem : public UGameInstanceSubsystem
+UCLASS(Abstract, config = Game)
+class COMMONGAME_API UGameUIManagerSubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
 	
 public:
 	UGameUIManagerSubsystem() { }
 	
-	UE_API virtual void Initialize(FSubsystemCollectionBase& Collection) override;
-	UE_API virtual void Deinitialize() override;
-	UE_API virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
+	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
 	
 	const UGameUIPolicy* GetCurrentUIPolicy() const { return CurrentPolicy; }
 	UGameUIPolicy* GetCurrentUIPolicy() { return CurrentPolicy; }
 
-	UE_API virtual void NotifyPlayerAdded(UCommonLocalPlayer* LocalPlayer);
-	UE_API virtual void NotifyPlayerRemoved(UCommonLocalPlayer* LocalPlayer);
-	UE_API virtual void NotifyPlayerDestroyed(UCommonLocalPlayer* LocalPlayer);
+	virtual void NotifyPlayerAdded(UCommonLocalPlayer* LocalPlayer);
+	virtual void NotifyPlayerRemoved(UCommonLocalPlayer* LocalPlayer);
+	virtual void NotifyPlayerDestroyed(UCommonLocalPlayer* LocalPlayer);
 
 protected:
-	UE_API void SwitchToPolicy(UGameUIPolicy* InPolicy);
+	void SwitchToPolicy(UGameUIPolicy* InPolicy);
 
 private:
 	UPROPERTY(Transient)
@@ -50,5 +48,3 @@ private:
 	UPROPERTY(config, EditAnywhere)
 	TSoftClassPtr<UGameUIPolicy> DefaultUIPolicyClass;
 };
-
-#undef UE_API

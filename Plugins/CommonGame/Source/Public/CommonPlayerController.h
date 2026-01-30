@@ -6,26 +6,22 @@
 
 #include "CommonPlayerController.generated.h"
 
-#define UE_API COMMONGAME_API
-
 class APawn;
 class UObject;
 
-UCLASS(MinimalAPI, config=Game)
-class ACommonPlayerController : public AModularPlayerController
+UCLASS(config=Game)
+class COMMONGAME_API ACommonPlayerController : public AModularPlayerController
 {
 	GENERATED_BODY()
 
 public:
-	UE_API ACommonPlayerController(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+	ACommonPlayerController(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
-	UE_API virtual void ReceivedPlayer() override;	
-	UE_API virtual void SetPawn(APawn* InPawn) override;
-	UE_API virtual void OnPossess(class APawn* APawn) override;
-	UE_API virtual void OnUnPossess() override;
+	virtual void ReceivedPlayer() override;	
+	virtual void SetPawn(APawn* InPawn) override;
+	virtual void OnPossess(class APawn* APawn) override;
+	virtual void OnUnPossess() override;
 	
 protected:
-	UE_API virtual void OnRep_PlayerState() override;
+	virtual void OnRep_PlayerState() override;
 };
-
-#undef UE_API

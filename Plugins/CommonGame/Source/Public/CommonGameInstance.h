@@ -6,8 +6,6 @@
 
 #include "CommonGameInstance.generated.h"
 
-#define UE_API COMMONGAME_API
-
 enum class ECommonUserAvailability : uint8;
 enum class ECommonUserPrivilege : uint8;
 
@@ -21,26 +19,26 @@ class UObject;
 struct FFrame;
 struct FGameplayTag;
 
-UCLASS(MinimalAPI, Abstract, Config = Game)
-class UCommonGameInstance : public UGameInstance
+UCLASS(Abstract, Config = Game)
+class COMMONGAME_API UCommonGameInstance : public UGameInstance
 {
 	GENERATED_BODY()
 
 public:
-	UE_API UCommonGameInstance(const FObjectInitializer& ObjectInitializer);
+	UCommonGameInstance(const FObjectInitializer& ObjectInitializer);
 	
 	/** Handles errors/warnings from CommonUser, can be overridden per game */
 	UFUNCTION()
-	UE_API virtual void HandleSystemMessage(FGameplayTag MessageType, FText Title, FText Message);
+	virtual void HandleSystemMessage(FGameplayTag MessageType, FText Title, FText Message);
 
 	UFUNCTION()
-	UE_API virtual void HandlePrivilegeChanged(const UCommonUserInfo* UserInfo, ECommonUserPrivilege Privilege, ECommonUserAvailability OldAvailability, ECommonUserAvailability NewAvailability);
+	virtual void HandlePrivilegeChanged(const UCommonUserInfo* UserInfo, ECommonUserPrivilege Privilege, ECommonUserAvailability OldAvailability, ECommonUserAvailability NewAvailability);
 
 	UFUNCTION()
-	UE_API virtual void HandlerUserInitialized(const UCommonUserInfo* UserInfo, bool bSuccess, FText Error, ECommonUserPrivilege RequestedPrivilege, ECommonUserOnlineContext OnlineContext);
+	virtual void HandlerUserInitialized(const UCommonUserInfo* UserInfo, bool bSuccess, FText Error, ECommonUserPrivilege RequestedPrivilege, ECommonUserOnlineContext OnlineContext);
 
 	/** Call to reset user and session state, usually because a player has been disconnected */
-	UE_API virtual void ResetUserAndSessionState();
+	virtual void ResetUserAndSessionState();
 
 	/**
 	 * Requested Session Flow
@@ -50,26 +48,23 @@ public:
 	 *   If not, cache the requested session and instruct the game to get into a state where the session can be joined (ResetGameAndJoinRequestedSession)
 	 */
 	/** Handles user accepting a session invite from an external source (for example, a platform overlay). Intended to be overridden per game. */
-	UE_API virtual void OnUserRequestedSession(const FPlatformUserId& PlatformUserId, UCommonSession_SearchResult* InRequestedSession, const FOnlineResultInformation& RequestedSessionResult);
-
-	/** Handles OSS request that the session be destroyed */
-	UE_API virtual void OnDestroySessionRequested(const FPlatformUserId& PlatformUserId, const FName& SessionName);
+	virtual void OnUserRequestedSession(const FPlatformUserId& PlatformUserId, UCommonSession_SearchResult* InRequestedSession, const FOnlineResultInformation& RequestedSessionResult);
 
 	/** Get the requested session */
 	UCommonSession_SearchResult* GetRequestedSession() const { return RequestedSession; }
 	/** Set (or clear) the requested session. When this is set, the requested session flow begins. */
-	UE_API virtual void SetRequestedSession(UCommonSession_SearchResult* InRequestedSession);
+	virtual void SetRequestedSession(UCommonSession_SearchResult* InRequestedSession);
 	/** Checks if the requested session can be joined. Can be overridden per game. */
-	UE_API virtual bool CanJoinRequestedSession() const;
+	virtual bool CanJoinRequestedSession() const;
 	/** Join the requested session */
-	UE_API virtual void JoinRequestedSession();
+	virtual void JoinRequestedSession();
 	/** Get the game into a state to join the requested session */
-	UE_API virtual void ResetGameAndJoinRequestedSession();
+	virtual void ResetGameAndJoinRequestedSession();
 	
-	UE_API virtual int32 AddLocalPlayer(ULocalPlayer* NewPlayer, FPlatformUserId UserId) override;
-	UE_API virtual bool RemoveLocalPlayer(ULocalPlayer* ExistingPlayer) override;
-	UE_API virtual void Init() override;
-	UE_API virtual void ReturnToMainMenu() override;
+	virtual int32 AddLocalPlayer(ULocalPlayer* NewPlayer, FPlatformUserId UserId) override;
+	virtual bool RemoveLocalPlayer(ULocalPlayer* ExistingPlayer) override;
+	virtual void Init() override;
+	virtual void ReturnToMainMenu() override;
 
 private:
 	/** This is the primary player*/
@@ -78,5 +73,3 @@ private:
 	UPROPERTY()
 	TObjectPtr<UCommonSession_SearchResult> RequestedSession;
 };
-
-#undef UE_API

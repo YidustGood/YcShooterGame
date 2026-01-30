@@ -8,8 +8,6 @@
 
 #include "LoadingScreenManager.generated.h"
 
-#define UE_API COMMONLOADINGSCREEN_API
-
 template <typename InterfaceType> class TScriptInterface;
 
 class FSubsystemCollectionBase;
@@ -24,24 +22,24 @@ struct FWorldContext;
 /**
  * Handles showing/hiding the loading screen
  */
-UCLASS(MinimalAPI)
-class ULoadingScreenManager : public UGameInstanceSubsystem, public FTickableGameObject
+UCLASS()
+class COMMONLOADINGSCREEN_API ULoadingScreenManager : public UGameInstanceSubsystem, public FTickableGameObject
 {
 	GENERATED_BODY()
 
 public:
 	//~USubsystem interface
-	UE_API virtual void Initialize(FSubsystemCollectionBase& Collection) override;
-	UE_API virtual void Deinitialize() override;
-	UE_API virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
+	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
 	//~End of USubsystem interface
 
 	//~FTickableObjectBase interface
-	UE_API virtual void Tick(float DeltaTime) override;
-	UE_API virtual ETickableTickType GetTickableTickType() const override;
-	UE_API virtual bool IsTickable() const override;
-	UE_API virtual TStatId GetStatId() const override;
-	UE_API virtual UWorld* GetTickableGameObjectWorld() const override;
+	virtual void Tick(float DeltaTime) override;
+	virtual ETickableTickType GetTickableTickType() const override;
+	virtual bool IsTickable() const override;
+	virtual TStatId GetStatId() const override;
+	virtual UWorld* GetTickableGameObjectWorld() const override;
 	//~End of FTickableObjectBase interface
 
 	UFUNCTION(BlueprintCallable, Category=LoadingScreen)
@@ -60,41 +58,41 @@ public:
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnLoadingScreenVisibilityChangedDelegate, bool);
 	FORCEINLINE FOnLoadingScreenVisibilityChangedDelegate& OnLoadingScreenVisibilityChangedDelegate() { return LoadingScreenVisibilityChanged; }
 
-	UE_API void RegisterLoadingProcessor(TScriptInterface<ILoadingProcessInterface> Interface);
-	UE_API void UnregisterLoadingProcessor(TScriptInterface<ILoadingProcessInterface> Interface);
+	void RegisterLoadingProcessor(TScriptInterface<ILoadingProcessInterface> Interface);
+	void UnregisterLoadingProcessor(TScriptInterface<ILoadingProcessInterface> Interface);
 	
 private:
-	UE_API void HandlePreLoadMap(const FWorldContext& WorldContext, const FString& MapName);
-	UE_API void HandlePostLoadMap(UWorld* World);
+	void HandlePreLoadMap(const FWorldContext& WorldContext, const FString& MapName);
+	void HandlePostLoadMap(UWorld* World);
 
 	/** Determines if we should show or hide the loading screen. Called every frame. */
-	UE_API void UpdateLoadingScreen();
+	void UpdateLoadingScreen();
 
 	/** Returns true if we need to be showing the loading screen. */
-	UE_API bool CheckForAnyNeedToShowLoadingScreen();
+	bool CheckForAnyNeedToShowLoadingScreen();
 
 	/** Returns true if we want to be showing the loading screen (if we need to or are artificially forcing it on for other reasons). */
-	UE_API bool ShouldShowLoadingScreen();
+	bool ShouldShowLoadingScreen();
 
 	/** Returns true if we are in the initial loading flow before this screen should be used */
-	UE_API bool IsShowingInitialLoadingScreen() const;
+	bool IsShowingInitialLoadingScreen() const;
 
 	/** Shows the loading screen. Sets up the loading screen widget on the viewport */
-	UE_API void ShowLoadingScreen();
+	void ShowLoadingScreen();
 
 	/** Hides the loading screen. The loading screen widget will be destroyed */
-	UE_API void HideLoadingScreen();
+	void HideLoadingScreen();
 
 	/** Removes the widget from the viewport */
-	UE_API void RemoveWidgetFromViewport();
+	void RemoveWidgetFromViewport();
 
 	/** Prevents input from being used in-game while the loading screen is visible */
-	UE_API void StartBlockingInput();
+	void StartBlockingInput();
 
 	/** Resumes in-game input, if blocking */
-	UE_API void StopBlockingInput();
+	void StopBlockingInput();
 
-	UE_API void ChangePerformanceSettings(bool bEnabingLoadingScreen);
+	void ChangePerformanceSettings(bool bEnabingLoadingScreen);
 
 private:
 	/** Delegate broadcast when the loading screen visibility changes */
@@ -127,5 +125,3 @@ private:
 	/** True when the loading screen is currently being shown */
 	bool bCurrentlyShowingLoadingScreen = false;
 };
-
-#undef UE_API

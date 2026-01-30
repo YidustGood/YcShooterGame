@@ -6,8 +6,6 @@
 
 #include "GameUIPolicy.generated.h"
 
-#define UE_API COMMONGAME_API
-
 class UCommonLocalPlayer;
 class UGameUIManagerSubsystem;
 class ULocalPlayer;
@@ -53,8 +51,8 @@ public:
 	bool operator==(const ULocalPlayer* OtherLocalPlayer) const { return LocalPlayer == OtherLocalPlayer; }
 };
 
-UCLASS(MinimalAPI, Abstract, Blueprintable, Within = GameUIManagerSubsystem)
-class UGameUIPolicy : public UObject
+UCLASS(Abstract, Blueprintable, Within = GameUIManagerSubsystem)
+class COMMONGAME_API UGameUIPolicy : public UObject
 {
 	GENERATED_BODY()
 
@@ -65,27 +63,27 @@ public:
 		return Cast<GameUIPolicyClass>(GetGameUIPolicy(WorldContextObject));
 	}
 
-	static UE_API UGameUIPolicy* GetGameUIPolicy(const UObject* WorldContextObject);
+	static UGameUIPolicy* GetGameUIPolicy(const UObject* WorldContextObject);
 
 public:
-	UE_API virtual UWorld* GetWorld() const override;
-	UE_API UGameUIManagerSubsystem* GetOwningUIManager() const;
-	UE_API UPrimaryGameLayout* GetRootLayout(const UCommonLocalPlayer* LocalPlayer) const;
+	virtual UWorld* GetWorld() const override;
+	UGameUIManagerSubsystem* GetOwningUIManager() const;
+	UPrimaryGameLayout* GetRootLayout(const UCommonLocalPlayer* LocalPlayer) const;
 
 	ELocalMultiplayerInteractionMode GetLocalMultiplayerInteractionMode() const { return LocalMultiplayerInteractionMode; }
 
-	UE_API void RequestPrimaryControl(UPrimaryGameLayout* Layout);
+	void RequestPrimaryControl(UPrimaryGameLayout* Layout);
 
 protected:
-	UE_API void AddLayoutToViewport(UCommonLocalPlayer* LocalPlayer, UPrimaryGameLayout* Layout);
-	UE_API void RemoveLayoutFromViewport(UCommonLocalPlayer* LocalPlayer, UPrimaryGameLayout* Layout);
+	void AddLayoutToViewport(UCommonLocalPlayer* LocalPlayer, UPrimaryGameLayout* Layout);
+	void RemoveLayoutFromViewport(UCommonLocalPlayer* LocalPlayer, UPrimaryGameLayout* Layout);
 
-	UE_API virtual void OnRootLayoutAddedToViewport(UCommonLocalPlayer* LocalPlayer, UPrimaryGameLayout* Layout);
-	UE_API virtual void OnRootLayoutRemovedFromViewport(UCommonLocalPlayer* LocalPlayer, UPrimaryGameLayout* Layout);
-	UE_API virtual void OnRootLayoutReleased(UCommonLocalPlayer* LocalPlayer, UPrimaryGameLayout* Layout);
+	virtual void OnRootLayoutAddedToViewport(UCommonLocalPlayer* LocalPlayer, UPrimaryGameLayout* Layout);
+	virtual void OnRootLayoutRemovedFromViewport(UCommonLocalPlayer* LocalPlayer, UPrimaryGameLayout* Layout);
+	virtual void OnRootLayoutReleased(UCommonLocalPlayer* LocalPlayer, UPrimaryGameLayout* Layout);
 
-	UE_API void CreateLayoutWidget(UCommonLocalPlayer* LocalPlayer);
-	UE_API TSubclassOf<UPrimaryGameLayout> GetLayoutWidgetClass(UCommonLocalPlayer* LocalPlayer);
+	void CreateLayoutWidget(UCommonLocalPlayer* LocalPlayer);
+	TSubclassOf<UPrimaryGameLayout> GetLayoutWidgetClass(UCommonLocalPlayer* LocalPlayer);
 
 private:
 	ELocalMultiplayerInteractionMode LocalMultiplayerInteractionMode = ELocalMultiplayerInteractionMode::PrimaryOnly;
@@ -97,11 +95,9 @@ private:
 	TArray<FRootViewportLayoutInfo> RootViewportLayouts;
 
 private:
-	UE_API void NotifyPlayerAdded(UCommonLocalPlayer* LocalPlayer);
-	UE_API void NotifyPlayerRemoved(UCommonLocalPlayer* LocalPlayer);
-	UE_API void NotifyPlayerDestroyed(UCommonLocalPlayer* LocalPlayer);
+	void NotifyPlayerAdded(UCommonLocalPlayer* LocalPlayer);
+	void NotifyPlayerRemoved(UCommonLocalPlayer* LocalPlayer);
+	void NotifyPlayerDestroyed(UCommonLocalPlayer* LocalPlayer);
 
 	friend class UGameUIManagerSubsystem;
 };
-
-#undef UE_API

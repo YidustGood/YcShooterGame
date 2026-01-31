@@ -3,14 +3,19 @@
 
 #include "Weapons/YcWeaponLibrary.h"
 
+#include "DataRegistrySubsystem.h"
 #include "YcEquipmentInstance.h"
 #include "YcEquipmentLibrary.h"
 #include "YcInventoryItemInstance.h"
 #include "YcInventoryLibrary.h"
 #include "YiChenShooterCore.h"
+#include "Engine/AssetManager.h"
+#include "Engine/StreamableManager.h"
+#include "System/YcAssetManager.h"
 #include "Weapons/YcWeaponVisualData.h"
 #include "Weapons/YcHitScanWeaponInstance.h"
 #include "Weapons/YcWeaponActor.h"
+#include "Weapons/Attachments/YcAttachmentTypes.h"
 #include "Weapons/Fragments/YcEquipmentFragment_ReticleConfig.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcWeaponLibrary)
@@ -229,4 +234,59 @@ AYcWeaponActor* UYcWeaponLibrary::GetPlayerThirdPersonWeaponActor(AActor* OwnerA
 	if (!EquipmentInst) return nullptr;
 	
 	return Cast<AYcWeaponActor>(EquipmentInst->FindSpawnedActorByTag(TEXT("TPWeapon")));
+}
+
+void UYcWeaponLibrary::LoadWeaponAttachmentDataAssetAsync(UObject* WorldContextObject)
+{
+	// 从DataRegistry获取物品定义
+	UDataRegistrySubsystem* Subsystem = UDataRegistrySubsystem::Get();
+	FName AttachmentsRegistryType = FName(TEXT("Attachments"));
+	UDataRegistry* AttachmentsRegistry = Subsystem->GetRegistryForType(AttachmentsRegistryType);
+	
+	if (AttachmentsRegistry)
+	{
+		TArray<FName> ItemNames;
+		AttachmentsRegistry->GetItemNames(ItemNames);
+		TArray<FDataRegistryId> ItemIds;
+		for (int i = 0; i < ItemNames.Num(); i++)
+		{
+			ItemIds.Emplace(FDataRegistryId(AttachmentsRegistryType, ItemNames[i]));
+		}
+		
+		auto AsyncLoadAttachmentMesh = [](const FName& ItemName, const FYcAttachmentDefinition& Item) 
+		{
+			// 这里需要根据你的DataRegistryItem的具体结构获取attachment mesh
+			// 假设Item有一个TSoftObjectPtr<UStaticMesh> AttachmentMesh成员
+			        
+			// 1. 如果是直接获取软引用
+			const TSoftObjectPtr<UStaticMesh> AttachmentMeshPtr = Item.AttachmentMesh;
+			if (!AttachmentMeshPtr.IsNull())
+			{
+				FSoftObjectPath MeshPath = AttachmentMeshPtr.ToSoftObjectPath();
+				UAssetManager::Get().GetStreamableManager().RequestAsyncLoad(
+					MeshPath,
+					FStreamableDelegate::CreateLambda([ItemName, MeshPath, AttachmentMeshPtr]()
+					{
+						AttachmentMeshPtr.Get()->AddToRoot();
+						UE_LOG(LogYcShooterCore, Log, TEXT("Loaded attachment mesh for %s: %s"), 
+							*ItemName.ToString(), *MeshPath.ToString());
+					}),
+					FStreamableManager::DefaultAsyncLoadPriority,
+					false,  // bManageActiveHandle
+					false   // bStartStalled
+				);
+			}
+		};
+		
+		
+		FDataRegistryBatchAcquireCallback Callback;
+		Callback.BindLambda([AttachmentsRegistry, AsyncLoadAttachmentMesh](EDataRegistryAcquireStatus AcquireStatus)
+		{
+			FString ContextString = TEXT("LoadingAttachmentMeshes");
+			AttachmentsRegistry->ForEachCachedItem<FYcAttachmentDefinition>(ContextString, AsyncLoadAttachmentMesh);
+		});
+		
+
+		AttachmentsRegistry->BatchAcquireItems(ItemIds, Callback);
+	}
 }

@@ -192,4 +192,12 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Fragment")
 	static AYcWeaponActor* GetPlayerThirdPersonWeaponActor(AActor* OwnerActor);
+	
+	/**
+	 * 通过DataRegistryId异步加载物品定义中的所有数据资产
+	 * 可用于预加载物品资产，避免运行时卡顿
+	 * @param WorldContextObject 世界上下文对象
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Inventory", meta = (WorldContext = "WorldContextObject"))
+	static void LoadWeaponAttachmentDataAssetAsync(UObject* WorldContextObject);
 };

@@ -3,7 +3,7 @@ class UYcSessionBrowserScreen : UCommonActivatableWidget
 {
 	// 加载进度图标
 	UPROPERTY(BindWidget)
-	UImage ProgressSpinner;
+	UBorder ProgressSpinner;
 
 	// 会话列表视图
 	UPROPERTY(BindWidget)

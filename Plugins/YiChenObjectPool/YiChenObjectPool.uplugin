@@ -1,0 +1,24 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "YiChen Object Pool",
+	"Description": "通用对象池系统，支持UObject和AActor的高效复用",
+	"Category": "Gameplay",
+	"CreatedBy": "YiChen",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "YiChenObjectPool",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}

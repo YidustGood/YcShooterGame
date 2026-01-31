@@ -77,6 +77,16 @@ class UYcShooterAnimComponent : UPawnComponent
 		return GetGroundSpeed() > 0.01f && CharacterMovement.GetCurrentAcceleration().Size() != 0.0f;
 	}
 
+	UFUNCTION()
+	bool IsJumping()
+	{
+		if (!IsValid(AbilityComp))
+		{
+			return false;
+		}
+		return AbilityComp.HasMatchingGameplayTag(GameplayTags::Character_State_Movement_Jumping);
+	}
+
 	// Set Is Falling from the movement components falling state.
 	UFUNCTION()
 	bool IsFalling()
@@ -103,10 +113,13 @@ class UYcShooterAnimComponent : UPawnComponent
 	bool IsAiming()
 	{
 		if (!IsValid(OwnerCharacter))
-		{
 			return false;
-		}
-		return OwnerCharacter.bAiming;
+
+		auto ASC = OwnerCharacter.GetYcAbilitySystemComponent();
+		if (!IsValid(ASC))
+			return false;
+
+		return ASC.HasMatchingGameplayTag(GameplayTags::InputTag_Weapon_ADS);
 	}
 
 	UFUNCTION()
@@ -140,6 +153,26 @@ class UYcShooterAnimComponent : UPawnComponent
 		{
 			return false;
 		}
-		return OwnerCharacter.bLowered;
+		return false; // @TODO 待实现Lowered状态
+	}
+
+	UFUNCTION()
+	FVector2D GetMoveActionValue()
+	{
+		if (!IsValid(OwnerCharacter))
+		{
+			return FVector2D();
+		}
+		return OwnerCharacter.MoveActionValue;
+	}
+
+	/** 获取武器Sawy摇摆旋转值, 动画蓝图通过这个值为武器添加动态的旋转偏移效果, 提升游戏手感 */
+	FRotator GetCurrentWeaponSwayRotation()
+	{
+		if (!IsValid(OwnerCharacter))
+		{
+			return FRotator();
+		}
+		return OwnerCharacter.GetCurrentWeaponSwayRotation();
 	}
 }

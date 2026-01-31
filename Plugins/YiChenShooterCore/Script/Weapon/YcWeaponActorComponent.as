@@ -7,6 +7,9 @@ class UYcWeaponActorComponent : UActorComponent
 	UPROPERTY()
 	AYcWeaponActor WeaponActor;
 
+	UPROPERTY()
+	FVector ScopeOffset = FVector(0, 15, 0);
+
 	UFUNCTION(BlueprintOverride)
 	void BeginPlay()
 	{
@@ -47,5 +50,14 @@ class UYcWeaponActorComponent : UActorComponent
 			return;
 
 		MagazineReserve.SetVisibility(false);
+	}
+
+	/**
+	 * @TODO 临时的获取武器瞄准视角偏移值函数
+	 */
+	FVector GetScopeOffset()
+	{
+		// Y轴偏移控制相机与瞄准镜的距离
+		return ScopeOffset;
 	}
 }

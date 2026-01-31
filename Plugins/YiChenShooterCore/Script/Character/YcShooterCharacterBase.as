@@ -1,16 +1,14 @@
 class AYcShooterCharacterBase : AYcCharacter
 {
 	UPROPERTY(DefaultComponent)
+	UYcShooterHeroComponent YcHeroComp;
+
+	UPROPERTY(DefaultComponent)
 	UYcShooterAnimComponent YcShooterAnimComp;
 
+	/** 移动数值设置, 供动画蓝图使用驱动移动动画播放效果 */
 	UPROPERTY()
-	bool bAiming;
-
-	UPROPERTY()
-	bool bRunning;
-
-	UPROPERTY()
-	bool bLowered;
+	FVector2D MoveActionValue;
 
 	// 缓存上一帧的移动状态，避免在Tick中重复添加/移除标签
 	private bool bWasMovingForward = true;
@@ -53,5 +51,11 @@ class AYcShooterCharacterBase : AYcCharacter
 			}
 			bWasMovingForward = bIsMovingForward;
 		}
+	}
+
+	/** 获取武器Sawy摇摆旋转值, 动画蓝图通过这个值为武器添加动态的旋转偏移效果, 提升游戏手感 */
+	FRotator& GetCurrentWeaponSwayRotation()
+	{
+		return YcHeroComp.CurrentWeaponSawyRotation;
 	}
 }

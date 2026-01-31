@@ -65,6 +65,9 @@ class UGamePhase_ShooterGame_Playing : UYcGamePhaseAbility
 	{
 		Log(f"[{GetClass().GetName()}] 游戏对局正式开始");
 
+		// 设置比赛配置到 GameState（供客户端读取）
+		SetMatchConfigToGameState();
+
 		// 重置所有玩家
 		ResetAllActivePlayers();
 
@@ -83,6 +86,32 @@ class UGamePhase_ShooterGame_Playing : UYcGamePhaseAbility
 		// 清理资源
 		CleanupTimers();
 		UnregisterMessageListeners();
+	}
+
+	// ========================================
+	// 比赛配置同步
+	// ========================================
+
+	/**
+	 * 将比赛配置设置到 GameState
+	 * 这样客户端就可以通过 GameState 读取目标分数和时间限制等信息
+	 */
+	protected void SetMatchConfigToGameState()
+	{
+		auto GameState = Cast<AYcGameState>(Gameplay::GetGameState());
+		if (GameState == nullptr)
+		{
+			Warning(f"[{GetClass().GetName()}] 无法获取 GameState");
+			return;
+		}
+
+		// 设置目标分数
+		GameState.SetStatTagStack(GameplayTags::ShooterGame_Match_TargetScore, TargetScore);
+
+		// 设置比赛时长（初始剩余时间）
+		GameState.SetStatTagStack(GameplayTags::ShooterGame_Match_RemainingTime, int(MatchDuration));
+
+		Log(f"[{GetClass().GetName()}] 已设置比赛配置: 目标分数={TargetScore}, 时长={MatchDuration}秒");
 	}
 
 	// ========================================
@@ -110,6 +139,13 @@ class UGamePhase_ShooterGame_Playing : UYcGamePhaseAbility
 	protected void OnMatchTimerTick()
 	{
 		MatchDuration -= 1.0f;
+
+		// 更新 GameState 中的剩余时间（供客户端读取）
+		auto GameState = Cast<AYcGameState>(Gameplay::GetGameState());
+		if (GameState != nullptr)
+		{
+			GameState.SetStatTagStack(GameplayTags::ShooterGame_Match_RemainingTime, int(MatchDuration));
+		}
 
 		// 广播倒计时更新事件
 		OnCountDownUpdateEvent.Broadcast(MatchDuration);

@@ -68,10 +68,37 @@ void UYcInteractableComponent::OnPlayerFocusBegin(const FYcInteractionQuery& Int
 void UYcInteractableComponent::OnPlayerFocusEnd(const FYcInteractionQuery& InteractQuery)
 {
 	// 移除交互提示Widget
-	if (UUIExtensionSubsystem* ExtensionSubsystem = GetWorld()->GetSubsystem<UUIExtensionSubsystem>(); InteractionWidgetHandle.IsValid())
+	if (!InteractionWidgetHandle.IsValid())
 	{
-		IInteractionWidgetInterface::Execute_UnbindInteractableComponent(InteractionWidgetHandle.GetWidgetInstance(), this);
-		ExtensionSubsystem->UnregisterExtension(InteractionWidgetHandle);
+		OnPlayerFocusEndEvent.Broadcast(InteractQuery);
+		return;
 	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		OnPlayerFocusEndEvent.Broadcast(InteractQuery);
+		return;
+	}
+
+	UUIExtensionSubsystem* ExtensionSubsystem = World->GetSubsystem<UUIExtensionSubsystem>();
+	if (!ExtensionSubsystem)
+	{
+		OnPlayerFocusEndEvent.Broadcast(InteractQuery);
+		return;
+	}
+
+	// 如果Widget实例存在，先解绑接口
+	if (UUserWidget* WidgetInstance = InteractionWidgetHandle.GetWidgetInstance())
+	{
+		if (WidgetInstance->Implements<UInteractionWidgetInterface>())
+		{
+			IInteractionWidgetInterface::Execute_UnbindInteractableComponent(WidgetInstance, this);
+		}
+	}
+
+	// 无论Widget实例是否存在，都需要注销扩展以清理资源
+	ExtensionSubsystem->UnregisterExtension(InteractionWidgetHandle);
+	
 	OnPlayerFocusEndEvent.Broadcast(InteractQuery);
 }

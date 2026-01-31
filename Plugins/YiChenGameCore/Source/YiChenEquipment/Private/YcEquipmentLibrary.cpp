@@ -11,8 +11,6 @@
 
 #define LOCTEXT_NAMESPACE "UYcEquipmentLibrary"
 
-UE_DISABLE_OPTIMIZATION
-
 UYcEquipmentInstance* UYcEquipmentLibrary::GetCurrentEquipmentInst(AActor* OwnerActor)
 {
 	const UYcQuickBarComponent* QuickBar = UYcQuickBarComponent::FindQuickBarComponent(OwnerActor);

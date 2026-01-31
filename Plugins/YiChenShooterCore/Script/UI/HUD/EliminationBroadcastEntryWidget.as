@@ -58,7 +58,7 @@ class UEliminationBroadcastEntryWidget : UUserWidget
 	UFUNCTION()
 	void SetTeamColor()
 	{
-		// 这里就把与自己相关的击杀通报中自己的名称设置为蓝色, 敌人的设置为红色
+		// 这里就把与自己相关的击杀通报中自己的名称设置为蓝色, 敌人的设置为红色, 如果不跟自己相关的就设置为白色
 		if (GetOwningPlayer().PlayerState.GetPlayerName() == ElimFeedEntry.EliminationFeedMessage.Attacker.ToString())
 		{
 			AttackerName.ColorAndOpacity = FSlateColor(FLinearColor::Blue);
@@ -68,6 +68,11 @@ class UEliminationBroadcastEntryWidget : UUserWidget
 		{
 			AttackerName.ColorAndOpacity = FSlateColor(FLinearColor::Red);
 			AttackeeName.ColorAndOpacity = FSlateColor(FLinearColor::Blue);
+		}
+		else
+		{
+			AttackerName.ColorAndOpacity = FSlateColor(FLinearColor::White);
+			AttackeeName.ColorAndOpacity = FSlateColor(FLinearColor::White);
 		}
 	}
 

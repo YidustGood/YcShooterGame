@@ -6,6 +6,8 @@ class UYcGameplayAbility_CharacterSprint : UYcGameplayAbility_HoldToggle
 	// 设置技能规则标签
 	default AbilityTags.AddTag(GameplayTags::InputTag_Move_Sprint);
 	default ActivationOwnedTags.AddTag(GameplayTags::Character_State_Movement_Sprint);
+	default ActivationBlockedTags.AddLeafTag(GameplayTags::Character_State_Movement_NotForward);
+	default ActivationBlockedTags.AddLeafTag(GameplayTags::Character_State_Movement_Crouching);
 	default ActivationBlockedTags.AddLeafTag(GameplayTags::InputTag_Weapon_Fire);
 	default ActivationBlockedTags.AddLeafTag(GameplayTags::InputTag_Weapon_ADS);
 	default ActivationBlockedTags.AddLeafTag(GameplayTags::Ability_NoSprint);
@@ -42,7 +44,8 @@ class UYcGameplayAbility_CharacterSprint : UYcGameplayAbility_HoldToggle
 
 		// 检查是否有 NotForward 标签，如果有则取消奔跑
 		if (ASC.HasMatchingGameplayTag(GameplayTags::Character_State_Movement_NotForward) ||
-			ASC.HasMatchingGameplayTag(GameplayTags::InputTag_Weapon_ADS))
+			ASC.HasMatchingGameplayTag(GameplayTags::InputTag_Weapon_ADS) ||
+			ASC.HasMatchingGameplayTag(GameplayTags::Character_State_Movement_Crouching))
 		{
 			EndAbility();
 			return;

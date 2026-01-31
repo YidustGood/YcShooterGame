@@ -45,6 +45,7 @@ public class YiChenGameplay : ModuleRules
                 "UIExtension",
                 "PhysicsCore",
                 "AIModule",
+                "OnlineSubsystemUtils"
             }
         );
     }

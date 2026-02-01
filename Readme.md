@@ -29,11 +29,7 @@
 
     目前**YcShooter** 项目已经实现了一套**现代化FPS网游的核心游戏体验功能**，目前提供了**个人死亡竞赛**、**团队死亡竞赛**两种游玩模式，可以自定义添加Bot对战，支持创建房间进行Steam联机对战或者局域网对战。提供Dedicated Server实现更加专业的游戏比赛体验，DS服务器实例可通过Google Agonse进行动态伸缩管理按需为玩家提供DS对战服务。[代码仓库Readme中有游戏视频演示链接](https://github.com/YidustGood/YcShooterGame), [CNB仓库链接](https://cnb.cool/ycgamedev/YcShooterGame)
 
-![debfb43a4f83474198b9c059916c5f06](file:///C:/Users/17772/Pictures/Typedown/debfb43a-4f83-4741-98b9-c059916c5f06.png?msec=1769860539922)
-
-注：截图中的红点是实现的游戏UI红点功能, 基于我开发的**YiChenRedDotSystem**通用游戏红点系统插件实现。
-
-![850317d4-9cbb-4c1d-83a3-3eb8f62956d8](file:///C:/Users/17772/Pictures/Typedown/850317d4-9cbb-4c1d-83a3-3eb8f62956d8.png)
+![https://imgloc.com/image/yW6zCX](https://i.imgs.ovh/2026/02/01/yW6g1m.png)
 
 ### 1.3 核心功能清单
 
@@ -269,7 +265,7 @@ FastArray 应用场景:
 
 项目目前采用**自底向上的4层插件架构**，每层职责清晰，依赖关系单向，符合分层设计原则。
 
-![项目框架设计总览](D:\UE\Projects\YcShooter\Docs\TechnicalFramework\images\项目框架设计总览.png) 
+![项目框架设计总览](https://i.imgs.ovh/2026/02/01/yW6zCX.png) 
 
 **本次实现的网络射击游戏层级职责说明**：
 
@@ -289,4 +285,6 @@ FastArray 应用场景:
   
   
 
-  ![4e2a4da0-ab08-4426-8e34-7d81467d5512](file:///C:/Users/17772/Pictures/Typedown/4e2a4da0-ab08-4426-8e34-7d81467d5512.png)
+  ![4e2a4da0-ab08-4426-8e34-7d81467d5512](https://i.imgs.ovh/2026/02/01/yW65Qc.png)
+
+

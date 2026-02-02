@@ -6,7 +6,9 @@
 
 引擎版本：[UE5.6.1 AngelScirpt 定制版 需按照UE引擎源码版加入组织开启权限](https://github.com/YidustGood/UnrealEngine-Angelscript)
 
-游戏可玩Demo下载链接：[YcShooterGameDemo](https://pan.quark.cn/s/af63cb4a859b)
+游戏可玩Demo下载链接：[YcShooterGameDemo](https://pan.quark.cn/s/89291d856472)
+
+视频演示：[游戏实战演示视频](https://www.bilibili.com/video/BV1uHFTzHEVR)
 
 ---
 

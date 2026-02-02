@@ -8,6 +8,7 @@
 #include "Abilities/YcGameplayAbility.h"
 #include "NativeGameplayTags.h"
 #include "YcAbilityTagRelationshipMapping.h"
+#include "YcGlobalAbilitySystem.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Net/UnrealNetwork.h"
 
@@ -27,6 +28,17 @@ UYcAbilitySystemComponent::UYcAbilitySystemComponent(const FObjectInitializer& O
 	: Super(ObjectInitializer)
 {
 	
+}
+
+void UYcAbilitySystemComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// 在全局技能系统取消注册当前ASC
+	if (UYcGlobalAbilitySystem* GlobalAbilitySystem = UWorld::GetSubsystem<UYcGlobalAbilitySystem>(GetWorld()))
+	{
+		GlobalAbilitySystem->UnregisterASC(this);
+	}
+	
+	Super::EndPlay(EndPlayReason);
 }
 
 void UYcAbilitySystemComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -76,6 +88,12 @@ void UYcAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AActo
 			{
 				AbilityCDO->OnPawnAvatarSet();
 			}
+		}
+		
+		// 当我们实际上拥有一个Pawn化身时，向全局技能系统注册ASC。等到这个时候才注册到YcGlobalAbilitySystem, 是因为某些全局施加的效果可能需要一个化身
+		if (UYcGlobalAbilitySystem* GlobalAbilitySystem = UWorld::GetSubsystem<UYcGlobalAbilitySystem>(GetWorld()))
+		{
+			GlobalAbilitySystem->RegisterASC(this);
 		}
 		
 		TryActivateAbilitiesOnSpawn();

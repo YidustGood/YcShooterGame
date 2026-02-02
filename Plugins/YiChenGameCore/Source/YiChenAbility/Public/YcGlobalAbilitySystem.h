@@ -39,7 +39,9 @@ struct FGlobalAppliedEffectList
 };
 
 /**
- * // @todo 暂时还未对接全局技能系统, 目前还用不上
+ * 全局技能子系统
+ * 作用：当ASC的Avatar类型为Pawn时这个ASC会被注册到全局技能子系统里面, 以便实现对全部Pawn技能系统的一些交互操作
+ * 例如：为所有的玩家应用一个GE
  */
 UCLASS()
 class YICHENABILITY_API UYcGlobalAbilitySystem : public UWorldSubsystem

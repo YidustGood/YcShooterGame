@@ -1,11 +1,11 @@
 /**
  * 对局热身阶段 GameplayAbility
- * 
+ *
  * 功能说明：
  * - 在正式比赛开始前给玩家热身时间
  * - 显示倒计时UI提示玩家比赛即将开始
  * - 可应用热身阶段专属的 GameplayEffect（如无敌效果）
- * 
+ *
  * 执行流程：
  * 1. 等待玩家加入（WaitForPlayersDuration - CountdownDuration）
  * 2. 显示倒计时UI（CountdownDuration 秒）
@@ -17,7 +17,7 @@ class UGamePhase_ShooterGame_Warmup : UYcGamePhaseAbility
 	// ========================================
 	// 配置属性
 	// ========================================
-	
+
 	/** 热身阶段总时长（秒） */
 	UPROPERTY()
 	float WaitForPlayersDuration = 10.0f;
@@ -26,32 +26,31 @@ class UGamePhase_ShooterGame_Warmup : UYcGamePhaseAbility
 	UPROPERTY()
 	int CountdownDuration = 5;
 
-	/** 热身阶段要应用的 GameplayEffect（如无敌效果） */
+	/**
+	 * 热身阶段要应用的 GameplayEffect（如无敌效果）
+	 * 比赛开始的倒计时UI也是通过GE里配置的GameplayCue来触发创建的, 利用了AGameplayCueNotify_WidgetBase来响应Cue事件创建UI
+	 */
 	UPROPERTY()
 	TSubclassOf<UGameplayEffect> WarmupEffect;
-
-	/** 热身倒计时 UI 类 */
-	UPROPERTY()
-	TSubclassOf<UPhaseCountdownWidget> WarmupWidgetClass;
 
 	// ========================================
 	// 技能配置
 	// ========================================
-	
+
 	default ActivationGroup = EYcAbilityActivationGroup::Independent;
 	default GamePhaseTag = FGameplayTag::RequestGameplayTag(n"ShooterGame.GamePhase.Warmup");
 
 	// ========================================
 	// 内部变量
 	// ========================================
-	
+
 	/** 倒计时剩余秒数 */
 	private int CountdownSecsRemaining = 0;
 
 	// ========================================
 	// 生命周期函数
 	// ========================================
-	
+
 	UFUNCTION(BlueprintOverride)
 	void ActivateAbility()
 	{
@@ -93,7 +92,7 @@ class UGamePhase_ShooterGame_Warmup : UYcGamePhaseAbility
 	// ========================================
 	// 倒计时逻辑
 	// ========================================
-	
+
 	/**
 	 * 开始倒计时
 	 * 创建倒计时 UI 并开始广播倒计时消息
@@ -101,40 +100,9 @@ class UGamePhase_ShooterGame_Warmup : UYcGamePhaseAbility
 	UFUNCTION()
 	private void StartCountdown()
 	{
-		// 为所有玩家创建倒计时 UI
-		CreateCountdownWidgetForAllPlayers();
-
 		// 初始化倒计时
 		CountdownSecsRemaining = CountdownDuration;
 		BroadcastCountdown();
-	}
-
-	/**
-	 * 为所有玩家创建倒计时 UI
-	 */
-	private void CreateCountdownWidgetForAllPlayers()
-	{
-		if (WarmupWidgetClass == nullptr)
-		{
-			Warning(f"[{GetClass().GetName()}] WarmupWidgetClass 未设置");
-			return;
-		}
-
-		auto GameState = Gameplay::GetGameState();
-		if (GameState == nullptr)
-		{
-			Warning(f"[{GetClass().GetName()}] 无法获取 GameState");
-			return;
-		}
-
-		for (auto& PlayerState : GameState.PlayerArray)
-		{
-			auto YcPS = Cast<AYcPlayerStateScript>(PlayerState.Get());
-			if (YcPS != nullptr)
-			{
-				YcPS.ClientCreateWidget(GameplayTags::HUD_Slot_PhaseMessage, WarmupWidgetClass);
-			}
-		}
 	}
 
 	/**
@@ -183,9 +151,8 @@ class UGamePhase_ShooterGame_Warmup : UYcGamePhaseAbility
 		if (!System::IsDedicatedServer())
 		{
 			UGameplayMessageSubsystem::Get().BroadcastMessage(
-				GameplayTags::ShooterGame_GamePhase_MatchBeginCountdown, 
-				Message
-			);
+				GameplayTags::ShooterGame_GamePhase_MatchBeginCountdown,
+				Message);
 		}
 
 		Log(f"[{GetClass().GetName()}] 比赛开始倒计时: {SecsRemaining} 秒");
@@ -226,7 +193,7 @@ class UGamePhase_ShooterGame_Warmup : UYcGamePhaseAbility
 	// ========================================
 	// 配置验证
 	// ========================================
-	
+
 	/**
 	 * 验证并修正时长配置
 	 * 确保配置值在合理范围内

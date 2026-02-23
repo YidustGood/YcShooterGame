@@ -45,6 +45,19 @@ public:
     UFUNCTION(BlueprintCallable, meta=( DisplayName="Call To Lua", WorldContext = "WorldContextObject"), Category="slua")
     static FLuaBPVar CallToLua(UObject* WorldContextObject, FString FunctionName,FString StateName);
 
+    // YiChen: Begin - 新增函数 - 支持蓝图调用Lua类方法
+    /**
+     * 调用实现了ILuaOverriderInterface接口的UObject上的Lua成员方法。
+     * 该函数从WorldContextObject获取Lua self表，并以self作为第一个参数调用方法。
+     * @param WorldContextObject - 拥有Lua实例表的对象（必须实现ILuaOverriderInterface）。在蓝图中自动设置为self。
+     * @param FunctionName - 要调用的Lua方法名（如"bpcall"）
+     * @param Args - 传递给方法的额外参数（self会自动作为第一个参数传入）
+     * @param StateName - 可选的Lua状态名称
+     */
+    UFUNCTION(BlueprintCallable, meta=( DisplayName="Call Lua Member", WorldContext = "WorldContextObject"), Category="slua")
+    static FLuaBPVar CallLuaMember(UObject* WorldContextObject, FString FunctionName, const TArray<FLuaBPVar>& Args, FString StateName);
+    // YiChen: End - 新增函数 - 支持蓝图调用Lua类方法
+
     UFUNCTION(BlueprintCallable, Category="slua")
     static FLuaBPVar CreateVarFromInt(int Value);
 

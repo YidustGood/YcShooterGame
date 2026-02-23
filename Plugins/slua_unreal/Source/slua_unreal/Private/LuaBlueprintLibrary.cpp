@@ -22,6 +22,8 @@
 #include "LuaState.h"
 #include "Internationalization/Internationalization.h"
 #include "Kismet/GameplayStatics.h"
+#include "LuaOverriderInterface.h"
+#include "LuaOverrider.h"
 
 namespace {
     const FName GetVarOutOfBoundsWarning = FName("GetVarOutOfBoundsWarning");    
@@ -95,6 +97,67 @@ FLuaBPVar ULuaBlueprintLibrary::CallToLua(UObject* WorldContextObject, FString f
     }
     return f.callWithNArg(nullptr);
 }
+
+// YiChen: Begin - 新增函数实现 - 支持蓝图调用Lua类方法
+// 调用实现了ILuaOverriderInterface接口的UObject上的Lua成员方法
+// self会自动作为第一个参数传入，无需蓝图手动传递
+FLuaBPVar ULuaBlueprintLibrary::CallLuaMember(UObject* WorldContextObject, FString FunctionName, const TArray<FLuaBPVar>& Args, FString StateName) {
+    using namespace NS_SLUA;
+    
+    // 验证WorldContextObject（同时作为目标对象）
+    if (!WorldContextObject) {
+        Log::Error("CallLuaMember: WorldContextObject为空");
+        return LuaVar();
+    }
+    
+    // 检查WorldContextObject是否实现了ILuaOverriderInterface
+    ILuaOverriderInterface* LuaInterface = Cast<ILuaOverriderInterface>(WorldContextObject);
+    if (!LuaInterface) {
+        Log::Error("CallLuaMember: WorldContextObject [%s] 未实现ILuaOverriderInterface接口", 
+            TCHAR_TO_UTF8(*WorldContextObject->GetName()));
+        return LuaVar();
+    }
+    
+    // 获取LuaState
+    auto gameInstance = UGameplayStatics::GetGameInstance(WorldContextObject);
+    if (!gameInstance) {
+        return LuaVar();
+    }
+    
+    auto ls = LuaState::get(gameInstance);
+    if (StateName.Len() != 0) ls = LuaState::get(StateName);
+    if (!ls) return FLuaBPVar();
+    
+    // 从目标对象获取self表
+    LuaVar selfTable = LuaInterface->GetSelfTable(ls);
+    if (!selfTable.isValid() || !selfTable.isTable()) {
+        Log::Error("CallLuaMember: 无法从 [%s] 获取Lua self表", 
+            TCHAR_TO_UTF8(*WorldContextObject->GetName()));
+        return LuaVar();
+    }
+    
+    // 获取缓存的函数（使用FuncMap实现O(1)查找，首次调用后缓存）
+    LuaVar func = LuaInterface->GetCachedLuaFunc(ls->getLuaState(), selfTable, FunctionName);
+    if (!func.isFunction()) {
+        Log::Error("CallLuaMember: 在对象 [%s] 中找不到Lua方法 [%s]", 
+            TCHAR_TO_UTF8(*FunctionName), TCHAR_TO_UTF8(*WorldContextObject->GetName()));
+        return LuaVar();
+    }
+    
+    // 调用函数，self作为第一个参数
+    auto fillParam = [&]() {
+        // 先压入self作为第一个参数
+        selfTable.push(ls->getLuaState());
+        // 压入额外参数
+        for (const auto& arg : Args) {
+            arg.value.push(ls->getLuaState());
+        }
+        return Args.Num() + 1; // +1 是self参数
+    };
+    
+    return func.callWithNArg(fillParam);
+}
+// YiChen: End - 新增函数实现 - 支持蓝图调用Lua类方法
 
 
 FLuaBPVar ULuaBlueprintLibrary::CreateVarFromInt(int i) {

@@ -58,6 +58,9 @@ int FYcLuaStateManager::Init(UGameInstance* InGameInstance)
 	
 	// 创建LuaState实例
 	CreateLuaState();
+	
+	// 将C++的接口函数绑定到Lua，让Lua可以通过全局表LuaCppInterface访问C++的接口函数以实现更高级的功能
+	LuaCppInterface::OpenLib(LuaStateInstance->getLuaState());
 
 	bInitialized = true;
 	return 0;

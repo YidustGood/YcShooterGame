@@ -137,6 +137,23 @@ int FYcLuaStateManager::ClearAllTimers()
 	return 0;
 }
 
+void FYcLuaStateManager::DoLuaFile(const FString& FileName) const
+{
+	if (!bInitialized || LuaStateInstance == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("LuaState is invalid can't do lua file."))
+		return;
+	}
+	
+	if (FileName.IsEmpty())
+	{
+		UE_LOG(LogTemp, Error, TEXT("FYcLuaStateManager::DoLuaFile: FileName is empty!"))
+		return;
+	}
+	
+	LuaStateInstance->doFile(TCHAR_TO_ANSI(*FileName));
+}
+
 /**
  * Lua全局打印函数
  * 在Lua中可以通过PrintLog()函数输出日志到UE的日志系统

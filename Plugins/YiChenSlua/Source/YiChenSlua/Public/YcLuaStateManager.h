@@ -61,6 +61,8 @@ public:
 	 */
 	int ClearAllTimers();
 	
+	void DoLuaFile(const FString& FileName) const;
+	
 protected:
 	/**
 	 * Lua状态初始化回调函数

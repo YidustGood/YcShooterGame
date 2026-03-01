@@ -234,33 +234,60 @@ namespace NS_SLUA
         }
 
         //=====================================================================
+        // 方法注册表
+        //=====================================================================
+        static luaL_Reg GameplayTagMethods[] = {
+            // FGameplayTag 实例方法
+            {"ToString", GameplayTag_ToString},
+            {"IsValid", GameplayTag_IsValid},
+            {"GetTagName", GameplayTag_GetTagName},
+            {"MatchesTag", GameplayTag_MatchesTag},
+            {"MatchesTagExact", GameplayTag_MatchesTagExact},
+            {"Equal", GameplayTag_Equal},
+            // FGameplayTag 静态方法
+            {"RequestGameplayTag", GameplayTag_RequestGameplayTag},
+            {"IsTagValid", GameplayTag_IsTagValid},
+            {"EmptyTag", GameplayTag_EmptyTag},
+            {nullptr, nullptr}
+        };
+
+        static luaL_Reg GameplayTagContainerMethods[] = {
+            {"ToString", GameplayTagContainer_ToString},
+            {"HasTag", GameplayTagContainer_HasTag},
+            {"HasAll", GameplayTagContainer_HasAll},
+            {"HasAny", GameplayTagContainer_HasAny},
+            {"AddTag", GameplayTagContainer_AddTag},
+            {"RemoveTag", GameplayTagContainer_RemoveTag},
+            {"Num", GameplayTagContainer_Num},
+            {"IsValid", GameplayTagContainer_IsValid},
+            {"Empty", GameplayTagContainer_Reset},
+            {nullptr, nullptr}
+        };
+
+        //=====================================================================
         // 初始化注册
         //=====================================================================
         void init(lua_State* L)
         {
-            // 注册 FGameplayTag 方法为全局函数
-            LuaObject::addGlobalMethod(L, "GameplayTag_ToString", GameplayTag_ToString);
-            LuaObject::addGlobalMethod(L, "GameplayTag_IsValid", GameplayTag_IsValid);
-            LuaObject::addGlobalMethod(L, "GameplayTag_GetTagName", GameplayTag_GetTagName);
-            LuaObject::addGlobalMethod(L, "GameplayTag_MatchesTag", GameplayTag_MatchesTag);
-            LuaObject::addGlobalMethod(L, "GameplayTag_MatchesTagExact", GameplayTag_MatchesTagExact);
-            LuaObject::addGlobalMethod(L, "GameplayTag_Equal", GameplayTag_Equal);
+            // 创建 GameplayTag 命名空间表
+            lua_newtable(L);
+            for (luaL_Reg* reg = GameplayTagMethods; reg->name; ++reg)
+            {
+                lua_pushstring(L, reg->name);
+                lua_pushcfunction(L, reg->func);
+                lua_rawset(L, -3);
+            }
+            lua_setglobal(L, "GameplayTag");
             
-            // 注册 FGameplayTag 静态方法
-            LuaObject::addGlobalMethod(L, "GameplayTag_RequestGameplayTag", GameplayTag_RequestGameplayTag);
-            LuaObject::addGlobalMethod(L, "GameplayTag_IsTagValid", GameplayTag_IsTagValid);
-            LuaObject::addGlobalMethod(L, "GameplayTag_EmptyTag", GameplayTag_EmptyTag);
-            
-            // 注册 FGameplayTagContainer 方法
-            LuaObject::addGlobalMethod(L, "GameplayTagContainer_ToString", GameplayTagContainer_ToString);
-            LuaObject::addGlobalMethod(L, "GameplayTagContainer_HasTag", GameplayTagContainer_HasTag);
-            LuaObject::addGlobalMethod(L, "GameplayTagContainer_HasAll", GameplayTagContainer_HasAll);
-            LuaObject::addGlobalMethod(L, "GameplayTagContainer_HasAny", GameplayTagContainer_HasAny);
-            LuaObject::addGlobalMethod(L, "GameplayTagContainer_AddTag", GameplayTagContainer_AddTag);
-            LuaObject::addGlobalMethod(L, "GameplayTagContainer_RemoveTag", GameplayTagContainer_RemoveTag);
-            LuaObject::addGlobalMethod(L, "GameplayTagContainer_Num", GameplayTagContainer_Num);
-            LuaObject::addGlobalMethod(L, "GameplayTagContainer_IsValid", GameplayTagContainer_IsValid);
-            LuaObject::addGlobalMethod(L, "GameplayTagContainer_Empty", GameplayTagContainer_Reset);
+            // 创建 GameplayTagContainer 命名空间表
+            lua_newtable(L);
+            for (luaL_Reg* reg = GameplayTagContainerMethods; reg->name; ++reg)
+            {
+                lua_pushstring(L, reg->name);
+                lua_pushcfunction(L, reg->func);
+                lua_rawset(L, -3);
+            }
+            lua_setglobal(L, "GameplayTagContainer");
         }
     }
 }

@@ -19,6 +19,11 @@ UYcShooterGameInstance::UYcShooterGameInstance(const FObjectInitializer& ObjectI
 	}
 }
 
+void UYcShooterGameInstance::DoLuaFile(const FString& FileName) const
+{
+	FYcLuaStateManager::GetYiChenLuaStateManager().DoLuaFile(FileName);
+}
+
 void UYcShooterGameInstance::Init()
 {
 	Super::Init();

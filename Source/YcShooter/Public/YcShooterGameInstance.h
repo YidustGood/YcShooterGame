@@ -17,6 +17,11 @@ class YCSHOOTER_API UYcShooterGameInstance : public UYcGameInstance
 	GENERATED_BODY()
 public:
 	UYcShooterGameInstance(const FObjectInitializer& ObjectInitializer);
+	
+	/** 执行Lua脚本文件 */
+	UFUNCTION(BlueprintCallable, Category="Slua")
+	void DoLuaFile(const FString& FileName) const;
+	
 	virtual void Init() override;
 	virtual void Shutdown() override;
 };

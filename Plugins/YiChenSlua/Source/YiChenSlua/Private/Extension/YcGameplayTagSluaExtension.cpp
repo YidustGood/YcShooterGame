@@ -6,6 +6,7 @@
 #include "LuaCppBinding.h"
 #include "GameplayTagContainer.h"
 #include "LuaState.h"
+#include "YiChenSlua.h"
 
 namespace NS_SLUA
 {
@@ -95,6 +96,7 @@ namespace NS_SLUA
             const char* TagNameStr = luaL_checkstring(L, 1);
             if (!TagNameStr)
             {
+                UE_LOG(LogYcSlua, Error, TEXT("RequestGameplayTag: 参数为空"));
                 return 0; // 返回 nil
             }
             
@@ -103,6 +105,7 @@ namespace NS_SLUA
             
             if (!Tag.IsValid())
             {
+                UE_LOG(LogYcSlua, Error, TEXT("RequestGameplayTag: 无效的 GameplayTag 名称 '%s'"), *TagName.ToString());
                 return 0; // Tag 不存在，返回 nil
             }
             

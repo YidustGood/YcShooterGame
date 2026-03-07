@@ -103,7 +103,11 @@ void UAbilityTask_GrantNearbyInteraction::QueryInteractables()
 			FObjectKey ObjectKey(Option.InteractionAbilityToGrant);
 			if (!InteractionAbilityCache.Find(ObjectKey)) // 缓存起来, 后续就不用重复授予了, 就算玩家走出了交互范围目前来说也没必要移除GA, 如果需要优化可以采用淘汰算法控制缓存总量
 			{
-				FGameplayAbilitySpec Spec(Option.InteractionAbilityToGrant, 1, INDEX_NONE, this);
+				// SourceObject 使用交互物体本身，这样 GA 可以通过 GetSourceObject() 获取交互对象
+				// 例如某些交互物体在交互技能中需要用到交互物对象时这就可以直接在GA中拿CurrentSourceObject变量来使用, 不管是读取数据还是销毁也好
+				// 注意FYcInteractionOption配置在谁身上SourceObject就是谁, 像UYcInteractableComponent这样配置在组件上的那SourceObject是组件, 如果要获取Actor就通过再GetOwner()拿
+				UObject* SourceObject = Option.InteractableTarget.GetObject();
+				FGameplayAbilitySpec Spec(Option.InteractionAbilityToGrant, 1, INDEX_NONE, SourceObject);
 				FGameplayAbilitySpecHandle Handle = AbilitySystemComponent->GiveAbility(Spec);
 				InteractionAbilityCache.Add(ObjectKey, Handle);
 			}

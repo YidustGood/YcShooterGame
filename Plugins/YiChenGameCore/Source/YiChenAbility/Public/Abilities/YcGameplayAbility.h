@@ -244,14 +244,25 @@ protected:
 	 * @param Spec 技能规格
 	 */
 	void TryActivateAbilityOnSpawn(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) const;
-	
+
 	/**
 	 * 外部结束技能
 	 * 与K2_EndAbility等效，用于RPC批处理系统外部结束技能
 	 * 会调用EndAbility并设置bReplicateEndAbility为true，确保网络同步
 	 */
 	virtual void ExternalEndAbility();
-	
+
+	/**
+	 * 结束技能（覆盖父类）
+	 * 如果 bRemoveAfterExecution 为 true，会在技能结束后自动从 ASC 中移除
+	 * @param Handle 技能规格句柄
+	 * @param ActorInfo Actor信息
+	 * @param ActivationInfo 激活信息
+	 * @param bReplicateEndAbility 是否复制结束事件
+	 * @param bWasCancelled 是否被取消
+	 */
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
+
 	/**
 	 * 技能被授予时的蓝图事件
 	 * 在OnGiveAbility中调用，允许蓝图响应技能添加事件
@@ -360,6 +371,23 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Advanced")
 	TMap<FGameplayTag, FText> FailureTagToUserFacingMessages;
+
+	/**
+	 * 技能执行完成后是否自动从 ASC 中移除
+	 * 适用于一次性交互技能（如拾取弹药箱），执行完成后不再需要保留
+	 * 在 EndAbility 时检查此属性，如果为 true 则自动调用 RemoveSelfFromOwner
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "YcGameCore|Ability")
+	bool bRemoveAfterExecution = false;
+
+	/**
+	 * 从拥有者的 ASC 中移除此技能
+	 * 只能在服务器端调用，会移除当前技能实例
+	 * 注意：如果技能正在激活中，会先结束技能再移除
+	 * @return 是否成功移除
+	 */
+	UFUNCTION(BlueprintCallable, Category = "YcGameCore|Ability", Meta = (BlueprintAuthorityOnly))
+	bool RemoveSelfFromOwner();
 	
 public:
 	/**

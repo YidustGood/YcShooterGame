@@ -389,6 +389,46 @@ void UYcGameplayAbility::ExternalEndAbility()
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
+void UYcGameplayAbility::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
+{
+	// 先调用父类结束技能
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+
+	// 如果配置为执行后自动移除，则在服务器端移除技能
+	if (bRemoveAfterExecution && ActorInfo && ActorInfo->IsNetAuthority())
+	{
+		if (UYcAbilitySystemComponent* YcASC = GetYcAbilitySystemComponentFromActorInfo())
+		{
+			YcASC->ClearAbility(Handle);
+		}
+	}
+}
+
+bool UYcGameplayAbility::RemoveSelfFromOwner()
+{
+	// 只能在服务器端执行
+	if (!GetActorInfo().IsNetAuthority())
+	{
+		return false;
+	}
+
+	UYcAbilitySystemComponent* YcASC = GetYcAbilitySystemComponentFromActorInfo();
+	if (!YcASC)
+	{
+		return false;
+	}
+
+	// 如果技能正在激活中，先结束技能
+	if (IsActive())
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+	}
+
+	// 从 ASC 中移除此技能
+	YcASC->ClearAbility(CurrentSpecHandle);
+	return true;
+}
+
 bool UYcGameplayAbility::CanChangeActivationGroup(EYcAbilityActivationGroup NewGroup) const
 {
 	if (!IsInstantiated() || !IsActive()) return false;
@@ -406,7 +446,7 @@ bool UYcGameplayAbility::CanChangeActivationGroup(EYcAbilityActivationGroup NewG
 
 	if ((NewGroup == EYcAbilityActivationGroup::Exclusive_Replaceable) && !CanBeCanceled())
 	{
-		// 如果此能力本身不可被取消，则它不能切换到“可被替换的排他性”分组。
+		// 如果此能力本身不可被取消，则它不能切换到"可被替换的排他性"分组。
 		return false;
 	}
 

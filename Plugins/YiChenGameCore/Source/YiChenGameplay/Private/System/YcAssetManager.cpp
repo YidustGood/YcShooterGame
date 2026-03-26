@@ -4,6 +4,7 @@
 #include "System/YcAssetManager.h"
 #include "YiChenGameplay.h"
 #include "System/YcGameData.h"
+#include "System/YcDataRegistryAssetResolver.h"
 #include "Character/YcPawnData.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcAssetManager)
@@ -241,6 +242,90 @@ void UYcAssetManager::DoAllStartupJobs()
 void UYcAssetManager::UpdateInitialGameContentLoadPercent(float GameContentPercent)
 {
 	// @TODO: 可以将此进度路由到早期启动加载屏幕
+}
+
+void UYcAssetManager::RegisterDataRegistryResolver(TSharedPtr<IYcDataRegistryAssetResolver> Resolver)
+{
+	DataRegistryResolver = Resolver;
+	
+	if (Resolver.IsValid())
+	{
+		UE_LOG(LogYcGameplay, Verbose, TEXT("DataRegistry 资产解析器已注册"));
+	}
+	else
+	{
+		UE_LOG(LogYcGameplay, Warning, TEXT("尝试注册无效的 DataRegistry 资产解析器"));
+	}
+}
+
+TSharedPtr<IYcDataRegistryAssetResolver> UYcAssetManager::GetDataRegistryResolver() const
+{
+	return DataRegistryResolver;
+}
+
+TSharedPtr<FStreamableHandle> UYcAssetManager::PreloadPrimaryAssets(
+	const TArray<FPrimaryAssetId>& AssetIds,
+	const TArray<FName>& BundleNames,
+	FStreamableDelegate OnComplete,
+	FStreamableUpdateDelegate OnProgressUpdate,
+	int32 Priority)
+{
+	if (AssetIds.Num() == 0)
+	{
+		// 没有资产需要加载，直接回调成功
+		OnComplete.ExecuteIfBound();
+		return nullptr;
+	}
+	
+	TArray<FPrimaryAssetId> ToLoadAssetIds;
+	for (const FPrimaryAssetId& AssetId : AssetIds)
+	{
+		// 通过此函数判断该Asset是否已经在内存中，如果为真，说明已经加载过，就不要继续往下执行了
+		if (GetPrimaryAssetObject(AssetId))
+		{
+			UE_LOG(LogYcGameplay, Verbose, TEXT("指定的Asset已经被加载，该AssetName为：%s , 加载函数已取消"), *AssetId.PrimaryAssetName.ToString());
+			continue;
+		}
+		ToLoadAssetIds.Add(AssetId);
+	}
+	
+	if (ToLoadAssetIds.Num() == 0)
+	{
+		// 没有需要加载的主资产直接触发回调并返回
+		OnComplete.ExecuteIfBound();
+		return nullptr;
+	}
+	
+	UE_LOG(LogYcGameplay, Log, TEXT("PreloadPrimaryAssets: 开始加载 %d 个主资产"), ToLoadAssetIds.Num());
+	// 打印 BundleNames
+	FString BundleStr = TEXT("BundleNames: ");
+	for (const FName& Bundle : BundleNames)
+	{
+		BundleStr += Bundle.ToString() + TEXT(", ");
+	}
+	UE_LOG(LogYcGameplay, Log, TEXT("%s"), *BundleStr);
+
+	// 打印 ToLoadAssetIds
+	FString AssetIdStr = TEXT("ToLoadAssetIds: ");
+	for (const FPrimaryAssetId& AssetId : ToLoadAssetIds)
+	{
+		AssetIdStr += AssetId.ToString() + TEXT(", ");
+	}
+	UE_LOG(LogYcGameplay, Log, TEXT("%s"), *AssetIdStr);
+	
+	TSharedPtr<FStreamableHandle> Handle = LoadPrimaryAssets(ToLoadAssetIds, BundleNames, OnComplete, Priority);
+	
+	if (Handle.IsValid())
+	{
+		Handle->BindUpdateDelegate(OnProgressUpdate);
+		return Handle;
+	}
+	else
+	{
+		// 加载失败
+		OnComplete.ExecuteIfBound();
+		return nullptr;
+	}
 }
 
 #if WITH_EDITOR

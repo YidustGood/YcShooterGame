@@ -345,37 +345,19 @@ void UYcExperienceManagerComponent::OnExperienceFullLoadCompleted()
 		}
 	}
 	
-	UE_LOG(LogYcGameplay, Log, TEXT("EXPERIENCE: OnExperienceFullLoadCompleted(CurrentExperience = %s, %s; NumGameFeatureActionsLoading = %d)"),
+	UE_LOG(LogYcGameplay, Log, TEXT("EXPERIENCE: OnExperienceFullLoadCompleted(CurrentExperience = %s, %s; NumGameFeatureActionsLoading = %d, NumActivePausers = %d)"),
 			*CurrentExperience->GetPrimaryAssetId().ToString(),
-			*GetClientServerContextString(this), NumGameFeatureActionsLoading);
+			*GetClientServerContextString(this), NumGameFeatureActionsLoading, NumActivePausers);
 	
-	LoadState = EYcExperienceLoadState::Loaded;
+	// 如果有活跃的阻塞器，等待它们完成
+	if (NumActivePausers > 0)
+	{
+		bWaitingForPausers = true;
+		UE_LOG(LogYcGameplay, Log, TEXT("EXPERIENCE: 等待 %d 个阻塞器完成..."), NumActivePausers);
+		return;
+	}
 	
-	UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(this);
-	
-	// 按照优先级调用委托
-	OnExperienceLoaded_HighPriority.Broadcast(CurrentExperience);
-	OnExperienceLoaded_HighPriority.Clear();
-	
-	// 配合GameplayMessageSubsystem广播消息, 实现跨模块低耦合的Experience加载完成消息通知
-	// 共同依赖YiChenGameCore模块中定义的FExperienceLoadedMessage和GameplayTag即可, 避免了模块循环依赖的产生
-	FExperienceLoadedMessage LoadedMessage;
-	LoadedMessage.LoadedExperienceObject = CurrentExperience;
-	MessageSubsystem.BroadcastMessage(YcGameplayTags::Experience_StateEvent_Loaded_HighPriority, LoadedMessage);
-
-	OnExperienceLoaded.Broadcast(CurrentExperience);
-	OnExperienceLoaded.Clear();
-	MessageSubsystem.BroadcastMessage(YcGameplayTags::Experience_StateEvent_Loaded, LoadedMessage);
-
-	OnExperienceLoaded_LowPriority.Broadcast(CurrentExperience);
-	OnExperienceLoaded_LowPriority.Clear();
-	MessageSubsystem.BroadcastMessage(YcGameplayTags::Experience_StateEvent_Loaded_LowPriority, LoadedMessage);
-	
-	// @TODO 通知设置类Experience加载完成, 以提供设置对Experience系统的响应能力(非必要)
-	// Apply any necessary scalability settings
-// #if !UE_SERVER
-// 	UYcSettingsLocal::Get()->OnExperienceLoaded();
-// #endif
+	FinishExperienceLoad();
 }
 
 const UYcExperienceDefinition* UYcExperienceManagerComponent::GetCurrentExperienceChecked() const
@@ -536,4 +518,54 @@ void UYcExperienceManagerComponent::OnAllActionsDeactivated()
 	LoadState = EYcExperienceLoadState::Unloaded;
 	CurrentExperience = nullptr;
 	//@TODO: GEngine->ForceGarbageCollection(true);
+}
+
+void UYcExperienceManagerComponent::RegisterActionPauser()
+{
+	++NumActivePausers;
+	UE_LOG(LogYcGameplay, Log, TEXT("EXPERIENCE: 注册阻塞器，当前数量: %d"), NumActivePausers);
+}
+
+void UYcExperienceManagerComponent::UnregisterActionPauser()
+{
+	check(NumActivePausers > 0);
+	--NumActivePausers;
+	UE_LOG(LogYcGameplay, Log, TEXT("EXPERIENCE: 取消阻塞器，剩余数量: %d"), NumActivePausers);
+
+	// 如果正在等待阻塞器且所有阻塞器都完成了
+	if (bWaitingForPausers && NumActivePausers == 0)
+	{
+		bWaitingForPausers = false;
+		OnAllPausersComplete();
+	}
+}
+
+void UYcExperienceManagerComponent::OnAllPausersComplete()
+{
+	UE_LOG(LogYcGameplay, Log, TEXT("EXPERIENCE: 所有阻塞器完成，继续加载流程"));
+	FinishExperienceLoad();
+}
+
+void UYcExperienceManagerComponent::FinishExperienceLoad()
+{
+	LoadState = EYcExperienceLoadState::Loaded;
+
+	UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(this);
+
+	// 按照优先级调用委托
+	OnExperienceLoaded_HighPriority.Broadcast(CurrentExperience);
+	OnExperienceLoaded_HighPriority.Clear();
+
+	// 配合GameplayMessageSubsystem广播消息, 实现跨模块低耦合的Experience加载完成消息通知
+	FExperienceLoadedMessage LoadedMessage;
+	LoadedMessage.LoadedExperienceObject = CurrentExperience;
+	MessageSubsystem.BroadcastMessage(YcGameplayTags::Experience_StateEvent_Loaded_HighPriority, LoadedMessage);
+
+	OnExperienceLoaded.Broadcast(CurrentExperience);
+	OnExperienceLoaded.Clear();
+	MessageSubsystem.BroadcastMessage(YcGameplayTags::Experience_StateEvent_Loaded, LoadedMessage);
+
+	OnExperienceLoaded_LowPriority.Broadcast(CurrentExperience);
+	OnExperienceLoaded_LowPriority.Clear();
+	MessageSubsystem.BroadcastMessage(YcGameplayTags::Experience_StateEvent_Loaded_LowPriority, LoadedMessage);
 }

@@ -8,6 +8,7 @@
 
 class UYcGameData;
 class UYcPawnData;
+class IYcDataRegistryAssetResolver;
 
 struct FYcBundles
 {
@@ -36,6 +37,7 @@ UCLASS(Config = Game)
 class YICHENGAMEPLAY_API UYcAssetManager : public UAssetManager
 {
 	GENERATED_BODY()
+	
 public:
 	/** 构造函数 */
 	UYcAssetManager();
@@ -81,6 +83,29 @@ public:
 	 * @return 默认Pawn配置指针，未配置返回nullptr
 	 */
 	const UYcPawnData* GetDefaultPawnData() const;
+	
+	// @TODO 目前只支持单一资产解析器, 后续需要扩展可以支持多钟
+	/** 注册 DataRegistry 资产解析器 */
+	void RegisterDataRegistryResolver(TSharedPtr<IYcDataRegistryAssetResolver> Resolver);
+	
+	/** 获取 DataRegistry 资产解析器 */
+	TSharedPtr<IYcDataRegistryAssetResolver> GetDataRegistryResolver() const;
+
+	/**
+	 * 预加载一组主资产, 自动过滤已加载的
+	 * @param AssetIds 要加载的主资产ID列表
+	 * @param BundleNames 要加载的 Bundle 名称
+	 * @param OnComplete 完成回调
+	 * @param OnProgressUpdate 加载进度回调
+	 * @param Priority 加载优先级
+	 * @return 加载句柄，可用于追踪进度或取消
+	 */
+	TSharedPtr<FStreamableHandle> PreloadPrimaryAssets(
+		const TArray<FPrimaryAssetId>& AssetIds,
+		const TArray<FName>& BundleNames = {},
+		FStreamableDelegate OnComplete = FStreamableDelegate(),
+		FStreamableUpdateDelegate OnProgressUpdate = FStreamableUpdateDelegate(),
+		int32 Priority = 0);
 	
 protected:
 	/**
@@ -170,6 +195,9 @@ private:
 
 	/** 修改已加载资产列表时的临界区锁 */
 	FCriticalSection LoadedAssetsCritical;
+	
+	/** DataRegistry 资产解析器 */
+	TSharedPtr<IYcDataRegistryAssetResolver> DataRegistryResolver;
 };
 
 template <typename AssetType>

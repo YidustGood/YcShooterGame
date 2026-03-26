@@ -122,7 +122,15 @@ public:
 	 * @return 如果Experience已完全加载返回true，否则返回false
 	 */
 	UE_API bool IsExperienceLoaded() const;
-	
+
+	//~ Action 异步阻塞机制
+	/** 注册一个阻塞器（由 GameFeatureAction 调用） */
+	UE_API void RegisterActionPauser();
+	/** 取消注册阻塞器，加载完成时调用 */
+	UE_API void UnregisterActionPauser();
+	/** 检查是否还有活跃的阻塞器 */
+	UE_API bool HasActivePausers() const { return NumActivePausers > 0; }
+
 private:
 	/** CurrentExperience的复制通知函数, CurrentExperience复制到客户端后会自动调用这个函数以在客户端开始Experience的加载 */
 	UFUNCTION()
@@ -150,6 +158,12 @@ private:
 	// 当所有Action反激活完成后的回调函数
 	void OnAllActionsDeactivated();
 	
+	// 所有阻塞器完成后的回调
+	void OnAllPausersComplete();
+	
+	// 完成Experience加载，设置状态为Loaded并广播完成事件
+	void FinishExperienceLoad();
+	
 	UPROPERTY(ReplicatedUsing=OnRep_CurrentExperience)
 	TObjectPtr<const UYcExperienceDefinition> CurrentExperience;
 
@@ -162,6 +176,12 @@ private:
 
 	int32 NumObservedPausers = 0;
 	int32 NumExpectedPausers = 0;
+	
+	//~ Action 异步阻塞机制
+	/** 当前活跃的阻塞器数量 */
+	int32 NumActivePausers = 0;
+	/** 是否正在等待阻塞器完成 */
+	bool bWaitingForPausers = false;
 
 	/**
 	 * Delegate called when the experience has finished loading just before others

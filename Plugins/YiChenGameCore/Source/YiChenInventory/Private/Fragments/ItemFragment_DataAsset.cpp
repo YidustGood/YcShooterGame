@@ -114,6 +114,20 @@ void FItemFragment_DataAsset::LoadAllDataAssetAsync(UObject* InRelatedObject) co
 			FStreamableDelegate OnLoadCompleted;
 			OnLoadCompleted.BindLambda([InRelatedObject, AssetTag, AssetId]()
 			{
+				// 安全检查：确保相关对象和世界仍然有效（PIE 快速退出时可能已销毁）
+				if (!IsValid(InRelatedObject))
+				{
+					UE_LOG(LogYcInventory, Warning, TEXT("FItemFragment_DataAsset: InRelatedObject is invalid, skipping message broadcast for %s"), *AssetTag.ToString());
+					return;
+				}
+				
+				UWorld* World = InRelatedObject->GetWorld();
+				if (!World || !World->IsGameWorld())
+				{
+					UE_LOG(LogYcInventory, Warning, TEXT("FItemFragment_DataAsset: World is invalid or not a game world, skipping message broadcast for %s"), *AssetTag.ToString());
+					return;
+				}
+				
 				// 加载完成后广播全局消息
 				UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(InRelatedObject);
 				

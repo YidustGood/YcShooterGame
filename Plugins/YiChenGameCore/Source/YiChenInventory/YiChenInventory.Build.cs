@@ -16,6 +16,7 @@ public class YiChenInventory : ModuleRules
                 "NetCore", 
                 "StructUtils", 
                 "YiChenGameCore",
+                "YiChenGameplay",
                 "GameplayTags",
                 "DataRegistry"
             }

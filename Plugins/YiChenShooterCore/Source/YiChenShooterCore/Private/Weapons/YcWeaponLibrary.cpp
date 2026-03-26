@@ -267,9 +267,18 @@ void UYcWeaponLibrary::LoadWeaponAttachmentDataAssetAsync(UObject* WorldContextO
 					MeshPath,
 					FStreamableDelegate::CreateLambda([ItemName, MeshPath, AttachmentMeshPtr]()
 					{
-						AttachmentMeshPtr.Get()->AddToRoot();
-						UE_LOG(LogYcShooterCore, Log, TEXT("Loaded attachment mesh for %s: %s"), 
-							*ItemName.ToString(), *MeshPath.ToString());
+						// 安全检查：确保资产有效且未被销毁
+						if (UStaticMesh* LoadedMesh = AttachmentMeshPtr.Get())
+						{
+							LoadedMesh->AddToRoot();
+							UE_LOG(LogYcShooterCore, Log, TEXT("Loaded attachment mesh for %s: %s"), 
+								*ItemName.ToString(), *MeshPath.ToString());
+						}
+						else
+						{
+							UE_LOG(LogYcShooterCore, Warning, TEXT("Failed to load attachment mesh for %s: %s (asset may have been destroyed)"), 
+								*ItemName.ToString(), *MeshPath.ToString());
+						}
 					}),
 					FStreamableManager::DefaultAsyncLoadPriority,
 					false,  // bManageActiveHandle

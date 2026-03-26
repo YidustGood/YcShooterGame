@@ -193,6 +193,7 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Fragment")
 	static AYcWeaponActor* GetPlayerThirdPersonWeaponActor(AActor* OwnerActor);
 	
+	//@TODO 不应该用这种形式加载所有武器配件
 	/**
 	 * 通过DataRegistryId异步加载物品定义中的所有数据资产
 	 * 可用于预加载物品资产，避免运行时卡顿

@@ -231,7 +231,8 @@ void UYcPawnExtensionComponent::InitializeAbilitySystem(UYcAbilitySystemComponen
 	// 初始化ASC的Actor信息，设置Owner和Avatar
 	AbilitySystemComponent->InitAbilityActorInfo(InOwnerActor, Pawn);
 	
-	if (ensure(PawnData))
+	// @TODO 是否要做PawnData无效的日志提醒呢? 对于玩家/PVP AI是需要PawnData的, 对于小怪这些更轻量的AI是不需要PawnData的
+	if (PawnData)
 	{
 		InASC->SetTagRelationshipMapping(PawnData->TagRelationshipMapping);
 	}

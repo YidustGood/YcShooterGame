@@ -214,6 +214,15 @@ bool FYcInventoryItemList::RemoveItem(UYcInventoryItemInstance* Instance)
 	return false;
 }
 
+bool FYcInventoryItemList::FindItemById(const FName& ItemId, FYcInventoryItemEntry& OutItemEntry)
+{
+	if (ItemId.IsNone()) return false;
+	if (!ItemsMap.Contains(ItemId)) return false;
+	
+	OutItemEntry = *ItemsMap[ItemId];
+	return true;
+}
+
 void FYcInventoryItemList::BroadcastChangeMessage(const FYcInventoryItemEntry& ItemEntry, const int32 OldCount, const int32 NewCount) const
 {
 	FYcInventoryItemChangeMessage Message;
@@ -387,6 +396,25 @@ int32 UYcInventoryManagerComponent::GetTotalItemCountByDefinition(const FYcInven
 		}
 	}
 	return TotalCount;
+}
+
+int32 UYcInventoryManagerComponent::GetStackCountByItemInstance(const UYcInventoryItemInstance* ItemInstance) const
+{
+	for (const FYcInventoryItemEntry& ItemEntry : ItemList.Items)
+	{
+		const UYcInventoryItemInstance* Instance = ItemEntry.Instance;
+
+		if (IsValid(Instance) && ItemInstance == Instance)
+		{
+			return ItemEntry.StackCount;
+		}
+	}
+	return 0;
+}
+
+bool UYcInventoryManagerComponent::FindItemById(const FName& ItemId, FYcInventoryItemEntry& OutItemEntry)
+{
+	return ItemList.FindItemById(ItemId, OutItemEntry);
 }
 
 bool UYcInventoryManagerComponent::ConsumeItemsByDefinition(const FYcInventoryItemDefinition& ItemDef, const int32 NumToConsume)

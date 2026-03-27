@@ -121,6 +121,14 @@ public:
 	 * @return 是否移除成功
 	 */
 	bool RemoveItem(UYcInventoryItemInstance* Instance);
+	
+	/**
+	 * 在ItemsMap中通过ItemId快速查找Item数据条目
+	 * @param ItemId 要查找的ItemId
+	 * @param OutItemEntry 找到的Item数据条目
+	 * @return 是否成功找到
+	 */
+	bool FindItemById(const FName& ItemId, FYcInventoryItemEntry& OutItemEntry);
 
 private:
 	/**
@@ -264,6 +272,23 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = Inventory, BlueprintPure)
 	int32 GetTotalItemCountByDefinition(const FYcInventoryItemDefinition& ItemDef);
+	
+	/**
+	 * 获取ItemInstance的StackCount
+	 * @param ItemInstance 目标ItemInstance
+	 * @return ItemInstance StackCount
+	 */
+	UFUNCTION(BlueprintCallable, Category=Inventory, BlueprintPure)
+	int32 GetStackCountByItemInstance(const UYcInventoryItemInstance* ItemInstance) const;
+	
+	/**
+	 * 在ItemsMap中通过ItemId快速查找Item数据条目
+	 * @param ItemId 要查找的ItemId
+	 * @param OutItemEntry 找到的Item数据条目
+	 * @return 是否成功找到
+	 */
+	UFUNCTION(BlueprintCallable, Category = Inventory, BlueprintPure)
+	bool FindItemById(const FName& ItemId, FYcInventoryItemEntry& OutItemEntry);
 	
 private:
 	/** 基于FastArray进行网络复制的库存物品列表 */

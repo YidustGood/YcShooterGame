@@ -159,7 +159,7 @@ void UYcAICharacterComponent::BeginPlay()
 	BindOnActorInitStateChanged(UYcPawnExtensionComponent::NAME_ActorFeatureName, FGameplayTag(), false);
 	
 	// 在接收到生成完成通知后，继续执行剩余初始化流程
-	ensure(TryToChangeInitState(YcGameplayTags::InitState_Spawned));
+	TryToChangeInitState(YcGameplayTags::InitState_Spawned);
 	CheckDefaultInitialization();
 }
 

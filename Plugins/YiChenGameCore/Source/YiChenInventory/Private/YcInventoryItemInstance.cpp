@@ -26,6 +26,8 @@ void UYcInventoryItemInstance::GetLifetimeReplicatedProps(TArray<FLifetimeProper
 	DOREPLIFETIME(UYcInventoryItemInstance, ItemRegistryId);
 	DOREPLIFETIME(UYcInventoryItemInstance, ItemInstId);
 	DOREPLIFETIME(UYcInventoryItemInstance, TagsStack);
+	DOREPLIFETIME(UYcInventoryItemInstance, FloatTagsStack);
+	DOREPLIFETIME(UYcInventoryItemInstance, OwnedTags);
 }
 
 void UYcInventoryItemInstance::SetItemRegistryId(const FDataRegistryId& InItemRegistryId)
@@ -124,6 +126,34 @@ bool UYcInventoryItemInstance::HasStatTag(const FGameplayTag Tag) const
 	return TagsStack.ContainsTag(Tag);
 }
 
+//~=============================================================================
+// 浮点数标签堆叠系统
+
+void UYcInventoryItemInstance::AddFloatTagStack(const FGameplayTag Tag, const float Value)
+{
+	FloatTagsStack.AddStack(Tag, Value);
+}
+
+void UYcInventoryItemInstance::RemoveFloatTagStack(const FGameplayTag Tag, const float Value)
+{
+	FloatTagsStack.RemoveStack(Tag, Value);
+}
+
+void UYcInventoryItemInstance::SetFloatTagStack(const FGameplayTag Tag, const float Value)
+{
+	FloatTagsStack.SetStack(Tag, Value);
+}
+
+float UYcInventoryItemInstance::GetFloatTagStackValue(const FGameplayTag Tag) const
+{
+	return FloatTagsStack.GetStackValue(Tag);
+}
+
+bool UYcInventoryItemInstance::HasFloatTag(const FGameplayTag Tag) const
+{
+	return FloatTagsStack.ContainsTag(Tag);
+}
+
 UYcInventoryManagerComponent* UYcInventoryItemInstance::GetInventoryManager() const
 {
 	const AActor* OwnerActor = GetActorOuter();
@@ -147,4 +177,25 @@ void UYcInventoryItemInstance::OnRep_ItemRegistryId()
 	// 清除旧缓存并尝试重新获取
 	ItemDef = nullptr;
 	CacheItemDefFromRegistry();
+}
+
+//~=============================================================================
+// IGameplayTagAssetInterface 实现
+
+void UYcInventoryItemInstance::GetOwnedGameplayTags(FGameplayTagContainer& TagContainer) const
+{
+	TagContainer = OwnedTags;
+}
+
+//~=============================================================================
+// 物品特征标签系统
+
+void UYcInventoryItemInstance::AddOwnedTag(FGameplayTag Tag)
+{
+	OwnedTags.AddTag(Tag);
+}
+
+void UYcInventoryItemInstance::RemoveOwnedTag(FGameplayTag Tag)
+{
+	OwnedTags.RemoveTag(Tag);
 }

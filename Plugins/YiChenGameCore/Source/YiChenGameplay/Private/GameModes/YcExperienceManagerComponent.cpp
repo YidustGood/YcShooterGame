@@ -557,6 +557,7 @@ void UYcExperienceManagerComponent::FinishExperienceLoad()
 	OnExperienceLoaded_HighPriority.Clear();
 
 	// 配合GameplayMessageSubsystem广播消息, 实现跨模块低耦合的Experience加载完成消息通知
+	// 共同依赖YiChenGameCore模块中定义的FExperienceLoadedMessage和GameplayTag即可, 避免了模块循环依赖的产生
 	FExperienceLoadedMessage LoadedMessage;
 	LoadedMessage.LoadedExperienceObject = CurrentExperience;
 	MessageSubsystem.BroadcastMessage(YcGameplayTags::Experience_StateEvent_Loaded_HighPriority, LoadedMessage);
@@ -568,4 +569,10 @@ void UYcExperienceManagerComponent::FinishExperienceLoad()
 	OnExperienceLoaded_LowPriority.Broadcast(CurrentExperience);
 	OnExperienceLoaded_LowPriority.Clear();
 	MessageSubsystem.BroadcastMessage(YcGameplayTags::Experience_StateEvent_Loaded_LowPriority, LoadedMessage);
+	
+	// @TODO 通知设置类Experience加载完成, 以提供设置对Experience系统的响应能力(非必要)
+	// Apply any necessary scalability settings
+	// #if !UE_SERVER
+	//  UYcSettingsLocal::Get()->OnExperienceLoaded();
+	// #endif
 }

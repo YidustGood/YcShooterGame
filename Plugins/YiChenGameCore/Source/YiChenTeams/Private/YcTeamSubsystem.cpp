@@ -193,6 +193,50 @@ bool UYcTeamSubsystem::FindTeamAgentFromActor(AActor* PossibleTeamActor, TScript
 		}
 	}
 
+	// 尝试从 Pawn 和 Controller 的关联关系中查找
+	if (const APawn* Pawn = Cast<const APawn>(PossibleTeamActor))
+	{
+		// 从 Pawn 的 Controller 上查找（Controller 本身或其组件）
+		if (AController* Controller = Pawn->GetController())
+		{
+			TScriptInterface<IYcTeamAgentInterface> TeamAgent(Controller);
+			if (TeamAgent)
+			{
+				OutTeamAgent = TeamAgent;
+				return true;
+			}
+			
+			// 检查 Controller 的组件
+			FindTeamAgentFromActorComponents(Controller, TeamAgent);
+			if (TeamAgent)
+			{
+				OutTeamAgent = TeamAgent;
+				return true;
+			}
+		}
+	}
+	else if (const AController* PC = Cast<const AController>(PossibleTeamActor))
+	{
+		// 从 Controller 控制的 Pawn 上查找（Pawn 本身或其组件）
+		if (APawn* ControlledPawn = PC->GetPawn())
+		{
+			TScriptInterface<IYcTeamAgentInterface> TeamAgent(ControlledPawn);
+			if (TeamAgent)
+			{
+				OutTeamAgent = TeamAgent;
+				return true;
+			}
+			
+			// 检查 Pawn 的组件
+			FindTeamAgentFromActorComponents(ControlledPawn, TeamAgent);
+			if (TeamAgent)
+			{
+				OutTeamAgent = TeamAgent;
+				return true;
+			}
+		}
+	}
+
 	// 最后再尝试获取PlayerState, 因为推荐做法是放在PlayerState上管理玩家队伍信息
 	APlayerState* PlayerState = nullptr;
 	
@@ -283,7 +327,7 @@ int32 UYcTeamSubsystem::FindTeamFromObject(UObject* TestObject)
 			return TeamAgent->GetTeamId();
 		}
 	}
-	UE_LOG(LogYcTeamSystem, Warning, TEXT("通过%s对象寻找队伍信息失败."), *GetNameSafe(TestObject));
+	// UE_LOG(LogYcTeamSystem, Warning, TEXT("通过%s对象寻找队伍信息失败."), *GetNameSafe(TestObject));
 	return INDEX_NONE;
 }
 

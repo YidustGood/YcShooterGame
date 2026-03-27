@@ -5,6 +5,7 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
+#include "YcTeamSubsystem.h"
 #include "YiChenGameplay.h"
 #include "GameFramework/PlayerState.h"
 #include "GameModes/YcGameMode.h"
@@ -29,13 +30,22 @@ void AYcAIController::SetGenericTeamId(const FGenericTeamId& NewTeamID)
 
 FGenericTeamId AYcAIController::GetGenericTeamId() const
 {
-	// 从Bot控制的PlayerState中获取TeamID
-	// 这样可以确保AI Bot和玩家使用相同的队伍管理机制
+	FGenericTeamId TeamId = FGenericTeamId::NoTeam;
+	// 如果PlayerState有效则Bot为一个PVP的Bot, 从关联的PlayerState中获取TeamID, 这样可以确保AI Bot和玩家使用相同的队伍管理机制
 	if (const IYcTeamAgentInterface* PSWithTeamInterface = Cast<IYcTeamAgentInterface>(PlayerState))
 	{
-		return PSWithTeamInterface->GetGenericTeamId();
+		TeamId = PSWithTeamInterface->GetGenericTeamId();
+	}else
+	{
+		// 如果没有PlayerState, 那么这个Bot可能就是类似PVE中的小兵怪物之类的Bot了, 用TeamSubsystem来查询队伍信息
+		UYcTeamSubsystem& TeamSubsystem = UYcTeamSubsystem::Get(this);
+		TScriptInterface<IYcTeamAgentInterface> ScriptTeamAgent;
+		if (TeamSubsystem.FindTeamAgentFromActor(GetPawn(), ScriptTeamAgent))
+		{
+			TeamId = ScriptTeamAgent->GetGenericTeamId();
+		}
 	}
-	return FGenericTeamId::NoTeam;	
+	return TeamId;	
 }
 
 FOnYcTeamIndexChangedDelegate* AYcAIController::GetOnTeamIndexChangedDelegate()
@@ -45,16 +55,35 @@ FOnYcTeamIndexChangedDelegate* AYcAIController::GetOnTeamIndexChangedDelegate()
 
 ETeamAttitude::Type AYcAIController::GetTeamAttitudeTowards(const AActor& Other) const
 {
-	// 获取目标Pawn
-	const APawn* OtherPawn = Cast<APawn>(&Other);
-	if (OtherPawn == nullptr) return ETeamAttitude::Neutral;
+	FGenericTeamId OtherTeamID = FGenericTeamId::NoTeam;
 	
-	// 获取目标的队伍代理接口
-	const IYcTeamAgentInterface* TeamAgent = Cast<IYcTeamAgentInterface>(OtherPawn->GetController());
-	if (TeamAgent == nullptr) return ETeamAttitude::Neutral;
-
-	FGenericTeamId OtherTeamID = TeamAgent->GetGenericTeamId();
-
+	// 1. 首先将其视作玩家或者AI操控的Pawn
+	if (const APawn* OtherPawn = Cast<APawn>(&Other))
+	{
+		// 获取目标的队伍代理接口
+		if (const IYcTeamAgentInterface* TeamAgent = Cast<IYcTeamAgentInterface>(OtherPawn->GetController()))
+		{
+			OtherTeamID = TeamAgent->GetGenericTeamId();
+		}
+	};
+	
+	// 2. 前面没查到就通过TeamSubsystem接口查, 因为这个查询开销稍微大一些所以是放到第二顺序
+	if (OtherTeamID == FGenericTeamId::NoTeam)
+	{
+		UYcTeamSubsystem& TeamSubsystem = UYcTeamSubsystem::Get(this);
+		TScriptInterface<IYcTeamAgentInterface> ScriptTeamAgent;
+		if (TeamSubsystem.FindTeamAgentFromActor(const_cast<AActor*>(&Other), ScriptTeamAgent))
+		{
+			OtherTeamID = ScriptTeamAgent->GetGenericTeamId();
+		}
+	}
+	
+	// 如果通过1、2方式都没有查到有效的TeamId那么直接视为中立对象
+	if (OtherTeamID == FGenericTeamId::NoTeam)
+	{
+		return ETeamAttitude::Neutral;
+	}
+	
 	// 根据队伍ID判断态度：不同队伍为敌对，相同队伍为友好
 	if (OtherTeamID.GetId() != GetGenericTeamId().GetId())
 	{

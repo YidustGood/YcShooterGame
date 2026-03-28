@@ -8,7 +8,7 @@
 
 /**
  * 初始物品数据状态功能片段, 通过GameplayTag和数值键值对配置物品属性, 在物品实例创建的时候初始化到ItemInst中以实现动态状态和网络复制
- * 例如：(武器备用子弹Tag,子弹数量)
+ * 例如：(武器备用子弹Tag,子弹数量)、(护甲耐久Tag,耐久值)
  * 注意该片段静态配置然后实例化是设置到ItemInst, 由ItemInst负责动态管理和网络复制
  */
 USTRUCT(BlueprintType)
@@ -16,10 +16,19 @@ struct YICHENINVENTORY_API FInventoryFragment_InitialItemStats : public FYcInven
 {
 	GENERATED_BODY()
 	
+	/** 整数类型的初始属性映射 */
 	UPROPERTY(EditDefaultsOnly, Category="Data")
 	TMap<FGameplayTag, int32> InitialItemStats;
 	
+	/** 浮点数类型的初始属性映射 */
+	UPROPERTY(EditDefaultsOnly, Category="Data")
+	TMap<FGameplayTag, float> InitialFloatStats;
+	
 	virtual void OnInstanceCreated(UYcInventoryItemInstance* Instance) const override;
 
+	/** 获取整数类型的属性值 */
 	int32 GetItemStatByTag(FGameplayTag Tag) const;
+	
+	/** 获取浮点数类型的属性值 */
+	float GetItemFloatStatByTag(FGameplayTag Tag) const;
 };

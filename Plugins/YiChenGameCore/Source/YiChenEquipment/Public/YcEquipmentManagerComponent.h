@@ -210,14 +210,33 @@ public:
 	
 	/**
 	 * [Server Only] 创建装备实例
-	 * 创建装备实例并生成Actors（隐藏状态），但不装备
+	 * 自动从ItemInstance获取装备定义，创建装备实例并生成Actors（隐藏状态）
 	 * 
-	 * @param EquipmentDef 装备定义
-	 * @param ItemInstance 所属的库存物品实例
+	 * 内部保护：
+	 * - 如果物品不可装备（无FInventoryFragment_Equippable），返回nullptr
+	 * - 如果该物品已存在装备实例，直接返回已有实例（防止重复创建）
+	 * 
+	 * @param ItemInstance 库存物品实例
 	 * @return 创建的装备实例，失败返回nullptr
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Equipment")
-	UYcEquipmentInstance* CreateEquipment(const FYcEquipmentDefinition& EquipmentDef, UYcInventoryItemInstance* ItemInstance);
+	UYcEquipmentInstance* CreateEquipment(UYcInventoryItemInstance* ItemInstance);
+	
+	/**
+	 * [Server Only] 尝试装备物品（聚合函数）
+	 * 自动完成：检查可装备性 → 创建装备实例 → 装备
+	 * 
+	 * 内部保护：
+	 * - 如果物品不可装备，返回false
+	 * - 如果该物品已有装备实例，不会重复创建
+	 * - 如果该物品已处于装备状态，不会重复装备
+	 * 
+	 * @param ItemInstance 要装备的库存物品实例
+	 * @param OutEquipmentInstance 成功装备后的装备实例（可选，可为nullptr）
+	 * @return 是否成功装备
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Equipment")
+	bool TryEquipItem(UYcInventoryItemInstance* ItemInstance, UYcEquipmentInstance*& OutEquipmentInstance);
 	
 	/**
 	 * [Server Only] 装备
@@ -238,6 +257,20 @@ public:
 	void UnequipItem(UYcEquipmentInstance* EquipmentInstance);
 	
 	/**
+	 * [Server Only] 尝试卸下物品（聚合函数）
+	 * 自动完成：查找装备实例 → 卸下装备
+	 * 
+	 * 内部保护：
+	 * - 如果该物品没有装备实例，返回false
+	 * - 如果该物品未处于装备状态，返回false
+	 * 
+	 * @param ItemInstance 要卸下的库存物品实例
+	 * @return 是否成功卸下
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Equipment")
+	bool TryUnequipItem(UYcInventoryItemInstance* ItemInstance);
+	
+	/**
 	 * [Server Only] 销毁装备实例
 	 * 销毁Actors，从列表中移除
 	 * 
@@ -249,6 +282,16 @@ public:
 	// ========================================================================
 	// 查询接口
 	// ========================================================================
+	
+	/**
+	 * 从Actor查找装备管理组件
+	 * 查找顺序：Actor自身 -> Controller的Pawn -> Pawn的Controller -> PlayerState
+	 * 
+	 * @param Actor 要查找的Actor对象
+	 * @return 找到的装备管理组件，如果不存在则返回nullptr
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Equipment")
+	static UYcEquipmentManagerComponent* FindEquipmentManager(const AActor* Actor);
 	
 	/**
 	 * 根据物品实例查找装备实例

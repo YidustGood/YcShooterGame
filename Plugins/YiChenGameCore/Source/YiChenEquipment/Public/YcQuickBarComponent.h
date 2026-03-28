@@ -213,9 +213,6 @@ private:
 	/** 设置激活索引 */
 	void SetActiveSlotIndex_Internal(int32 NewIndex);
 
-	/** 查找装备管理组件 */
-	UYcEquipmentManagerComponent* FindEquipmentManager() const;
-	
 	/** 检查是否为本地控制 */
 	bool IsLocallyControlled() const;
 	

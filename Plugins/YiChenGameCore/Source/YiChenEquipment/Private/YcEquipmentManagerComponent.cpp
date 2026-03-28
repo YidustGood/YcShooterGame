@@ -3,6 +3,7 @@
 #include "YcEquipmentManagerComponent.h"
 
 #include "AbilitySystemGlobals.h"
+#include "Fragments/InventoryFragment_Equippable.h"
 #include "YcAbilitySystemComponent.h"
 #include "YcEquipmentInstance.h"
 #include "YcInventoryItemInstance.h"
@@ -330,9 +331,7 @@ void UYcEquipmentManagerComponent::ReadyForReplication()
 // 主要接口
 // ============================================================================
 
-UYcEquipmentInstance* UYcEquipmentManagerComponent::CreateEquipment(
-	const FYcEquipmentDefinition& EquipmentDef, 
-	UYcInventoryItemInstance* ItemInstance)
+UYcEquipmentInstance* UYcEquipmentManagerComponent::CreateEquipment(UYcInventoryItemInstance* ItemInstance)
 {
 	if (!ItemInstance)
 	{
@@ -340,7 +339,25 @@ UYcEquipmentInstance* UYcEquipmentManagerComponent::CreateEquipment(
 		return nullptr;
 	}
 	
-	UYcEquipmentInstance* Instance = EquipmentList.CreateEntry(EquipmentDef, ItemInstance);
+	// 检查是否已存在该物品的装备实例（防止重复创建）
+	if (UYcEquipmentInstance* ExistingInstance = FindEquipmentByItem(ItemInstance))
+	{
+		UE_LOG(LogYcEquipment, Verbose, TEXT("CreateEquipment: Equipment already exists for item %s"), 
+			*GetNameSafe(ItemInstance));
+		return ExistingInstance;
+	}
+	
+	// 检查物品是否可装备
+	const FInventoryFragment_Equippable* Equippable = ItemInstance->GetTypedFragment<FInventoryFragment_Equippable>();
+	if (!Equippable)
+	{
+		UE_LOG(LogYcEquipment, Warning, TEXT("CreateEquipment: Item %s is not equippable"), 
+			*GetNameSafe(ItemInstance));
+		return nullptr;
+	}
+	
+	// 创建装备实例
+	UYcEquipmentInstance* Instance = EquipmentList.CreateEntry(Equippable->EquipmentDef, ItemInstance);
 	if (!Instance)
 	{
 		return nullptr;
@@ -354,6 +371,45 @@ UYcEquipmentInstance* UYcEquipmentManagerComponent::CreateEquipment(
 	}
 	
 	return Instance;
+}
+
+bool UYcEquipmentManagerComponent::TryEquipItem(UYcInventoryItemInstance* ItemInstance, UYcEquipmentInstance*& OutEquipmentInstance)
+{
+	OutEquipmentInstance = nullptr;
+	
+	if (!ItemInstance)
+	{
+		UE_LOG(LogYcEquipment, Error, TEXT("TryEquipItem: ItemInstance is null"));
+		return false;
+	}
+	
+	// 查找或创建装备实例
+	UYcEquipmentInstance* Instance = FindEquipmentByItem(ItemInstance);
+	if (!Instance)
+	{
+		Instance = CreateEquipment(ItemInstance);
+		if (!Instance)
+		{
+			UE_LOG(LogYcEquipment, Warning, TEXT("TryEquipItem: Failed to create equipment for item %s"), 
+				*GetNameSafe(ItemInstance));
+			return false;
+		}
+	}
+	
+	// 检查是否已装备（防止重复装备）
+	if (Instance->IsEquipped())
+	{
+		UE_LOG(LogYcEquipment, Verbose, TEXT("TryEquipItem: Item %s is already equipped"), 
+			*GetNameSafe(ItemInstance));
+		OutEquipmentInstance = Instance;
+		return true;
+	}
+	
+	// 装备
+	EquipItem(Instance);
+	OutEquipmentInstance = Instance;
+	
+	return true;
 }
 
 void UYcEquipmentManagerComponent::EquipItem(UYcEquipmentInstance* EquipmentInstance)
@@ -378,6 +434,36 @@ void UYcEquipmentManagerComponent::UnequipItem(UYcEquipmentInstance* EquipmentIn
 	EquipmentList.UnequipEntry(EquipmentInstance);
 }
 
+bool UYcEquipmentManagerComponent::TryUnequipItem(UYcInventoryItemInstance* ItemInstance)
+{
+	if (!ItemInstance)
+	{
+		UE_LOG(LogYcEquipment, Error, TEXT("TryUnequipItem: ItemInstance is null"));
+		return false;
+	}
+	
+	// 查找装备实例
+	UYcEquipmentInstance* Instance = FindEquipmentByItem(ItemInstance);
+	if (!Instance)
+	{
+		UE_LOG(LogYcEquipment, Verbose, TEXT("TryUnequipItem: No equipment instance found for item %s"), 
+			*GetNameSafe(ItemInstance));
+		return false;
+	}
+	
+	// 检查是否已装备
+	if (!Instance->IsEquipped())
+	{
+		UE_LOG(LogYcEquipment, Verbose, TEXT("TryUnequipItem: Item %s is not equipped"), 
+			*GetNameSafe(ItemInstance));
+		return false;
+	}
+	
+	// 卸下装备
+	UnequipItem(Instance);
+	return true;
+}
+
 void UYcEquipmentManagerComponent::DestroyEquipment(UYcEquipmentInstance* EquipmentInstance)
 {
 	if (!EquipmentInstance)
@@ -398,6 +484,46 @@ void UYcEquipmentManagerComponent::DestroyEquipment(UYcEquipmentInstance* Equipm
 // ============================================================================
 // 查询接口
 // ============================================================================
+
+UYcEquipmentManagerComponent* UYcEquipmentManagerComponent::FindEquipmentManager(const AActor* Actor)
+{
+	if (!Actor)
+	{
+		return nullptr;
+	}
+	
+	// 1. 直接从 Actor 上查找
+	if (UYcEquipmentManagerComponent* Component = Actor->FindComponentByClass<UYcEquipmentManagerComponent>())
+	{
+		return Component;
+	}
+	
+	// 2. 如果是 Controller，尝试从其 Pawn 上查找
+	if (const AController* Controller = Cast<AController>(Actor))
+	{
+		if (const APawn* Pawn = Controller->GetPawn())
+		{
+			if (UYcEquipmentManagerComponent* Component = Pawn->FindComponentByClass<UYcEquipmentManagerComponent>())
+			{
+				return Component;
+			}
+		}
+	}
+	
+	// 3. 如果是 Pawn，尝试从其 Controller 上查找
+	if (const APawn* Pawn = Cast<APawn>(Actor))
+	{
+		if (const AController* Controller = Pawn->GetController())
+		{
+			if (UYcEquipmentManagerComponent* Component = Controller->FindComponentByClass<UYcEquipmentManagerComponent>())
+			{
+				return Component;
+			}
+		}
+	}
+	
+	return nullptr;
+}
 
 UYcEquipmentInstance* UYcEquipmentManagerComponent::FindEquipmentByItem(UYcInventoryItemInstance* ItemInstance) const
 {

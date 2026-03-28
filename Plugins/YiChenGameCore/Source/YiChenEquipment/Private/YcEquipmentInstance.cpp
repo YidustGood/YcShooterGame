@@ -22,7 +22,7 @@ UYcEquipmentInstance::UYcEquipmentInstance(const FObjectInitializer& ObjectIniti
 	, EquipmentDef(nullptr)
 	, bActorsSpawned(false)
 	, bAutoShowEquipmentActors(true)
-	, bAutoHideEquipmentActors(false)
+	, bAutoHideEquipmentActors(true)
 {
 }
 
@@ -597,7 +597,7 @@ AActor* UYcEquipmentInstance::SpawnEquipActorInternal(
 	}
 	else
 	{
-		UE_LOG(LogYcEquipment, Warning, TEXT("SpawnEquipActorInternal: %s missing UYcEquipmentActorComponent"), 
+		UE_LOG(LogYcEquipment, Error, TEXT("SpawnEquipActorInternal: %s missing UYcEquipmentActorComponent"), 
 			*GetNameSafe(ActorToSpawnClass));
 	}
 	

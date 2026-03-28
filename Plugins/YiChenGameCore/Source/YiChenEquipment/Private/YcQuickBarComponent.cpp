@@ -270,7 +270,7 @@ UYcEquipmentInstance* UYcQuickBarComponent::GetSlotEquipmentInstance(int32 ItemI
 		return nullptr;
 	}
 	
-	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	const UYcEquipmentManagerComponent* EquipmentManager = UYcEquipmentManagerComponent::FindEquipmentManager(GetOwner());
 	if (!EquipmentManager)
 	{
 		return nullptr;
@@ -373,7 +373,7 @@ void UYcQuickBarComponent::ExecuteLocalPredictionDeactivate(int32 NewIndex)
 {
 	UE_LOG(LogYcEquipment, Verbose, TEXT("ExecuteLocalPredictionDeactivate: %d"), NewIndex);
 	
-	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	const UYcEquipmentManagerComponent* EquipmentManager = UYcEquipmentManagerComponent::FindEquipmentManager(GetOwner());
 	if (!EquipmentManager)
 	{
 		return;
@@ -444,7 +444,7 @@ void UYcQuickBarComponent::ReconcilePrediction(int32 ServerIndex)
 
 void UYcQuickBarComponent::RollbackPrediction(int32 ServerIndex)
 {
-	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	const UYcEquipmentManagerComponent* EquipmentManager = UYcEquipmentManagerComponent::FindEquipmentManager(GetOwner());
 	if (!EquipmentManager)
 	{
 		return;
@@ -494,7 +494,7 @@ void UYcQuickBarComponent::RollbackPrediction(int32 ServerIndex)
 
 void UYcQuickBarComponent::ExecuteEquipmentChange(int32 OldIndex, int32 NewIndex)
 {
-	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	const UYcEquipmentManagerComponent* EquipmentManager = UYcEquipmentManagerComponent::FindEquipmentManager(GetOwner());
 	if (!EquipmentManager)
 	{
 		return;
@@ -540,7 +540,7 @@ void UYcQuickBarComponent::ActivateSlotEquipment(int32 SlotIndex)
 		return;
 	}
 	
-	UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	UYcEquipmentManagerComponent* EquipmentManager = UYcEquipmentManagerComponent::FindEquipmentManager(GetOwner());
 	if (!EquipmentManager)
 	{
 		return;
@@ -560,7 +560,7 @@ void UYcQuickBarComponent::DeactivateSlotEquipment(int32 SlotIndex)
 		return;
 	}
 	
-	UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	UYcEquipmentManagerComponent* EquipmentManager = UYcEquipmentManagerComponent::FindEquipmentManager(GetOwner());
 	if (!EquipmentManager)
 	{
 		return;
@@ -585,21 +585,14 @@ void UYcQuickBarComponent::CreateSlotEquipment(int32 SlotIndex)
 	
 	UYcInventoryItemInstance* Item = Slots[SlotIndex];
 	
-	// 检查物品是否可装备
-	const FInventoryFragment_Equippable* Equippable = Item->GetTypedFragment<FInventoryFragment_Equippable>();
-	if (!Equippable)
-	{
-		return;
-	}
-	
-	UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	UYcEquipmentManagerComponent* EquipmentManager = UYcEquipmentManagerComponent::FindEquipmentManager(GetOwner());
 	if (!EquipmentManager)
 	{
 		return;
 	}
 	
-	// 创建装备实例（Inactive状态，Actors隐藏）
-	EquipmentManager->CreateEquipment(Equippable->EquipmentDef, Item);
+	// 内部会自动检查物品是否可装备，并防止重复创建
+	EquipmentManager->CreateEquipment(Item);
 }
 
 void UYcQuickBarComponent::DestroySlotEquipment(int32 SlotIndex)
@@ -609,7 +602,7 @@ void UYcQuickBarComponent::DestroySlotEquipment(int32 SlotIndex)
 		return;
 	}
 	
-	UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	UYcEquipmentManagerComponent* EquipmentManager = UYcEquipmentManagerComponent::FindEquipmentManager(GetOwner());
 	if (!EquipmentManager)
 	{
 		return;
@@ -659,24 +652,6 @@ void UYcQuickBarComponent::SetActiveSlotIndex_Internal(int32 NewIndex)
 	}
 }
 
-UYcEquipmentManagerComponent* UYcQuickBarComponent::FindEquipmentManager() const
-{
-	if (const AController* OwnerController = Cast<AController>(GetOwner()))
-	{
-		if (const APawn* Pawn = OwnerController->GetPawn())
-		{
-			return Pawn->FindComponentByClass<UYcEquipmentManagerComponent>();
-		}
-	}
-
-	if (const AActor* Actor = GetOwner())
-	{
-		return Actor->FindComponentByClass<UYcEquipmentManagerComponent>();
-	}
-	
-	return nullptr;
-}
-
 bool UYcQuickBarComponent::IsLocallyControlled() const
 {
 	if (const AController* OwnerController = Cast<AController>(GetOwner()))
@@ -699,7 +674,7 @@ bool UYcQuickBarComponent::CanExecutePrediction(int32 SlotIndex) const
 	}
 	
 	// 检查装备管理组件是否存在
-	const UYcEquipmentManagerComponent* EquipmentManager = FindEquipmentManager();
+	const UYcEquipmentManagerComponent* EquipmentManager = UYcEquipmentManagerComponent::FindEquipmentManager(GetOwner());
 	if (!EquipmentManager)
 	{
 		return false;

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "GameplayEffectTypes.h"
+#include "GameplayTagContainer.h"
 #include "YcGameplayEffectContext.generated.h"
 
 class AActor;
@@ -84,6 +85,23 @@ public:
 	 */
 	UPROPERTY()
 	int32 CartridgeID = -1;
+
+	/**
+	 * 伤害类型标签
+	 * 用于伤害计算时识别伤害类型（物理、火焰、冰冻等）
+	 */
+	UPROPERTY()
+	FGameplayTag DamageTypeTag;
+
+	/**
+	 * 设置伤害类型标签
+	 */
+	void SetDamageTypeTag(const FGameplayTag& InTag) { DamageTypeTag = InTag; }
+
+	/**
+	 * 获取伤害类型标签
+	 */
+	const FGameplayTag& GetDamageTypeTag() const { return DamageTypeTag; }
 
 protected:
 	/**

@@ -81,7 +81,7 @@ void UYcAbilityComponent::OnUninitializeFromAbilitySystem(FGameplayTag Channel,
 
 void UYcAbilityComponent::CreateAttributeSets()
 {
-	// 默认实现：遍历AttributeSetsClasses数组创建所有预设的属性集
+	// 默认实现：遍历AttributeSetConfigs数组创建所有预设的属性集
 	// 子类可以重写此函数来完全自定义属性集创建逻辑
 	InitializeAllAttributeSets();
 }
@@ -108,41 +108,56 @@ void UYcAbilityComponent::InitializeAllAttributeSets()
 		return;
 	}
 	
-	AttributeSets.Reset(AttributeSetsClasses.Num());
+	AttributeSets.Reset(AttributeSetConfigs.Num());
     
 	// 遍历并创建所有预设的 AttributeSet
-	for (const auto& AttributeSetClass : AttributeSetsClasses)
+	for (const FYcAttributeSetConfig& Config : AttributeSetConfigs)
 	{
-		if (AttributeSetClass)
+		if (Config.AttributeSetClass)
 		{
-			AddAttributeSetByClass(AttributeSetClass);
+			AddAttributeSetByClass(Config.AttributeSetClass, Config.Tag);
 		}
 		else
 		{
-			UE_LOG(LogYcAbilitySystem, Warning, TEXT("Found null AttributeSet class in AttributeSetsClasses array!"));
+			UE_LOG(LogYcAbilitySystem, Warning, TEXT("Found null AttributeSet class in AttributeSetConfigs array!"));
 		}
 	}
     
 	UE_LOG(LogYcAbilitySystem, Log, TEXT("Initialized %d AttributeSets"), AttributeSets.Num());
 }
 
-const UYcAttributeSet* UYcAbilityComponent::AddAttributeSetByClass(const TSubclassOf<UYcAttributeSet>& AttributeSetClass)
+const UYcAttributeSet* UYcAbilityComponent::AddAttributeSetByClass(const TSubclassOf<UYcAttributeSet>& AttributeSetClass, FGameplayTag AttributeSetTag)
 {
 	if (!AbilitySystemComponent || !AttributeSetClass)
 	{
 		return nullptr;
 	}
 	
-	// 检查是否已经存在该类型的属性集
-	if (const UYcAttributeSet* ExistingSet = Cast<const UYcAttributeSet>(AbilitySystemComponent->GetAttributeSet(AttributeSetClass)))
+	// 如果有 Tag，先检查是否已存在该 Tag 的属性集
+	if (AttributeSetTag.IsValid())
 	{
-		// 如果ASC中有但我们的数组中没有，添加到数组中
-		if (!AttributeSets.Contains(ExistingSet))
+		if (const UYcAttributeSet* ExistingSet = AbilitySystemComponent->GetAttributeSetByTag(AttributeSetTag))
 		{
-			AttributeSets.Add(ExistingSet);
+			if (!AttributeSets.Contains(ExistingSet))
+			{
+				AttributeSets.Add(ExistingSet);
+			}
+			UE_LOG(LogYcAbilitySystem, Warning, TEXT("UYcAbilityComponent::AddAttributeSetByClass: AttributeSet with tag %s already exists. Returning existing instance."), *AttributeSetTag.ToString());
+			return ExistingSet;
 		}
-		UE_LOG(LogYcAbilitySystem, Warning, TEXT("UYcAbilityComponent::AddAttributeSetByClass: AttributeSet of type %s already exists in ASC. Returning existing instance."), *AttributeSetClass->GetName());
-		return ExistingSet;
+	}
+	else
+	{
+		// 无 Tag 时，检查是否已存在该类型的属性集
+		if (const UYcAttributeSet* ExistingSet = Cast<const UYcAttributeSet>(AbilitySystemComponent->GetAttributeSet(AttributeSetClass)))
+		{
+			if (!AttributeSets.Contains(ExistingSet))
+			{
+				AttributeSets.Add(ExistingSet);
+			}
+			UE_LOG(LogYcAbilitySystem, Warning, TEXT("UYcAbilityComponent::AddAttributeSetByClass: AttributeSet of type %s already exists in ASC. Returning existing instance."), *AttributeSetClass->GetName());
+			return ExistingSet;
+		}
 	}
     
 	// 创建新的 YcAttributeSet 实例
@@ -153,10 +168,13 @@ const UYcAttributeSet* UYcAbilityComponent::AddAttributeSetByClass(const TSubcla
     
 	if (AttributeSet)
 	{
+		// 设置标签
+		AttributeSet->AttributeSetTag = AttributeSetTag;
+		
 		AbilitySystemComponent->AddAttributeSetSubobject(AttributeSet);
 		AttributeSets.Add(AttributeSet);
 		
-		UE_LOG(LogYcAbilitySystem, Log, TEXT("UYcAbilityComponent::AddAttributeSetByClass: Successfully added AttributeSet of type %s"), *AttributeSetClass->GetName());
+		UE_LOG(LogYcAbilitySystem, Log, TEXT("UYcAbilityComponent::AddAttributeSetByClass: Successfully added AttributeSet of type %s with tag %s"), *AttributeSetClass->GetName(), *AttributeSetTag.ToString());
 	}
 	else
 	{
@@ -164,4 +182,14 @@ const UYcAttributeSet* UYcAbilityComponent::AddAttributeSetByClass(const TSubcla
 	}
     
 	return AttributeSet;
+}
+
+const UYcAttributeSet* UYcAbilityComponent::GetAttributeSetByTag(FGameplayTag AttributeSetTag) const
+{
+	if (!AbilitySystemComponent)
+	{
+		return nullptr;
+	}
+	
+	return AbilitySystemComponent->GetAttributeSetByTag(AttributeSetTag);
 }

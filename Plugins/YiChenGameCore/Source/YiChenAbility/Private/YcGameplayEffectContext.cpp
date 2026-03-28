@@ -23,6 +23,9 @@ bool FYcGameplayEffectContext::NetSerialize(FArchive& Ar, class UPackageMap* Map
 {
 	FGameplayEffectContext::NetSerialize(Ar, Map, bOutSuccess);
 
+	// 序列化伤害类型标签
+	DamageTypeTag.NetSerialize(Ar, Map, bOutSuccess);
+
 	// Not serialized for post-activation use:
 	// CartridgeID
 

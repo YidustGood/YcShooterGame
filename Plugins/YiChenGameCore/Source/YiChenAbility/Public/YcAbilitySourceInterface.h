@@ -3,12 +3,11 @@
 #pragma once
 
 #include "UObject/Interface.h"
+#include "GameplayTagContainer.h"
 #include "YcAbilitySourceInterface.generated.h"
 
 class UObject;
 class UPhysicalMaterial;
-struct FGameplayTagContainer;
-
 /**
  * 技能效果计算源接口
  * 为技能效果提供源对象信息，用于计算距离衰减和物理材质衰减等效果修正
@@ -38,13 +37,21 @@ class YICHENABILITY_API IYcAbilitySourceInterface
 	virtual float GetDistanceAttenuation(float Distance, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const = 0;
 
 	/**
-	 * 计算基于物理材质的效果衰减乘数
-	 * 根据击中的物理材质计算效果衰减，用于模拟不同材质的防护效果
+	 * 计算基于物理材质的伤害乘数
+	 * 根据击中的物理材质计算伤害乘数，用于实现爆头加成、四肢减伤等效果
 	 * @param PhysicalMaterial 击中的物理材质
 	 * @param SourceTags 源对象的标签集合
 	 * @param TargetTags 目标对象的标签集合
-	 * @return 应用于基础属性值的物理材质衰减乘数
+	 * @return 应用于基础伤害的物理材质乘数（如爆头2.0x、四肢0.8x）
 	 */
-	virtual float GetPhysicalMaterialAttenuation(const UPhysicalMaterial* PhysicalMaterial, const FGameplayTagContainer* SourceTags = nullptr,
-												 const FGameplayTagContainer* TargetTags = nullptr) const = 0;
+	virtual float GetPhysicalMaterialMultiplier(const UPhysicalMaterial* PhysicalMaterial, const FGameplayTagContainer* SourceTags = nullptr,
+												const FGameplayTagContainer* TargetTags = nullptr) const = 0;
+
+	/**
+	 * 从物理材质映射到命中部位标签
+	 * 用于多部位护甲系统，根据击中的物理材质确定伤害应该作用于哪个部位
+	 * @param PhysicalMaterial 击中的物理材质
+	 * @return 命中部位标签（如 HitZone.Head, HitZone.Body），无法映射时返回空标签
+	 */
+	virtual FGameplayTag GetHitZoneFromPhysicalMaterial(const UPhysicalMaterial* PhysicalMaterial) const { return FGameplayTag(); }
 };

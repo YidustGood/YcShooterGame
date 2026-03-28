@@ -4,6 +4,7 @@
 
 #include "AbilitySystemComponent.h"
 #include "Abilities/YcGameplayAbility.h"
+#include "Attributes/YcAttributeSet.h"
 #include "YcAbilitySystemComponent.generated.h"
 
 class UYcGameplayAbility;
@@ -839,4 +840,62 @@ protected:
 	void ServerCurrentMontageSetPlayRateForMesh_Implementation(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float InPlayRate);
 	bool ServerCurrentMontageSetPlayRateForMesh_Validate(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float InPlayRate);
 	//////////////// ~蒙太奇动画播放扩展功能 ////////////////
+
+	//////////////// AttributeSet Tag 管理功能 ////////////////
+public:
+	/**
+	 * 按标签查找 AttributeSet
+	 * 遍历所有 SpawnedAttributes，查找匹配标签的第一个 AttributeSet
+	 * @param AttributeSetTag 要查找的 AttributeSet 标签
+	 * @return 找到的 AttributeSet，如果未找到则返回 nullptr
+	 */
+	UFUNCTION(BlueprintPure, Category = "Attributes")
+	UYcAttributeSet* GetAttributeSetByTag(FGameplayTag AttributeSetTag) const;
+
+	/**
+	 * 按标签查找所有匹配的 AttributeSet
+	 * 遍历所有 SpawnedAttributes，查找匹配标签的所有 AttributeSet
+	 * @param AttributeSetTag 要查找的 AttributeSet 标签
+	 * @return 找到的 AttributeSet 数组
+	 */
+	TArray<UYcAttributeSet*> GetAttributeSetsByTag(FGameplayTag AttributeSetTag) const;
+
+	/**
+	 * 添加一个新的 AttributeSet 到 ASC
+	 * 动态创建指定类型的 AttributeSet 并设置其标签
+	 * @param AttributeSetClass AttributeSet 类型
+	 * @param AttributeSetTag 用于标识此 AttributeSet 的标签
+	 * @return 新创建的 AttributeSet
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Attributes")
+	UYcAttributeSet* AddAttributeSet(TSubclassOf<UYcAttributeSet> AttributeSetClass, FGameplayTag AttributeSetTag);
+
+	/**
+	 * 按标签移除 AttributeSet
+	 * 从 ASC 中移除匹配标签的第一个 AttributeSet
+	 * @param AttributeSetTag 要移除的 AttributeSet 标签
+	 * @return 如果成功移除返回 true
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Attributes")
+	bool RemoveAttributeSetByTag(FGameplayTag AttributeSetTag);
+
+	/**
+	 * AttributeSet 被添加时的委托
+	 * 当通过 AddAttributeSet 添加新的 AttributeSet 时广播
+	 */
+	mutable FYcAttributeSetTagEvent OnAttributeSetAdded;
+
+	/**
+	 * AttributeSet 被移除时的委托
+	 * 当通过 RemoveAttributeSetByTag 移除 AttributeSet 时广播
+	 */
+	mutable FYcAttributeSetTagEvent OnAttributeSetRemoved;
+
+private:
+	/** 按 Tag 缓存的 AttributeSet 映射，加速查找 */
+	mutable TMap<FGameplayTag, TArray<TWeakObjectPtr<UYcAttributeSet>>> AttributeSetTagCache;
+
+	/** 更新 AttributeSet Tag 缓存 */
+	void UpdateAttributeSetTagCache() const;
+	//////////////// ~AttributeSet Tag 管理功能 ////////////////
 };

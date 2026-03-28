@@ -102,6 +102,7 @@ public:
 	 * 此函数会自动创建属性集实例并添加到ASC中，同时保存引用以防止垃圾回收
 	 * 
 	 * @param AttributeSetClass 要创建的属性集类
+	 * @param AttributeSetTag 可选的标签，用于标识此属性集（如 Armor.Head）
 	 * @return 添加的属性集指针，如果创建失败或已存在则返回已存在的实例
 	 * 
 	 * @note 如果属性集已存在，此函数不会重复创建，而是返回已存在的实例
@@ -109,7 +110,7 @@ public:
 	 * @note 此函数是AddAttributeSet<T>()的蓝图友好版本，适用于运行时动态创建属性集
 	 */
 	UFUNCTION(BlueprintCallable, Category = "YcGameCore|Attributes")
-	const UYcAttributeSet* AddAttributeSetByClass(const TSubclassOf<UYcAttributeSet>& AttributeSetClass);
+	const UYcAttributeSet* AddAttributeSetByClass(const TSubclassOf<UYcAttributeSet>& AttributeSetClass, FGameplayTag AttributeSetTag = FGameplayTag());
 	
 	/**
 	 * 获取指定类型的属性集
@@ -120,6 +121,35 @@ public:
 	const T* GetAttributeSet()
 	{
 		return AbilitySystemComponent ? AbilitySystemComponent->GetSet<T>() : nullptr;
+	}
+	
+	/**
+	 * 按标签获取属性集
+	 * @param AttributeSetTag 属性集标签
+	 * @return 属性集指针，如果不存在则返回nullptr
+	 */
+	UFUNCTION(BlueprintPure, Category = "YcGameCore|Attributes")
+	const UYcAttributeSet* GetAttributeSetByTag(FGameplayTag AttributeSetTag) const;
+	
+	/**
+	 * 按标签和类型获取属性集
+	 * @tparam T 属性集类型
+	 * @param AttributeSetTag 属性集标签
+	 * @return 属性集指针，如果不存在则返回nullptr
+	 */
+	template<typename T>
+	const T* GetAttributeSetByTag(FGameplayTag AttributeSetTag) const
+	{
+		if (!AbilitySystemComponent)
+		{
+			return nullptr;
+		}
+		
+		if (const UYcAttributeSet* FoundSet = AbilitySystemComponent->GetAttributeSetByTag(AttributeSetTag))
+		{
+			return Cast<const T>(FoundSet);
+		}
+		return nullptr;
 	}
 	
 protected:
@@ -199,9 +229,9 @@ protected:
 	/** 遍历 AttributeSetsClasses 创建所有 AttributeSet */
 	void InitializeAllAttributeSets();
 	
-	/** 此组件要创建的AttributeSet类数组 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	TArray<TSubclassOf<UYcAttributeSet>> AttributeSetsClasses;
+	/** 此组件要创建的AttributeSet配置数组 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Config")
+	TArray<FYcAttributeSetConfig> AttributeSetConfigs;
 	
 	/** 此组件使用的技能系统组件 */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly)
@@ -217,13 +247,14 @@ public:
 	 * 此函数会自动创建属性集实例并添加到ASC中，同时保存引用以防止垃圾回收
 	 * 
 	 * @tparam T 属性集类型，必须是UYcAttributeSet的子类
+	 * @param AttributeSetTag 可选的标签，用于标识此属性集（如 Armor.Head）
 	 * @return 添加的属性集指针，如果创建失败则返回nullptr
 	 * 
 	 * @note 如果属性集已存在，此函数不会重复创建，而是返回已存在的实例
 	 * @note 如果AbilitySystemComponent为null或创建失败，会记录错误日志并返回nullptr
 	 */
 	template<typename T>
-	const T* AddAttributeSet()
+	const T* AddAttributeSet(FGameplayTag AttributeSetTag = FGameplayTag())
 	{
 		if (!AbilitySystemComponent)
 		{
@@ -231,30 +262,48 @@ public:
 			return nullptr;
 		}
 		
-		// 检查是否已经存在该类型的属性集
-		if (const T* ExistingSet = GetAttributeSet<T>())
+		// 如果有 Tag，先检查是否已存在该 Tag 的属性集
+		if (AttributeSetTag.IsValid())
 		{
-			// 如果ASC中有但我们的数组中没有，添加到数组中
-			if (!AttributeSets.Contains(ExistingSet))
+			if (const UYcAttributeSet* ExistingSet = AbilitySystemComponent->GetAttributeSetByTag(AttributeSetTag))
 			{
-				AttributeSets.Add(ExistingSet);
+				if (!AttributeSets.Contains(ExistingSet))
+				{
+					AttributeSets.Add(ExistingSet);
+				}
+				UE_LOG(LogYcAbilitySystem, Warning, TEXT("UYcAbilityComponent::AddAttributeSet: AttributeSet with tag %s already exists. Returning existing instance."), *AttributeSetTag.ToString());
+				return Cast<const T>(ExistingSet);
 			}
-			UE_LOG(LogYcAbilitySystem, Warning, TEXT("UYcAbilityComponent::AddAttributeSet: AttributeSet of type %s already exists. Returning existing instance."), *T::StaticClass()->GetName());
-			return ExistingSet;
+		}
+		else
+		{
+			// 无 Tag 时，检查是否已存在该类型的属性集
+			if (const T* ExistingSet = GetAttributeSet<T>())
+			{
+				if (!AttributeSets.Contains(ExistingSet))
+				{
+					AttributeSets.Add(ExistingSet);
+				}
+				UE_LOG(LogYcAbilitySystem, Warning, TEXT("UYcAbilityComponent::AddAttributeSet: AttributeSet of type %s already exists. Returning existing instance."), *T::StaticClass()->GetName());
+				return ExistingSet;
+			}
 		}
     
-		// Outer要指定为Actor
+		// 创建新的属性集
 		T* AttributeSet = NewObject<T>(AbilitySystemComponent->GetOwner());
 		if (!AttributeSet)
 		{
 			UE_LOG(LogYcAbilitySystem, Error, TEXT("UYcAbilityComponent::AddAttributeSet: Failed to create AttributeSet of type %s!"), *T::StaticClass()->GetName());
 			return nullptr;
 		}
+		
+		// 设置标签
+		AttributeSet->AttributeSetTag = AttributeSetTag;
     
 		AbilitySystemComponent->AddAttributeSetSubobject(AttributeSet);
 		AttributeSets.Add(AttributeSet);
 		
-		UE_LOG(LogYcAbilitySystem, Log, TEXT("UYcAbilityComponent::AddAttributeSet: Successfully added AttributeSet of type %s"), *T::StaticClass()->GetName());
+		UE_LOG(LogYcAbilitySystem, Log, TEXT("UYcAbilityComponent::AddAttributeSet: Successfully added AttributeSet of type %s with tag %s"), *T::StaticClass()->GetName(), *AttributeSetTag.ToString());
 		return AttributeSet;
 	}
 };

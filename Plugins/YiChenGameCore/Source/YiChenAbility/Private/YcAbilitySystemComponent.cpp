@@ -9,6 +9,7 @@
 #include "NativeGameplayTags.h"
 #include "YcAbilityTagRelationshipMapping.h"
 #include "YcGlobalAbilitySystem.h"
+#include "Attributes/YcAttributeSet.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Net/UnrealNetwork.h"
 
@@ -1423,4 +1424,134 @@ void UYcAbilitySystemComponent::ServerCurrentMontageSetPlayRateForMesh_Implement
 bool UYcAbilitySystemComponent::ServerCurrentMontageSetPlayRateForMesh_Validate(USkeletalMeshComponent* InMesh, UAnimMontage* ClientAnimMontage, float InPlayRate)
 {
 	return true;
+}
+
+//////////////// AttributeSet Tag 管理功能 ////////////////
+
+UYcAttributeSet* UYcAbilitySystemComponent::GetAttributeSetByTag(FGameplayTag AttributeSetTag) const
+{
+	// 更新缓存（如果需要）
+	UpdateAttributeSetTagCache();
+
+	// 从缓存查找
+	if (const TArray<TWeakObjectPtr<UYcAttributeSet>>* FoundSets = AttributeSetTagCache.Find(AttributeSetTag))
+	{
+		for (const TWeakObjectPtr<UYcAttributeSet>& WeakSet : *FoundSets)
+		{
+			if (WeakSet.IsValid())
+			{
+				return WeakSet.Get();
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+TArray<UYcAttributeSet*> UYcAbilitySystemComponent::GetAttributeSetsByTag(FGameplayTag AttributeSetTag) const
+{
+	TArray<UYcAttributeSet*> Result;
+
+	// 更新缓存（如果需要）
+	UpdateAttributeSetTagCache();
+
+	// 从缓存查找
+	if (const TArray<TWeakObjectPtr<UYcAttributeSet>>* FoundSets = AttributeSetTagCache.Find(AttributeSetTag))
+	{
+		for (const TWeakObjectPtr<UYcAttributeSet>& WeakSet : *FoundSets)
+		{
+			if (WeakSet.IsValid())
+			{
+				Result.Add(WeakSet.Get());
+			}
+		}
+	}
+
+	return Result;
+}
+
+UYcAttributeSet* UYcAbilitySystemComponent::AddAttributeSet(const TSubclassOf<UYcAttributeSet> AttributeSetClass, FGameplayTag AttributeSetTag)
+{
+	if (!AttributeSetClass)
+	{
+		return nullptr;
+	}
+
+	// 创建新的 AttributeSet 实例
+	UYcAttributeSet* NewSet = NewObject<UYcAttributeSet>(GetOwner(), AttributeSetClass);
+	if (!NewSet)
+	{
+		return nullptr;
+	}
+
+	// 设置标签
+	NewSet->AttributeSetTag = AttributeSetTag;
+
+	// 添加到 ASC
+	AddAttributeSetSubobject(NewSet);
+
+	// 针对性更新缓存：直接添加到对应 Tag 的数组
+	AttributeSetTagCache.FindOrAdd(AttributeSetTag).Add(NewSet);
+
+	// 广播委托
+	OnAttributeSetAdded.Broadcast(AttributeSetTag, NewSet);
+
+	return NewSet;
+}
+
+bool UYcAbilitySystemComponent::RemoveAttributeSetByTag(FGameplayTag AttributeSetTag)
+{
+	UYcAttributeSet* SetToRemove = GetAttributeSetByTag(AttributeSetTag);
+	if (!SetToRemove)
+	{
+		return false;
+	}
+	
+	RemoveSpawnedAttribute(SetToRemove);
+
+	// 针对性更新缓存：从对应 Tag 的数组中移除
+	if (TArray<TWeakObjectPtr<UYcAttributeSet>>* CachedSets = AttributeSetTagCache.Find(AttributeSetTag))
+	{
+		// 移除匹配的 WeakObjectPtr
+		for (int32 i = CachedSets->Num() - 1; i >= 0; --i)
+		{
+			if ((*CachedSets)[i] == SetToRemove)
+			{
+				CachedSets->RemoveAtSwap(i);
+				break;  // 只移除第一个匹配项
+			}
+		}
+		
+		// 如果该 Tag 下已无 AttributeSet，移除整个条目
+		if (CachedSets->Num() == 0)
+		{
+			AttributeSetTagCache.Remove(AttributeSetTag);
+		}
+	}
+
+	// 广播委托
+	OnAttributeSetRemoved.Broadcast(AttributeSetTag, SetToRemove);
+
+	return true;
+}
+
+void UYcAbilitySystemComponent::UpdateAttributeSetTagCache() const
+{
+	// 如果缓存不为空，跳过更新
+	if (!AttributeSetTagCache.IsEmpty())
+	{
+		return;
+	}
+
+	// 获取所有 AttributeSet，按 Tag 分组
+	for (UAttributeSet* Set : GetSpawnedAttributes())
+	{
+		if (UYcAttributeSet* YcSet = Cast<UYcAttributeSet>(Set))
+		{
+			if (YcSet->AttributeSetTag.IsValid())
+			{
+				AttributeSetTagCache.FindOrAdd(YcSet->AttributeSetTag).Add(YcSet);
+			}
+		}
+	}
 }

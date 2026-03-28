@@ -3,6 +3,7 @@
 #pragma once
 
 #include "AttributeSet.h"
+#include "GameplayTagContainer.h"
 #include "YcAttributeSet.generated.h"
 
 class AActor;
@@ -43,8 +44,51 @@ GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 DECLARE_MULTICAST_DELEGATE_SixParams(FYcAttributeEvent, AActor* /*EffectInstigator*/, AActor* /*EffectCauser*/, const FGameplayEffectSpec* /*EffectSpec*/, float /*EffectMagnitude*/, float /*OldValue*/, float /*NewValue*/);
 
 /**
+ * AttributeSet 标签委托，用于 AttributeSet 被添加或移除时通知
+ * @param AttributeSetTag 被操作的 AttributeSet 标签
+ * @param AttributeSet 被操作的 AttributeSet 对象
+ */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FYcAttributeSetTagEvent, FGameplayTag /*AttributeSetTag*/, UYcAttributeSet* /*AttributeSet*/);
+
+/**
+ * 属性集配置结构体
+ * 用于在编辑器中配置属性集类型和对应的标签
+ * 
+ * 使用示例：
+ * - 配置头部护甲：AttributeSetClass = UYcArmorSet, Tag = Armor.Head
+ * - 配置基础属性：AttributeSetClass = UYcHealthSet, Tag = 空（可选）
+ */
+USTRUCT(BlueprintType)
+struct YICHENABILITY_API FYcAttributeSetConfig
+{
+	GENERATED_BODY()
+
+	/** 属性集类型 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Config")
+	TSubclassOf<UYcAttributeSet> AttributeSetClass = nullptr;
+
+	/** 
+	 * 属性集标签（可选）
+	 * 用于标识此属性集的用途，如 Armor.Head、Armor.Body
+	 * 如果为空，则按类型查找属性集
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Config")
+	FGameplayTag Tag;
+
+	/** 默认构造函数 */
+	FYcAttributeSetConfig() = default;
+
+	/** 便捷构造函数 */
+	FYcAttributeSetConfig(TSubclassOf<UYcAttributeSet> InClass, FGameplayTag InTag = FGameplayTag())
+		: AttributeSetClass(InClass), Tag(InTag) {}
+};
+
+/**
  * 插件提供的基础属性集基类
  * 所有自定义属性集应继承自此类，提供统一的属性管理和访问接口
+ * 
+ * 支持通过 Tag 标识 AttributeSet，允许 ASC 按标签查找和管理多个同类型属性集
+ * 例如：多个护甲属性集通过 Armor.Head、Armor.Body 等标签区分
  */
 UCLASS(BlueprintType, Const)
 class YICHENABILITY_API UYcAttributeSet : public UAttributeSet
@@ -66,4 +110,12 @@ public:
 	 * @return 技能系统组件，如果不存在或类型不匹配则返回nullptr
 	 */
 	UYcAbilitySystemComponent* GetYcAbilitySystemComponent() const;
+
+	/** 
+	 * 属性集标签，用于标识此属性集的用途
+	 * 例如：Armor.Head 表示头部护甲，Armor.Body 表示身体护甲
+	 * 允许 ASC 按标签查找和管理多个同类型属性集
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Config")
+	FGameplayTag AttributeSetTag;
 };

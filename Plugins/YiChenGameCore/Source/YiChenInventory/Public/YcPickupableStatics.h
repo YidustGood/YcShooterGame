@@ -35,4 +35,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, meta = (WorldContext = "Ability"))
 	static void AddPickupToInventory(UYcInventoryManagerComponent* InventoryComponent, TScriptInterface<IYcPickupable> Pickup);
+
+	/**
+	 * 从Actor拾取物品到库存中（聚合函数）
+	 * 自动从Actor查找IYcPickupable接口，获取拾取物配置数据，然后添加到库存中
+	 * @param Actor 要拾取的Actor对象
+	 * @param InventoryComponent 目标库存组件
+	 * @param OutAddedInstances 成功添加的ItemInstance列表
+	 * @return 是否成功拾取并添加物品
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory|Pickup")
+	static bool PickupFromActor(AActor* Actor, UYcInventoryManagerComponent* InventoryComponent, TArray<UYcInventoryItemInstance*>& OutAddedInstances);
 };

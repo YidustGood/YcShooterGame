@@ -14,3 +14,8 @@ FYcInventoryPickup UYcPickupableComponent::GetPickupInventory() const
 {
 	return StaticInventory;
 }
+
+void UYcPickupableComponent::BroadcastPickedUp(AActor* Instigator)
+{
+	OnPickedUp.Broadcast(Instigator);
+}

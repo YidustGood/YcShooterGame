@@ -5,6 +5,7 @@
 
 #include "YcInventoryManagerComponent.h"
 #include "YcPickupable.h"
+#include "YcPickupableComponent.h"
 
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcPickupableStatics)
@@ -53,4 +54,84 @@ void UYcPickupableStatics::AddPickupToInventory(UYcInventoryManagerComponent* In
 		// @TODO 这里StackCount传入1符合业务需求吗
 		InventoryComponent->AddItemInstance(Instance.Item, 1);
 	}
+
+	// 3. 触发拾取事件委托
+	// 尝试获取拾取组件并广播事件
+	if (UObject* PickupObject = Pickup.GetObject())
+	{
+		if (UYcPickupableComponent* PickupComp = Cast<UYcPickupableComponent>(PickupObject))
+		{
+			// 获取拾取者Pawn
+			APawn* InstigatorPawn = Cast<APawn>(InventoryComponent->GetOwner());
+			if (!InstigatorPawn && InventoryComponent->GetOwner())
+			{
+				// 如果Owner不是Pawn，尝试从Controller获取
+				if (AController* Controller = Cast<AController>(InventoryComponent->GetOwner()))
+				{
+					InstigatorPawn = Controller->GetPawn();
+				}
+			}
+			
+			PickupComp->BroadcastPickedUp(InstigatorPawn);
+		}
+	}
+}
+
+bool UYcPickupableStatics::PickupFromActor(AActor* Actor, UYcInventoryManagerComponent* InventoryComponent, TArray<UYcInventoryItemInstance*>& OutAddedInstances)
+{
+	OutAddedInstances.Empty();
+	
+	// 1. 从Actor查找IYcPickupable接口
+	TScriptInterface<IYcPickupable> Pickup = GetFirstPickupableFromActor(Actor);
+	if (!Pickup)
+	{
+		return false;
+	}
+	
+	if (!InventoryComponent)
+	{
+		return false;
+	}
+	
+	const FYcInventoryPickup& PickupInventory = Pickup->GetPickupInventory();
+	
+	// 2. 通过ItemRegistryId添加（从DataRegistry获取物品定义）
+	for (const FYcPickupTemplate& Template : PickupInventory.Templates)
+	{
+		if (UYcInventoryItemInstance* NewInstance = InventoryComponent->AddItem(Template.ItemRegistryId, Template.StackCount))
+		{
+			OutAddedInstances.Add(NewInstance);
+		}
+	}
+	
+	// 3. 通过ItemInstance添加
+	for (const FYcPickupInstance& Instance : PickupInventory.Instances)
+	{
+		if (InventoryComponent->AddItemInstance(Instance.Item, 1))
+		{
+			OutAddedInstances.Add(Instance.Item);
+		}
+	}
+	
+	// 4. 触发拾取事件委托
+	if (UObject* PickupObject = Pickup.GetObject())
+	{
+		if (UYcPickupableComponent* PickupComp = Cast<UYcPickupableComponent>(PickupObject))
+		{
+			// 获取拾取者Pawn
+			APawn* InstigatorPawn = Cast<APawn>(InventoryComponent->GetOwner());
+			if (!InstigatorPawn && InventoryComponent->GetOwner())
+			{
+				// 如果Owner不是Pawn，尝试从Controller获取
+				if (AController* Controller = Cast<AController>(InventoryComponent->GetOwner()))
+				{
+					InstigatorPawn = Controller->GetPawn();
+				}
+			}
+			
+			PickupComp->BroadcastPickedUp(InstigatorPawn);
+		}
+	}
+	
+	return OutAddedInstances.Num() > 0;
 }

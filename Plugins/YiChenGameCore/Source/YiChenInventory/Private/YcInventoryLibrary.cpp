@@ -5,6 +5,7 @@
 #include "DataRegistrySubsystem.h"
 #include "YcInventoryItemInstance.h"
 #include "YcInventoryManagerComponent.h"
+#include "YcPickupable.h"
 #include "YiChenInventory.h"
 #include "Fragments/ItemFragment_DataAsset.h"
 
@@ -22,6 +23,15 @@ TInstancedStruct<FYcInventoryItemFragment> UYcInventoryLibrary::FindItemFragment
 		}
 	}
 	return NullStruct;
+}
+
+TInstancedStruct<FYcInventoryItemFragment> UYcInventoryLibrary::FindItemFragmentById(const FDataRegistryId ItemDefId,
+	const UScriptStruct* FragmentStructType)
+{
+	FYcInventoryItemDefinition ItemDef;
+	GetItemDefinition(ItemDefId, ItemDef);
+	
+	return FindItemFragment(ItemDef, FragmentStructType);
 }
 
 UYcInventoryManagerComponent* UYcInventoryLibrary::GetInventoryManagerComponent(const AActor* Actor)
@@ -110,4 +120,15 @@ bool UYcInventoryLibrary::GetYcDataAssetEntryByTag(const FYcInventoryItemDefinit
 	OutDataAssetEntry = *Entry;
 	
 	return true;
+}
+
+bool UYcInventoryLibrary::GetPickupInventory(const UObject* Object, FYcInventoryPickup& OutPickup)
+{
+	check(Object);
+	if (const auto YcPickupable = Cast<IYcPickupable>(Object))
+	{
+		OutPickup = YcPickupable->GetPickupInventory();
+		return true;
+	}
+	return false;
 }

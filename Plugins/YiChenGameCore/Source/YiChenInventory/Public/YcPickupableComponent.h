@@ -6,6 +6,9 @@
 #include "Components/ActorComponent.h"
 #include "YcPickupableComponent.generated.h"
 
+/** 拾取事件委托 - 当物品被拾取时触发 */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FYcOnPickedUp, AActor*, Instigator);
+
 /**
  * 为Actor提供可拾取功能的组件
  * 本质上就是提供一个拾取物配置数据, 然后通过IYcPickupable提供获取拾取物配置数据的接口, 然后在其它地方可以通过接口拿到数据往库存中进行添加
@@ -21,6 +24,18 @@ public:
 	// IYcPickupable interface.
 	virtual FYcInventoryPickup GetPickupInventory() const override;
 	// ~IYcPickupable interface.
+
+	/** 当物品被拾取时触发的事件 */
+	UPROPERTY(BlueprintAssignable, Category = "Pickup")
+	FYcOnPickedUp OnPickedUp;
+
+	/** 
+	 * 广播拾取事件
+	 * 此函数由UYcPickupableStatics::AddPickupToInventory调用
+	 * @param Instigator 拾取物品的Actor
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Pickup")
+	void BroadcastPickedUp(AActor* Instigator);
 	
 private:
 	/** 这个拾取物被拾取后向库存添加的内容 -- 对应IYcPickupable接口的 GetPickupInventory() 函数*/

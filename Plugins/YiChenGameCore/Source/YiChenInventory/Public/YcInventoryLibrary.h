@@ -8,6 +8,7 @@
 #include "StructUtils/InstancedStruct.h"
 #include "YcInventoryLibrary.generated.h"
 
+struct FYcInventoryPickup;
 struct FYcDataAssetEntry;
 struct FGameplayTag;
 struct FDataRegistryId;
@@ -31,6 +32,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	static TInstancedStruct<FYcInventoryItemFragment> FindItemFragment(const FYcInventoryItemDefinition& ItemDef, const UScriptStruct* FragmentStructType);
+	
+	/**
+	 * 从物品定义中查找特定类型的Fragment
+	 * @param ItemDefId 物品定义的Id
+	 * @param FragmentStructType Fragment的结构体类型
+	 * @return 找到的Fragment实例，未找到时返回空实例
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	static TInstancedStruct<FYcInventoryItemFragment> FindItemFragmentById(const FDataRegistryId ItemDefId, const UScriptStruct* FragmentStructType);
 	
 	/**
 	 * 从Actor上获取库存管理组件
@@ -76,4 +86,7 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	static bool GetYcDataAssetEntryByTag(const FYcInventoryItemDefinition& ItemDef, const FGameplayTag& AssetTag, FYcDataAssetEntry& OutDataAssetEntry);
+	
+	UFUNCTION(BlueprintPure, Category = "Interaction")
+	static bool GetPickupInventory(const UObject* Object, FYcInventoryPickup& OutPickup);
 };

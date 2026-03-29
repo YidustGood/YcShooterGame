@@ -39,7 +39,11 @@ protected:
 	// 组件配置
 	// -------------------------------------------------------------------
 
-	/** 执行组件列表（按 Priority 排序执行） */
+	/** 是否按 Priority 排序组件（默认 true）。关闭时按编辑器配置顺序执行 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Components")
+	bool bSortByPriority = true;
+
+	/** 执行组件列表（按 Priority 排序执行，或按编辑器配置顺序执行） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Components")
 	mutable TArray<TObjectPtr<UYcAttributeExecutionComponent>> Components;
 
@@ -97,6 +101,14 @@ protected:
 	 * 标记组件需要重新排序
 	 */
 	void MarkComponentsDirty() const { bComponentsSorted = false; }
+
+	/**
+	 * 从参数中获取 World
+	 * 依次尝试：TargetASC -> SourceASC -> GetWorld()
+	 * @param Params 属性计算参数
+	 * @return World 指针，可能为 nullptr
+	 */
+	UWorld* GetWorldFromParams(const FYcAttributeSummaryParams& Params) const;
 
 	/**
 	 * 输出调试信息

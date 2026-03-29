@@ -84,15 +84,7 @@ void UYcAttributeExecution::Execute_Implementation(
 	}
 	
 	// 通过 ASC 获取 World
-	UWorld* World = nullptr;
-	if (Params.TargetASC)
-	{
-		World = Params.TargetASC->GetWorld();
-	}
-	else if (Params.SourceASC)
-	{
-		World = Params.SourceASC->GetWorld();
-	}
+	UWorld* World = GetWorldFromParams(Params);
 	
 	// 输出调试信息
 	const bool bShouldLog = bEnableDebugLog || (bAutoEnableDebugInPIE && World && World->IsPlayInEditor());
@@ -144,13 +136,36 @@ void UYcAttributeExecution::SortComponents() const
 		return;
 	}
 
-	// 按 Priority 排序（数值小的先执行）
-	Components.Sort([](const TObjectPtr<UYcAttributeExecutionComponent>& A, const TObjectPtr<UYcAttributeExecutionComponent>& B)
+	// 根据 bSortByPriority 决定是否排序
+	if (bSortByPriority)
 	{
-		return A->Priority < B->Priority;
-	});
+		// 按 Priority 排序（数值小的先执行）
+		Components.Sort([](const TObjectPtr<UYcAttributeExecutionComponent>& A, const TObjectPtr<UYcAttributeExecutionComponent>& B)
+		{
+			return A->Priority < B->Priority;
+		});
+	}
+	// 否则保持编辑器配置顺序
 
 	bComponentsSorted = true;
+}
+
+UWorld* UYcAttributeExecution::GetWorldFromParams(const FYcAttributeSummaryParams& Params) const
+{
+	// 优先从 TargetASC 获取
+	if (Params.TargetASC)
+	{
+		return Params.TargetASC->GetWorld();
+	}
+	
+	// 其次从 SourceASC 获取
+	if (Params.SourceASC)
+	{
+		return Params.SourceASC->GetWorld();
+	}
+	
+	// 最后尝试 UObject 的 GetWorld
+	return GetWorld();
 }
 
 void UYcAttributeExecution::LogDebugInfo(const FYcAttributeSummaryParams& Params) const

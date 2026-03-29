@@ -128,7 +128,7 @@ float UYcHitScanWeaponInstance::GetDistanceAttenuation(float Distance, const FGa
 	return FMath::Clamp(DamageMultiplier, 0.0f, 1.0f);
 }
 
-float UYcHitScanWeaponInstance::GetPhysicalMaterialAttenuation(const UPhysicalMaterial* PhysicalMaterial,
+float UYcHitScanWeaponInstance::GetPhysicalMaterialMultiplier(const UPhysicalMaterial* PhysicalMaterial,
 	const FGameplayTagContainer* SourceTags, const FGameplayTagContainer* TargetTags) const
 {
 	// 默认倍率为 1.0（基础伤害）
@@ -158,6 +158,30 @@ float UYcHitScanWeaponInstance::GetPhysicalMaterialAttenuation(const UPhysicalMa
 	}
 
 	return DamageMultiplier;
+}
+
+FGameplayTag UYcHitScanWeaponInstance::GetHitZoneFromPhysicalMaterial(const UPhysicalMaterial* PhysicalMaterial) const
+{
+	// 尝试转换为带 Tag 的物理材质
+	const UYcPhysicalMaterialWithTags* TaggedMaterial = Cast<UYcPhysicalMaterialWithTags>(PhysicalMaterial);
+	if (!TaggedMaterial || TaggedMaterial->Tags.IsEmpty())
+	{
+		return FGameplayTag();
+	}
+
+	// 遍历命中区域伤害倍率映射表，查找匹配的 Tag
+	for (const auto& Pair : ComputedStats.HitZoneDamageMultipliers)
+	{
+		const FGameplayTag& ZoneTag = Pair.Key;
+
+		// 检查物理材质是否包含此区域 Tag
+		if (TaggedMaterial->Tags.HasTag(ZoneTag))
+		{
+			return ZoneTag;
+		}
+	}
+
+	return FGameplayTag();
 }
 
 

@@ -1116,3 +1116,35 @@ float UYcGameplayAbility_HitScanWeapon::GetFireInterval() const
 
 	return 60.0f / FireRate;
 }
+
+FGameplayTag UYcGameplayAbility_HitScanWeapon::GetHitZoneFromTargetData(const FGameplayAbilityTargetDataHandle& TargetData, int32 Index) const
+{
+	// 获取武器实例
+	const UYcHitScanWeaponInstance* WeaponData = GetWeaponInstance();
+	if (!WeaponData)
+	{
+		return FGameplayTag();
+	}
+
+	// 从 TargetData 获取 HitResult
+	const FGameplayAbilityTargetData* TargetDataPtr = TargetData.Get(Index);
+	if (!TargetDataPtr)
+	{
+		return FGameplayTag();
+	}
+
+	// 尝试转换为 FGameplayAbilityTargetData_SingleTargetHit 获取 HitResult
+	const FHitResult* HitResult = nullptr;
+	if (const FGameplayAbilityTargetData_SingleTargetHit* SingleTargetHit = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(TargetDataPtr))
+	{
+		HitResult = &SingleTargetHit->HitResult;
+	}
+
+	if (!HitResult || !HitResult->PhysMaterial.IsValid())
+	{
+		return FGameplayTag();
+	}
+
+	// 通过武器实例映射 PhysicalMaterial -> HitZone
+	return WeaponData->GetHitZoneFromPhysicalMaterial(HitResult->PhysMaterial.Get());
+}

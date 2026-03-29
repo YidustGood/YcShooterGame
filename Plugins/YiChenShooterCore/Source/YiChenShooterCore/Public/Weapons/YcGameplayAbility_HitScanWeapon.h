@@ -133,6 +133,16 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category="Weapon|Firing|Advanced")
 	void StartHitScanWeaponTargeting(bool bIsAiming = false, bool bIsCrouching = false);
+
+	/**
+	 * 从目标数据中获取命中部位的 GameplayTag
+	 * 用于在应用伤害 GE 时设置 HitZone
+	 * @param TargetData 目标数据句柄
+	 * @param Index 命中结果索引（默认0）
+	 * @return 命中部位标签（如 HitZone.Head），无法确定时返回空标签
+	 */
+	UFUNCTION(BlueprintCallable, Category="Weapon|Damage")
+	FGameplayTag GetHitZoneFromTargetData(const FGameplayAbilityTargetDataHandle& TargetData, int32 Index = 0) const;
 	
 protected:
 	struct FHitScanWeaponFiringInput

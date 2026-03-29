@@ -136,8 +136,10 @@ public:
 	//~IYcAbilitySourceInterface interface
 	/** 获取伤害衰减系数 */
 	virtual float GetDistanceAttenuation(float Distance, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const override;
-	/** 获取不同物理材质的伤害系数 */
-	virtual float GetPhysicalMaterialAttenuation(const UPhysicalMaterial* PhysicalMaterial, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const override;
+	/** 获取不同物理材质的伤害乘数 */
+	virtual float GetPhysicalMaterialMultiplier(const UPhysicalMaterial* PhysicalMaterial, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const override;
+	/** 从物理材质映射到命中部位标签 */
+	virtual FGameplayTag GetHitZoneFromPhysicalMaterial(const UPhysicalMaterial* PhysicalMaterial) const override;
 	//~End of IYcAbilitySourceInterface interface
 
 	// ==================== 射击事件 ====================

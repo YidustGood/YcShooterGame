@@ -8,6 +8,7 @@
 #include "YcPickupable.h"
 #include "YiChenInventory.h"
 #include "Fragments/ItemFragment_DataAsset.h"
+#include "GameFramework/PlayerState.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcInventoryLibrary)
 
@@ -38,9 +39,57 @@ UYcInventoryManagerComponent* UYcInventoryLibrary::GetInventoryManagerComponent(
 {
 	if(Actor == nullptr) return nullptr;
 	
+	// 1. 直接从Actor上获取
 	if(UYcInventoryManagerComponent* InventoryManagerComponent = Actor->FindComponentByClass<UYcInventoryManagerComponent>())
 	{
 		return InventoryManagerComponent;
+	}
+	
+	// 2. 传入的Pawn
+	if (const APawn* Pawn = Cast<APawn>(Actor))
+	{
+		// 2.1 尝试从Panw的Controller上获取
+		AController* Controller = Pawn->GetController();
+		if (Controller)
+		{
+			if (UYcInventoryManagerComponent* InventoryManagerComponent = Controller->FindComponentByClass<UYcInventoryManagerComponent>())
+			{
+				return InventoryManagerComponent;
+			}
+		}
+		
+		// 2.2 尝试从Pawn的Controller的PlayerState上获取
+		const APlayerController* PlayerController = Cast<APlayerController>(Controller);
+		if (PlayerController && PlayerController->PlayerState)
+		{
+			if (UYcInventoryManagerComponent* InventoryManagerComponent = PlayerController->PlayerState->FindComponentByClass<UYcInventoryManagerComponent>())
+			{
+				return InventoryManagerComponent;
+			}
+		}
+	}
+	
+	// 3. 传入的Controller
+	if (const AController* Controller = Cast<AController>(Actor))
+	{
+		// 3.1 尝试从Controller控制的Pawn上获取
+		if (APawn* Pawn = Controller->GetPawn())
+		{
+			if (UYcInventoryManagerComponent* InventoryManagerComponent = Pawn->FindComponentByClass<UYcInventoryManagerComponent>())
+			{
+				return InventoryManagerComponent;
+			}
+		}
+		
+		// 3.2 尝试从Controller的PlayerState上获取
+		const APlayerController* PlayerController = Cast<APlayerController>(Controller);
+		if (PlayerController && PlayerController->PlayerState)
+		{
+			if (UYcInventoryManagerComponent* InventoryManagerComponent = PlayerController->PlayerState->FindComponentByClass<UYcInventoryManagerComponent>())
+			{
+				return InventoryManagerComponent;
+			}
+		}
 	}
 	
 	return nullptr;

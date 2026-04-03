@@ -16,7 +16,6 @@ public class YiChenInventory : ModuleRules
                 "NetCore", 
                 "StructUtils", 
                 "YiChenGameCore",
-                "YiChenGameplay",
                 "GameplayTags",
                 "DataRegistry"
             }
@@ -29,7 +28,7 @@ public class YiChenInventory : ModuleRules
                 "Engine",
                 "Slate",
                 "SlateCore", 
-                "GameplayMessageRuntime"
+                "GameplayMessageRuntime",
             }
         );
     }

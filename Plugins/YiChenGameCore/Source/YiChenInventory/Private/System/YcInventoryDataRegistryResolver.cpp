@@ -1,10 +1,9 @@
 // Copyright (c) 2025 YiChen. All Rights Reserved.
 
 #include "System/YcInventoryDataRegistryResolver.h"
-#include "System/YcDataRegistrySubsystem.h"
 #include "YcInventoryItemDefinition.h"
 #include "Fragments/ItemFragment_DataAsset.h"
-#include "System/YcAssetManager.h"
+#include "System/YcDataRegistrySubsystem.h"
 
 bool FYcInventoryDataRegistryResolver::ResolveAssets(
 	const FDataRegistryId& InDataRegistryId, 

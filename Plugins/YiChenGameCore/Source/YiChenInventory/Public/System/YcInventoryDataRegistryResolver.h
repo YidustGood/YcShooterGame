@@ -30,7 +30,7 @@ struct FItemFragment_DataAsset;
  * Resolver->ResolveAssets(FDataRegistryId("Weapon", "AK47"), AssetIds);
  * @endcode
  */
-class FYcInventoryDataRegistryResolver : public IYcDataRegistryAssetResolver
+class YICHENINVENTORY_API FYcInventoryDataRegistryResolver : public IYcDataRegistryAssetResolver
 {
 public:
 	//~ Begin IYcDataRegistryAssetResolver interface

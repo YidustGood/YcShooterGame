@@ -121,8 +121,8 @@ UYcEquipmentInstance* FYcEquipmentList::CreateEntry(const FYcEquipmentDefinition
 	{
 		if (Entry.OwnerItemInstance == ItemInstance)
 		{
-			UE_LOG(LogYcEquipment, Warning, TEXT("CreateEntry: Equipment already exists for item %s"), 
-				*GetNameSafe(ItemInstance));
+			UE_LOG(LogYcEquipment, Warning, TEXT("CreateEntry: Equipment already exists for item '%s'"), 
+				*ItemInstance->GetItemRegistryId().ToString());
 			return Entry.Instance;
 		}
 	}
@@ -149,8 +149,8 @@ UYcEquipmentInstance* FYcEquipmentList::CreateEntry(const FYcEquipmentDefinition
 	// 标记网络同步
 	MarkItemDirty(NewEntry);
 	
-	UE_LOG(LogYcEquipment, Log, TEXT("CreateEntry: Created equipment %s for item %s"), 
-		*GetNameSafe(NewEntry.Instance), *GetNameSafe(ItemInstance));
+	UE_LOG(LogYcEquipment, Log, TEXT("CreateEntry: Created equipment '%s' for item '%s'"), 
+		*GetNameSafe(NewEntry.Instance), *ItemInstance->GetItemRegistryId().ToString());
 	
 	return NewEntry.Instance;
 }

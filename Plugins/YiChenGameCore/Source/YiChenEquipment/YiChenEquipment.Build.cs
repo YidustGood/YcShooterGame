@@ -19,7 +19,8 @@ public class YiChenEquipment : ModuleRules
                 "YiChenAbility", 
                 "GameplayAbilities",
                 "GameplayTags",
-                "ModularGameplay"
+                "ModularGameplay",
+                "DataRegistry",
             }
         );
 

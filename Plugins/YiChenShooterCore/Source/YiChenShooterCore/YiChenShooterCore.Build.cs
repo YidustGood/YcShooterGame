@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -45,6 +45,7 @@ public class YiChenShooterCore : ModuleRules
 				"SlateCore",
 				"YiChenGameCore",
 				"YiChenGameplay",
+				"YiChenCombatCore",
 				"GameplayAbilities",
 				"GameplayTags",
 				"GameplayMessageRuntime",

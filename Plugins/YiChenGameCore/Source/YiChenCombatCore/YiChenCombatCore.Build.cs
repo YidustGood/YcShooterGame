@@ -28,7 +28,8 @@ public class YiChenCombatCore : ModuleRules
 				"CoreUObject",
 				"Engine",
 				"NetCore",
-				"GameplayMessageRuntime"
+				"GameplayMessageRuntime",
+				"DeveloperSettings"
 			}
 		);
 	}

@@ -1,10 +1,10 @@
-﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
+// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 
 #include "AbilitySystem/Executions/YcHealExecution.h"
 
 #include "AbilitySystem/Attributes/YcCombatSet.h"
-#include "AbilitySystem/Attributes/YcHealthSet.h"
+#include "Health/YcHealthSet.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcHealExecution)
 

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
+// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 #pragma once
 
@@ -21,7 +21,7 @@ UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Gameplay_Attribute_SetByCaller_Damage);
  * 提供健康值变化事件委托，支持伤害免疫、自毁伤害等特殊处理
  */
 UCLASS()
-class YICHENGAMEPLAY_API UYcHealthSet : public UYcAttributeSet
+class YICHENCOMBATCORE_API UYcHealthSet : public UYcAttributeSet
 {
 	GENERATED_BODY()
 	public:

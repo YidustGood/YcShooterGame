@@ -1,17 +1,16 @@
-﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
+// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 
-#include "Character/YcHealthComponent.h"
+#include "Health/YcHealthComponent.h"
 #include "NativeGameplayTags.h"
 #include "YcAbilitySystemComponent.h"
 #include "YcGameplayTags.h"
-#include "YiChenGameplay.h"
-#include "AbilitySystem/Attributes/YcHealthSet.h"
+#include "YiChenCombatCore.h"
+#include "Health/YcHealthSet.h"
+#include "System/YcCombatCoreSettings.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameplayCommon/YcGameVerbMessage.h"
 #include "Net/UnrealNetwork.h"
-#include "System/YcAssetManager.h"
-#include "System/YcGameData.h"
 #include "GameFramework/PlayerState.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcHealthComponent)
@@ -52,19 +51,19 @@ void UYcHealthComponent::DoInitializeWithAbilitySystem(UYcAbilitySystemComponent
 	// 验证属性集创建成功
 	if (!HealthSet)
 	{
-		UE_LOG(LogYcGameplay, Error, TEXT("UYcShooterHealthComponent: Cannot initialize health component for owner [%s] with NULL health set on the ability system."), *GetNameSafe(Owner));
+		UE_LOG(LogCombatCore, Error, TEXT("UYcShooterHealthComponent: Cannot initialize health component for owner [%s] with NULL health set on the ability system."), *GetNameSafe(Owner));
 		return;
 	}
 	
 	// 注意：如果需要获取已存在的属性集，可以使用GetAttributeSet<T>()函数
-	// 例如：HealthSet = GetAttributeSet<UYcShooterHealthSet>();
+	// 例如：HealthSet = GetAttributeSet<UYcHealthSet>();
 
 	// 注册以监听属性更改
 	HealthSet->OnHealthChanged.AddUObject(this, &ThisClass::HandleHealthChanged);
 	HealthSet->OnMaxHealthChanged.AddUObject(this, &ThisClass::HandleMaxHealthChanged);
 	HealthSet->OnOutOfHealth.AddUObject(this, &ThisClass::HandleOutOfHealth);
 
-	// TEMP: 将属性重置为默认值。最终这将由电子表格驱动
+	// 临时方案：将属性重置为默认值。后续将改为由配置数据驱动
 	AbilitySystemComponent->SetNumericAttributeBase(UYcHealthSet::GetHealthAttribute(), HealthSet->GetMaxHealth());
 
 	ClearGameplayTags();
@@ -163,37 +162,33 @@ void UYcHealthComponent::DamageSelfDestruct(bool bFellOutOfWorld)
 {
 	// 要处于未死亡状态且ASC组件有效才能进行对自我的摧毁性伤害
 	if ((DeathState != EYcDeathState::NotDead) || AbilitySystemComponent == nullptr) return;
-	
-	// 获取伤害GE类
-	const TSubclassOf<UGameplayEffect> DamageGE = UYcAssetManager::GetSubclass(UYcGameData::Get().DamageGameplayEffect_SetByCaller);
-	if (!DamageGE)
+
+	const UYcCombatCoreSettings* CombatSettings = GetDefault<UYcCombatCoreSettings>();
+	const TSubclassOf<UGameplayEffect> DamageGE = CombatSettings ? CombatSettings->GetDamageSelfDestructGameplayEffect() : nullptr;
+
+	if (DamageGE)
 	{
-		UE_LOG(LogYcGameplay, Error, TEXT("UYcShooterHealthComponent: DamageSelfDestruct failed for owner [%s]. Unable to find gameplay effect [%s]."), *GetNameSafe(GetOwner()), *UYcGameData::Get().DamageGameplayEffect_SetByCaller.GetAssetName());
-		return;
+		FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(DamageGE, 1.0f, AbilitySystemComponent->MakeEffectContext());
+		FGameplayEffectSpec* Spec = SpecHandle.Data.Get();
+		if (Spec)
+		{
+			// 通过动态资产标签声明“自毁伤害”与“掉出世界”来源
+			Spec->AddDynamicAssetTag(TAG_Gameplay_DamageSelfDestruct);
+			if (bFellOutOfWorld)
+			{
+				Spec->AddDynamicAssetTag(TAG_Gameplay_FellOutOfWorld);
+			}
+
+			// 自毁伤害值 = 当前最大生命值
+			Spec->SetSetByCallerMagnitude(TAG_Gameplay_Attribute_SetByCaller_Damage, GetMaxHealth());
+			AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*Spec);
+			return;
+		}
 	}
 
-	FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(DamageGE, 1.0f, AbilitySystemComponent->MakeEffectContext());
-	FGameplayEffectSpec* Spec = SpecHandle.Data.Get();
-
-	if (!Spec)
-	{
-		UE_LOG(LogYcGameplay, Error, TEXT("UYcShooterHealthComponent: DamageSelfDestruct failed for owner [%s]. Unable to make outgoing spec for [%s]."), *GetNameSafe(GetOwner()), *GetNameSafe(DamageGE));
-		return;
-	}
-
-	/** 动态添加并非源自原始 GE 定义的资产标签；该标签既会被添加到动态资产标签中，也会被注入到捕获的源规格标签中 */
-	Spec->AddDynamicAssetTag(TAG_Gameplay_DamageSelfDestruct);
-
-	if (bFellOutOfWorld)
-	{
-		Spec->AddDynamicAssetTag(TAG_Gameplay_FellOutOfWorld);
-	}
-
-	// 摧毁性伤害的数值就是当前的生命值
-	const float DamageAmount = GetMaxHealth();
-
-	Spec->SetSetByCallerMagnitude(TAG_Gameplay_Attribute_SetByCaller_Damage, DamageAmount);
-	AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*Spec);
+	// 回退路径：配置缺失时直接写入Damage元属性，避免自毁功能不可用
+	UE_LOG(LogCombatCore, Warning, TEXT("DamageSelfDestruct GE is not configured or failed to build spec, fallback to direct Damage attribute mod."));
+	AbilitySystemComponent->ApplyModToAttribute(UYcHealthSet::GetDamageAttribute(), EGameplayModOp::Additive, GetMaxHealth());
 }
 
 void UYcHealthComponent::ClearGameplayTags()
@@ -256,7 +251,7 @@ void UYcHealthComponent::HandleOutOfHealth(AActor* DamageInstigator, AActor* Dam
 		MessageSystem.BroadcastMessage(Message.Verb, Message);
 	}
 
-	//@TODO: assist messages (could compute from damage dealt elsewhere)?
+	//@TODO: 助攻消息（可考虑基于其他系统记录的伤害贡献进行计算）
 #endif // #if WITH_SERVER_CODE
 }
 
@@ -271,18 +266,18 @@ void UYcHealthComponent::OnRep_DeathState(EYcDeathState OldDeathState)
 	if (OldDeathState > NewDeathState)
 	{
 		// 服务器试图让我们返回，但我们已经预测超过了服务器状态
-		UE_LOG(LogYcGameplay, Warning, TEXT("UYcShooterHealthComponent: Predicted past server death state [%d] -> [%d] for owner [%s]."), (uint8)OldDeathState, (uint8)NewDeathState, *GetNameSafe(GetOwner()));
+		UE_LOG(LogCombatCore, Warning, TEXT("UYcShooterHealthComponent: Predicted past server death state [%d] -> [%d] for owner [%s]."), (uint8)OldDeathState, (uint8)NewDeathState, *GetNameSafe(GetOwner()));
 		return;
 	}
 
 	if (OldDeathState == EYcDeathState::NotDead)
 	{
-		// NotDead -> DeathStarted
+		// 未死亡 -> 开始死亡
 		if (NewDeathState == EYcDeathState::DeathStarted)
 		{
 			StartDeath();
 		}
-		// NotDead -> DeathFinished
+		// 未死亡 -> 死亡完成
 		else if (NewDeathState == EYcDeathState::DeathFinished)
 		{
 			StartDeath();
@@ -290,19 +285,19 @@ void UYcHealthComponent::OnRep_DeathState(EYcDeathState OldDeathState)
 		}
 		else
 		{
-			UE_LOG(LogYcGameplay, Error, TEXT("UYcShooterHealthComponent: Invalid death transition [%d] -> [%d] for owner [%s]."), (uint8)OldDeathState, (uint8)NewDeathState, *GetNameSafe(GetOwner()));
+			UE_LOG(LogCombatCore, Error, TEXT("UYcShooterHealthComponent: Invalid death transition [%d] -> [%d] for owner [%s]."), (uint8)OldDeathState, (uint8)NewDeathState, *GetNameSafe(GetOwner()));
 		}
 	}
 	else if (OldDeathState == EYcDeathState::DeathStarted)
 	{
-		// DeathStarted -> DeathFinished
+		// 开始死亡 -> 死亡完成
 		if (NewDeathState == EYcDeathState::DeathFinished)
 		{
 			FinishDeath();
 		}
 		else
 		{
-			UE_LOG(LogYcGameplay, Error, TEXT("UYcShooterHealthComponent: Invalid death transition [%d] -> [%d] for owner [%s]."), (uint8)OldDeathState, (uint8)NewDeathState, *GetNameSafe(GetOwner()));
+			UE_LOG(LogCombatCore, Error, TEXT("UYcShooterHealthComponent: Invalid death transition [%d] -> [%d] for owner [%s]."), (uint8)OldDeathState, (uint8)NewDeathState, *GetNameSafe(GetOwner()));
 		}
 	}
 

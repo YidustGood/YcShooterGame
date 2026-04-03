@@ -1,11 +1,11 @@
-﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
+// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 
 #include "Character/YcCharacter.h"
 #include "YcAbilitySystemComponent.h"
 #include "YcTeamAgentInterface.h"
 #include "YcTeamSubsystem.h"
-#include "Character/YcHealthComponent.h"
+#include "Health/YcHealthComponent.h"
 #include "Character/YcPawnExtensionComponent.h"
 #include "Character/YcMovementSyncComponent.h"
 #include "Components/CapsuleComponent.h"

@@ -1,11 +1,11 @@
-﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
+// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 
 #include "GameModes/YcAIBotCreationComponent.h"
 
 #include "AIController.h"
 #include "YiChenGameplay.h"
-#include "Character/YcHealthComponent.h"
+#include "Health/YcHealthComponent.h"
 #include "Character/YcPawnExtensionComponent.h"
 #include "Development/YcGameDeveloperSettings.h"
 #include "GameFramework/PlayerState.h"

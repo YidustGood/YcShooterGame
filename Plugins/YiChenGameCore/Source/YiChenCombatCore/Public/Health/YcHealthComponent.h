@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
+// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 #pragma once
 
@@ -33,8 +33,8 @@ enum class EYcDeathState : uint8
  * 健康值归零后会在HandleOutOfHealth()这个回调中发送GameplayEvent触发死亡技能
  * 然后具体的死亡逻辑一部分可以在死亡技能中实现，一部分可以在OnDeathStarted和OnDeathFinished委托的自定义回调函数中实现
  */
-UCLASS(ClassGroup=(YiChenGameplay), meta=(BlueprintSpawnableComponent))
-class YICHENGAMEPLAY_API UYcHealthComponent : public UYcAbilityComponent
+UCLASS(ClassGroup=(YiChenCombatCore), meta=(BlueprintSpawnableComponent))
+class YICHENCOMBATCORE_API UYcHealthComponent : public UYcAbilityComponent
 {
 	GENERATED_BODY()
 
@@ -110,14 +110,14 @@ public:
 	
 	/**
 	 * 开始死亡序列
-	 * 由服务端YcGameplayAbility_ShooterDeath技能激活时调用开始，开始后会修改DeathState状态同步到客户端，客户端根据状态进行死亡序列事件同步
+	 * 由服务端死亡技能（如 YcGameplayAbility_Death 或其子类）激活时调用，开始后会修改 DeathState 同步到客户端，客户端再按状态推进死亡序列
 	 * 这个函数会在服务端和所有客户端执行
 	 */
 	virtual void StartDeath();
 
 	/**
 	 * 完成死亡序列
-	 * 由YcGameplayAbility_ShooterDeath技能结束后调用
+	 * 由死亡技能（如 YcGameplayAbility_Death 或其子类）结束后调用
 	 * 这个函数会在服务端和所有客户端执行
 	 */
 	virtual void FinishDeath();
@@ -130,16 +130,16 @@ public:
 	
 	/** 
 	 * 健康值变化委托, 会在服务端和所有客户端执行, 在客户端上调用时instigator可能无效
-	 * 服务端的发起源头在UYcShooterHealthSet::PostGameplayEffectExecute()中
-	 * 客户端的发起源头在UYcShooterHealthSet::OnRep_Health()属性同步通知函数中
+	 * 服务端的发起源头在 UYcHealthSet::PostGameplayEffectExecute() 中
+	 * 客户端的发起源头在 UYcHealthSet::OnRep_Health() 属性同步通知函数中
 	 */
 	UPROPERTY(BlueprintAssignable)
 	FYcShooterHealth_AttributeChanged OnHealthChanged;
 
 	/** 
 	 * 最大健康值变化委托, 会在服务端和所有客户端执行, 在客户端上调用时instigator可能无效
-	 * 服务端的发起源头在UYcShooterHealthSet::PostGameplayEffectExecute()中
-	 * 客户端的发起源头在UYcShooterHealthSet::OnRep_MaxHealth()属性同步通知函数中
+	 * 服务端的发起源头在 UYcHealthSet::PostGameplayEffectExecute() 中
+	 * 客户端的发起源头在 UYcHealthSet::OnRep_MaxHealth() 属性同步通知函数中
 	 */
 	UPROPERTY(BlueprintAssignable)
 	FYcShooterHealth_AttributeChanged OnMaxHealthChanged;

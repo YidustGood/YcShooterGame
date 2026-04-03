@@ -1,7 +1,7 @@
-﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
+// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 
-#include "AbilitySystem/Attributes/YcHealthSet.h"
+#include "Health/YcHealthSet.h"
 
 #include "GameplayEffectExtension.h"
 #include "NativeGameplayTags.h"
@@ -168,7 +168,7 @@ void UYcHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackDat
 	}
 	else if (Data.EvaluatedData.Attribute == GetMaxHealthAttribute())
 	{
-		// TODO: 是否需要限制当前健康值？
+		// TODO: 是否需要同步约束当前生命值？
 
 		// 通知最大健康值的任何变化
 		OnMaxHealthChanged.Broadcast(Instigator, Causer, &Data.EffectSpec, Data.EvaluatedData.Magnitude, MaxHealthBeforeAttributeChange, GetMaxHealth());

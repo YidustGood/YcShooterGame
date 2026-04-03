@@ -9,21 +9,19 @@ public class YiChenGameplay : ModuleRules
         PublicDependencyModuleNames.AddRange(
             new string[]
             {
-                "Core", 
+                "Core",
                 "CommonGame",
-                "GameplayAbilities", 
+                "GameplayAbilities",
                 "CommonLoadingScreen",
                 "ModularGameplayActors",
-                "DataRegistry", 
+                "DataRegistry",
                 "YiChenGameCore",
-                "YiChenAbility", 
-                "GameFeatures",
-                "YiChenTeams", 
                 "YiChenAbility",
-                "YiChenGameCore",
-                "YiChenDamage", 
-                "YiChenInventory", 
-                "YiChenEquipment", 
+                "GameFeatures",
+                "YiChenTeams",
+                "YiChenDamage",
+                "YiChenInventory",
+                "YiChenEquipment"
             }
         );
 
@@ -37,18 +35,19 @@ public class YiChenGameplay : ModuleRules
                 "SlateCore",
                 "EnhancedInput",
                 "ModularGameplay",
-                "GameplayTags", 
+                "GameplayTags",
                 "GameFeatures",
                 "DeveloperSettings",
                 "CommonUser",
                 "EngineSettings",
                 "UMG",
                 "GameplayTasks",
-                "GameplayMessageRuntime", 
+                "GameplayMessageRuntime",
                 "UIExtension",
                 "PhysicsCore",
                 "AIModule",
-                "OnlineSubsystemUtils"
+                "OnlineSubsystemUtils",
+                "YiChenCombatCore"
             }
         );
     }

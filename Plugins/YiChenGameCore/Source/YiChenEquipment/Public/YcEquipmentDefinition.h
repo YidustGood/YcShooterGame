@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "UObject/Object.h"
 #include "StructUtils/InstancedStruct.h"
 #include "YcEquipmentDefinition.generated.h"
@@ -120,7 +121,7 @@ struct YICHENEQUIPMENT_API FYcEquipmentActorToSpawn
 	UPROPERTY(EditAnywhere, Category=Equipment, BlueprintReadWrite, meta=(DisplayName="卸下时休眠降低消耗", EditCondition="!bDestroyOnUnequip"))
 	uint8 bDormantOnUnequip : 1;
 	
-	//@TODO 是否需要增加超过一定时间未装备则销毁的机制?
+	//@TODO 是否需要增加超过一定时间未装备则销毁的机制？
 };
 
 /**
@@ -129,11 +130,20 @@ struct YICHENEQUIPMENT_API FYcEquipmentActorToSpawn
  * Fragments: 支持 Fragment 扩展系统，可以灵活组合不同的装备特性
  * ActorsToSpawn: 支持Actor生成附加功能
  * AbilitySetsToGrant: 支持装备技能功能
+ * EquipmentSlot: 装备栏槽位标签，用于槽位互斥检查
  */
 USTRUCT(BlueprintType)
 struct YICHENEQUIPMENT_API FYcEquipmentDefinition : public FTableRowBase
 {
 	GENERATED_BODY()
+	
+	/** 
+	 * 装备栏槽位标签
+	 * 用于限制同一槽位只能装备一件装备
+	 * 例如：EquipmentSlot.Armor（护甲槽）、EquipmentSlot.Helmet（头盔槽）、EquipmentSlot.Weapon（武器槽）
+	 */
+	UPROPERTY(EditDefaultsOnly, Category=Equipment, BlueprintReadOnly)
+	FGameplayTag EquipmentSlot;
 	
 	// 装备的实例类
 	UPROPERTY(EditDefaultsOnly, Category=Equipment, BlueprintReadOnly)

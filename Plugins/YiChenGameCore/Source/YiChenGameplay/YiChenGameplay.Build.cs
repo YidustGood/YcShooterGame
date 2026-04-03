@@ -18,7 +18,12 @@ public class YiChenGameplay : ModuleRules
                 "YiChenGameCore",
                 "YiChenAbility", 
                 "GameFeatures",
-                "YiChenTeams"
+                "YiChenTeams", 
+                "YiChenAbility",
+                "YiChenGameCore",
+                "YiChenDamage", 
+                "YiChenInventory", 
+                "YiChenEquipment", 
             }
         );
 
@@ -30,8 +35,6 @@ public class YiChenGameplay : ModuleRules
                 "NetCore",
                 "Slate",
                 "SlateCore",
-                "YiChenAbility",
-                "YiChenGameCore",
                 "EnhancedInput",
                 "ModularGameplay",
                 "GameplayTags", 

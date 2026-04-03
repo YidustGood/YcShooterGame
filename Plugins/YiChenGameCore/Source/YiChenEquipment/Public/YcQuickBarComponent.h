@@ -19,6 +19,20 @@ class UYcEquipmentManagerComponent;
  * - 例如：库存中的武器、道具等，互斥意味着同一时间只能激活一个插槽
  * 
  * ============================================================================
+ * 物品存储模式（通过 bItemsLeaveInventory 配置）
+ * ============================================================================
+ * 
+ * 模式 1：物品保留在 Inventory 中（默认，bItemsLeaveInventory = false）
+ * - 物品添加到 QuickBar 后仍保留在 Inventory 中
+ * - QuickBar 仅作为快捷访问的"引用"
+ * - 适用于：武器快速切换栏
+ * 
+ * 模式 2：物品从 Inventory 移出（bItemsLeaveInventory = true）
+ * - 物品添加到 QuickBar 后从 Inventory 移除
+ * - 从 QuickBar 卸下后回归 Inventory
+ * - 适用于：独立于 Inventory 的快捷栏（如消耗品栏）
+ * 
+ * ============================================================================
  * 网络架构：客户端预测 + 服务器权威
  * ============================================================================
  * 
@@ -165,6 +179,14 @@ protected:
 	/** 插槽数量配置 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "QuickBar")
 	int32 NumSlots = 8;
+
+	/** 
+	 * 物品是否离开 Inventory
+	 * - true: 物品添加到 QuickBar 后从 Inventory 移除，卸下后回归 Inventory
+	 * - false: 物品保留在 Inventory 中，QuickBar 仅作为快捷引用（默认）
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "QuickBar")
+	bool bItemsLeaveInventory = false;
 
 	UFUNCTION()
 	void OnRep_Slots();

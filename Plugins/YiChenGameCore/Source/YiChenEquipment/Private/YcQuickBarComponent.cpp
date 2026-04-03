@@ -22,6 +22,8 @@
 #include "YcEquipmentInstance.h"
 #include "YcEquipmentManagerComponent.h"
 #include "YcInventoryItemInstance.h"
+#include "YcInventoryLibrary.h"
+#include "YcInventoryManagerComponent.h"
 #include "YiChenEquipment.h"
 #include "Fragments/InventoryFragment_Equippable.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
@@ -301,6 +303,15 @@ bool UYcQuickBarComponent::AddItemToSlot(const int32 SlotIndex, UYcInventoryItem
 		return false;
 	}
 	
+	// 如果配置为物品离开 Inventory，则从 Inventory 移除
+	if (bItemsLeaveInventory)
+	{
+		if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryLibrary::GetInventoryManagerComponent(GetOwner()))
+		{
+			InventoryManager->RemoveItemInstance(Item);
+		}
+	}
+	
 	// 设置插槽物品
 	SetSlotItem_Internal(SlotIndex, Item);
 	
@@ -341,6 +352,15 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 	
 	// 清除插槽
 	SetSlotItem_Internal(SlotIndex, nullptr);
+	
+	// 如果配置为物品离开 Inventory，则将物品回归 Inventory
+	if (bItemsLeaveInventory)
+	{
+		if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryLibrary::GetInventoryManagerComponent(GetOwner()))
+		{
+			InventoryManager->AddItemInstance(RemovedItem, 1);
+		}
+	}
 	
 	// 清除客户端预测状态（如果有）
 	if (bHasPendingSlotChange && PendingSlotIndex == SlotIndex)

@@ -12,16 +12,17 @@ public class YcGridInventoryRuntime : ModuleRules
 			new string[]
 			{
 				"Core",
+				"CoreUObject",
+				"Engine",
 				"GameplayTags",
-				"YiChenInventory"
+				"YiChenInventory", 
+				"GameplayAbilities"
 			}
 		);
 
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"CoreUObject",
-				"Engine"
 			}
 		);
 	}

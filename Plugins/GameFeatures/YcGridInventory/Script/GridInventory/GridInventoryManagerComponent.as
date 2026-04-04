@@ -352,7 +352,7 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 	}
 
 	UFUNCTION(BlueprintCallable, Category = "ContextMenu")
-	bool GetContextMenuActionsForItem(UYcInventoryItemInstance ItemInst, TArray<FGridItemContextMenuAction>&out OutActions) const
+	bool GetContextMenuActionsForItem(UYcInventoryItemInstance ItemInst, TArray<FGridItemContextMenuAction>&out OutActions)
 	{
 		OutActions.Empty();
 		if (ItemInst == nullptr)
@@ -387,7 +387,11 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 			}
 			SeenActionTags.Add(ActionDef.ActionTag);
 
-			if (!CanExecuteContextActionInternal(ItemInst, ActionDef))
+			FText DisabledReason;
+			bool bCanExecute = EvaluateContextActionExecutability(ItemInst, ActionDef, DisabledReason);
+			ActionDef.bRuntimeCanExecute = bCanExecute;
+			ActionDef.RuntimeDisabledReason = DisabledReason;
+			if (!bCanExecute && !ActionDef.bShowWhenDisabled)
 			{
 				continue;
 			}
@@ -408,13 +412,17 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 	}
 
 	UFUNCTION(BlueprintCallable, Category = "ContextMenu")
-	bool CanExecuteContextAction(UYcInventoryItemInstance ItemInst, FGameplayTag ActionTag, FGridItemContextMenuAction&out OutActionDef) const
+	bool CanExecuteContextAction(UYcInventoryItemInstance ItemInst, FGameplayTag ActionTag, FGridItemContextMenuAction&out OutActionDef)
 	{
 		if (!TryFindContextMenuActionDef(ItemInst, ActionTag, OutActionDef))
 		{
 			return false;
 		}
-		return CanExecuteContextActionInternal(ItemInst, OutActionDef);
+		FText DisabledReason;
+		bool bCanExecute = EvaluateContextActionExecutability(ItemInst, OutActionDef, DisabledReason);
+		OutActionDef.bRuntimeCanExecute = bCanExecute;
+		OutActionDef.RuntimeDisabledReason = DisabledReason;
+		return bCanExecute;
 	}
 
 	UFUNCTION(Server)
@@ -777,21 +785,55 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		return RevealedSearchItems.Contains(ItemInst);
 	}
 
-	private bool CanExecuteContextActionInternal(UYcInventoryItemInstance ItemInst, FGridItemContextMenuAction ActionDef) const
+	private bool EvaluateContextActionExecutability(UYcInventoryItemInstance ItemInst, FGridItemContextMenuAction ActionDef, FText&out OutDisabledReason)
 	{
 		if (ItemInst == nullptr)
 		{
+			OutDisabledReason = FText::FromString("Invalid item.");
 			return false;
 		}
 		if (!ActionDef.ActionTag.IsValid())
 		{
+			OutDisabledReason = FText::FromString("Invalid action tag.");
+			return false;
+		}
+		if (!IsValidContextActionExecutorTag(ActionDef.ExecutorTag))
+		{
+			OutDisabledReason = FText::FromString("Invalid executor tag namespace.");
 			return false;
 		}
 		if (!IsItemOperableForCurrentSession(ItemInst))
 		{
+			OutDisabledReason = FText::FromString("Item is not revealed yet.");
+			return false;
+		}
+
+		FYcContextActionEvalResult EvalResult;
+		bool bPassed = YcGridInventoryContextAction::EvaluateContextActionPolicyForItem(
+			GetOwner(),
+			this,
+			ItemInst,
+			ActionDef,
+			true,
+			EvalResult);
+		if (!bPassed)
+		{
+			if (!EvalResult.FailReason.IsEmpty())
+			{
+				OutDisabledReason = EvalResult.FailReason;
+			}
+			else
+			{
+				OutDisabledReason = FText::FromString("Context action policy blocked.");
+			}
 			return false;
 		}
 		return true;
+	}
+
+	private bool IsValidContextActionExecutorTag(FGameplayTag ExecutorTag) const
+	{
+		return YcGridInventoryContextAction::IsExecutorTagAllowed(ExecutorTag);
 	}
 
 	private bool TryFindContextMenuActionDef(UYcInventoryItemInstance ItemInst, FGameplayTag ActionTag, FGridItemContextMenuAction&out OutActionDef) const

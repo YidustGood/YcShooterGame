@@ -235,9 +235,20 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 		Canvas.AddChildToCanvas(CurrentContextMenuWidget);
 		CurrentContextMenuWidget.Initialize(Data.ItemInst, Actions);
 
+		CurrentContextMenuWidget.ForceLayoutPrepass();
 		FVector2D LocalPos = Canvas.GetCachedGeometry().AbsoluteToLocal(Data.ScreenPosition);
+		FVector2D CanvasSize = Canvas.GetCachedGeometry().GetLocalSize();
+		FVector2D MenuSize = CurrentContextMenuWidget.GetDesiredSize();
+		if (MenuSize.X <= 1.0f || MenuSize.Y <= 1.0f)
+		{
+			// 保底尺寸，避免首次打开时DesiredSize尚未完成布局导致越界。
+			MenuSize = FVector2D(260.0f, 180.0f);
+		}
+
+		float ClampedX = Math::Clamp(LocalPos.X, 0.0f, Math::Max(0.0f, CanvasSize.X - MenuSize.X));
+		float ClampedY = Math::Clamp(LocalPos.Y, 0.0f, Math::Max(0.0f, CanvasSize.Y - MenuSize.Y));
 		auto MenuSlot = WidgetLayout::SlotAsCanvasSlot(CurrentContextMenuWidget);
-		MenuSlot.SetPosition(LocalPos);
+		MenuSlot.SetPosition(FVector2D(ClampedX, ClampedY));
 		MenuSlot.bAutoSize = true;
 	}
 

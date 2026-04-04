@@ -87,3 +87,6 @@ Script/Binds.Cache.Headers
 # Plugins
 Plugins/Developer/RiderLink
 *.md
+YcShooter.uproject.DotSettings.user
+Plugins/GameFeatures/YcGridInventory*/Intermediate/
+Plugins/GameFeatures/YcGridInventory*/Binaries/

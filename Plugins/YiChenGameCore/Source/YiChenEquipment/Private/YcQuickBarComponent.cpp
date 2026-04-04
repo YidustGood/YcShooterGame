@@ -372,6 +372,16 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 	return RemovedItem;
 }
 
+void UYcQuickBarComponent::ServerAddItemToSlot_Implementation(int32 SlotIndex, UYcInventoryItemInstance* Item)
+{
+	AddItemToSlot(SlotIndex, Item);
+}
+
+void UYcQuickBarComponent::ServerRemoveItemFromSlot_Implementation(int32 SlotIndex)
+{
+	RemoveItemFromSlot(SlotIndex);
+}
+
 // ============================================================================
 // 客户端预测实现
 // ============================================================================

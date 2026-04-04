@@ -175,6 +175,14 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "QuickBar")
 	UYcInventoryItemInstance* RemoveItemFromSlot(int32 SlotIndex);
 
+	/** 客户端请求添加物品到快捷栏插槽 */
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "QuickBar")
+	void ServerAddItemToSlot(int32 SlotIndex, UYcInventoryItemInstance* Item);
+
+	/** 客户端请求从快捷栏插槽移除物品 */
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "QuickBar")
+	void ServerRemoveItemFromSlot(int32 SlotIndex);
+
 protected:
 	/** 插槽数量配置 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "QuickBar")

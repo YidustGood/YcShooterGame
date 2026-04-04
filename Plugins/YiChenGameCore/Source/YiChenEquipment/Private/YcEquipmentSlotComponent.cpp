@@ -206,6 +206,16 @@ UYcInventoryItemInstance* UYcEquipmentSlotComponent::UnequipSlot(FGameplayTag Sl
 	return ItemInstance;
 }
 
+void UYcEquipmentSlotComponent::ServerEquipItem_Implementation(UYcInventoryItemInstance* ItemInstance)
+{
+	EquipItem(ItemInstance);
+}
+
+void UYcEquipmentSlotComponent::ServerUnequipSlot_Implementation(FGameplayTag SlotTag)
+{
+	UnequipSlot(SlotTag);
+}
+
 void UYcEquipmentSlotComponent::UnequipAll()
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority())

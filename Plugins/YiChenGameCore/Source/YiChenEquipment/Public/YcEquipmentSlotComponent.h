@@ -93,6 +93,14 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Equipment")
 	UYcInventoryItemInstance* UnequipSlot(FGameplayTag SlotTag);
 
+	/** 客户端请求装备物品到对应装备槽 */
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "Equipment")
+	void ServerEquipItem(UYcInventoryItemInstance* ItemInstance);
+
+	/** 客户端请求卸下指定装备槽 */
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "Equipment")
+	void ServerUnequipSlot(FGameplayTag SlotTag);
+
 	/**
 	 * 卸下所有装备
 	 */

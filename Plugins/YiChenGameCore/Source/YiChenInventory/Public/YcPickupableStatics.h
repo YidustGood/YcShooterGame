@@ -45,5 +45,5 @@ public:
 	 * @return 是否成功拾取并添加物品
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory|Pickup")
-	static bool PickupFromActor(AActor* Actor, UYcInventoryManagerComponent* InventoryComponent, TArray<UYcInventoryItemInstance*>& OutAddedInstances);
+	static bool PickupFromActor(AActor* Actor, UYcInventoryManagerComponent* InventoryComponent, TArray<class UYcInventoryItemInstance*>& OutAddedInstances);
 };

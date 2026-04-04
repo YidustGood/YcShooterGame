@@ -47,6 +47,9 @@ public:
 	UInteractionIndicatorComponent(const FObjectInitializer& ObjectInitializer);
 
 	static UInteractionIndicatorComponent* GetComponent(const AController* Controller);
+	
+	UFUNCTION(BlueprintCallable, BlueprintPure)
+	static UInteractionIndicatorComponent* FindInteractionIndicatorComponent(const AController* Controller);
 
 	/** 添加指示器 */
 	UFUNCTION(BlueprintCallable, Category = Indicator)

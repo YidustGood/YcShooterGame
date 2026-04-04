@@ -31,6 +31,12 @@ UInteractionIndicatorComponent* UInteractionIndicatorComponent::GetComponent(con
 	return nullptr;
 }
 
+UInteractionIndicatorComponent* UInteractionIndicatorComponent::FindInteractionIndicatorComponent(
+	const AController* Controller)
+{
+	return GetComponent(Controller);
+}
+
 void UInteractionIndicatorComponent::AddIndicator(FIndicatorDescriptor IndicatorDescriptor)
 {
 	auto& Ref = Indicators.Add_GetRef(IndicatorDescriptor);

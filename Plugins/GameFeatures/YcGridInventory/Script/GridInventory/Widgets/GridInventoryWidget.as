@@ -385,7 +385,14 @@ class UGridInventoryWidget : UUserWidget
 		DraggedItemTopLeftTile = FIntPoint(Math::Clamp(FinalTilePos.X, 0, FinalTilePos.X), Math::Clamp(FinalTilePos.Y, 0, FinalTilePos.Y));
 		return true;
 	}
+
+	UFUNCTION(BlueprintOverride)
+	FEventReply OnPreviewMouseButtonDown(FGeometry InMyGeometry, FPointerEvent InMouseEvent)
+	{
+		// 预处理阶段拦截空白区域点击（左/右键），稳定关闭右键菜单。
+		FGameplayTag CloseMenuTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextMenu.Close");
+		FGridItemContextMenuCloseMessage CloseMsg;
+		UGameplayMessageSubsystem::Get().BroadcastMessage(CloseMenuTag, CloseMsg);
+		return Widget::Unhandled();
+	}
 }
-
-
-

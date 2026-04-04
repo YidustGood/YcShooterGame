@@ -351,6 +351,132 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		return InventoryGridRevision;
 	}
 
+	UFUNCTION(BlueprintCallable, Category = "ContextMenu")
+	bool GetContextMenuActionsForItem(UYcInventoryItemInstance ItemInst, TArray<FGridItemContextMenuAction>&out OutActions) const
+	{
+		OutActions.Empty();
+		if (ItemInst == nullptr)
+		{
+			return false;
+		}
+
+		FInstancedStruct Result = ItemInst.FindItemFragment(FItemFragment_ContextMenu);
+		if (!Result.IsValid())
+		{
+			return false;
+		}
+
+		auto MenuFragment = Result.Get(FItemFragment_ContextMenu);
+		if (MenuFragment.Actions.Num() <= 0)
+		{
+			return false;
+		}
+
+		TArray<FGameplayTag> SeenActionTags;
+		for (int32 i = 0; i < MenuFragment.Actions.Num(); i++)
+		{
+			FGridItemContextMenuAction ActionDef = MenuFragment.Actions[i];
+			if (!ActionDef.ActionTag.IsValid())
+			{
+				continue;
+			}
+			if (SeenActionTags.Contains(ActionDef.ActionTag))
+			{
+				Warning("ContextMenu action tag duplicated on same item, later one ignored.");
+				continue;
+			}
+			SeenActionTags.Add(ActionDef.ActionTag);
+
+			if (!CanExecuteContextActionInternal(ItemInst, ActionDef))
+			{
+				continue;
+			}
+
+			int32 InsertIndex = OutActions.Num();
+			for (int32 ExistingIndex = 0; ExistingIndex < OutActions.Num(); ExistingIndex++)
+			{
+				if (ActionDef.Order < OutActions[ExistingIndex].Order)
+				{
+					InsertIndex = ExistingIndex;
+					break;
+				}
+			}
+			OutActions.Insert(ActionDef, InsertIndex);
+		}
+
+		return OutActions.Num() > 0;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "ContextMenu")
+	bool CanExecuteContextAction(UYcInventoryItemInstance ItemInst, FGameplayTag ActionTag, FGridItemContextMenuAction&out OutActionDef) const
+	{
+		if (!TryFindContextMenuActionDef(ItemInst, ActionTag, OutActionDef))
+		{
+			return false;
+		}
+		return CanExecuteContextActionInternal(ItemInst, OutActionDef);
+	}
+
+	UFUNCTION(Server)
+	void ServerRequestExecuteItemContextAction(UYcInventoryItemInstance ItemInst, FGameplayTag ActionTag)
+	{
+		if (ItemInst == nullptr || !ActionTag.IsValid())
+		{
+			return;
+		}
+
+		FGridItemContextMenuAction ActionDef;
+		if (!CanExecuteContextAction(ItemInst, ActionTag, ActionDef))
+		{
+			Warning("Reject context action: item/action is not executable.");
+			return;
+		}
+
+		FGridItemContextActionRequest Request;
+		Request.Player = GetOwner();
+		Request.ItemInst = ItemInst;
+		Request.ActionTag = ActionDef.ActionTag;
+		Request.ExecutorTag = ActionDef.ExecutorTag;
+		Request.EventTag = ActionDef.EventTag;
+
+		FGameplayTag RequestMessageTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextAction.Request");
+		UGameplayMessageSubsystem::Get().BroadcastMessage(RequestMessageTag, Request);
+
+		FGameplayTag MessageExecutorTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.ContextAction.Executor.Message");
+		FGameplayTag GasExecutorTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.ContextAction.Executor.GAS");
+
+		// 1) Message executor: broadcast to action event tag for gameplay layer subscribers.
+		if (ActionDef.ExecutorTag == MessageExecutorTag)
+		{
+			if (ActionDef.EventTag.IsValid())
+			{
+				UGameplayMessageSubsystem::Get().BroadcastMessage(ActionDef.EventTag, Request);
+			}
+			return;
+		}
+
+		// 2) GAS executor: dispatch gameplay event to the owner actor.
+		if (ActionDef.ExecutorTag == GasExecutorTag)
+		{
+			if (!ActionDef.EventTag.IsValid())
+			{
+				Warning("Reject context action: GAS executor requires valid EventTag.");
+				return;
+			}
+
+			FGameplayEventData Payload;
+			Payload.EventTag = ActionDef.EventTag;
+			Payload.Instigator = GetOwner();
+			Payload.Target = ItemInst.GetActorOuter();
+			Payload.OptionalObject = ItemInst;
+			AbilitySystem::SendGameplayEventToActor(GetOwner(), ActionDef.EventTag, Payload);
+			return;
+		}
+
+		// 3) Unknown executor: keep only the raw request broadcast for custom gameplay-side handling.
+		Warning("Unknown context action executor tag, request broadcast only.");
+	}
+
 	UFUNCTION(Server)
 	void ServerStartContainerSearchSession(UGridInventoryManagerComponent ContainerInventory)
 	{
@@ -649,6 +775,62 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		}
 
 		return RevealedSearchItems.Contains(ItemInst);
+	}
+
+	private bool CanExecuteContextActionInternal(UYcInventoryItemInstance ItemInst, FGridItemContextMenuAction ActionDef) const
+	{
+		if (ItemInst == nullptr)
+		{
+			return false;
+		}
+		if (!ActionDef.ActionTag.IsValid())
+		{
+			return false;
+		}
+		if (!IsItemOperableForCurrentSession(ItemInst))
+		{
+			return false;
+		}
+		return true;
+	}
+
+	private bool TryFindContextMenuActionDef(UYcInventoryItemInstance ItemInst, FGameplayTag ActionTag, FGridItemContextMenuAction&out OutActionDef) const
+	{
+		OutActionDef = FGridItemContextMenuAction();
+		if (ItemInst == nullptr || !ActionTag.IsValid())
+		{
+			return false;
+		}
+
+		FInstancedStruct Result = ItemInst.FindItemFragment(FItemFragment_ContextMenu);
+		if (!Result.IsValid())
+		{
+			return false;
+		}
+
+		auto MenuFragment = Result.Get(FItemFragment_ContextMenu);
+		TArray<FGameplayTag> SeenActionTags;
+		for (int32 i = 0; i < MenuFragment.Actions.Num(); i++)
+		{
+			FGridItemContextMenuAction ActionDef = MenuFragment.Actions[i];
+			if (!ActionDef.ActionTag.IsValid())
+			{
+				continue;
+			}
+			if (SeenActionTags.Contains(ActionDef.ActionTag))
+			{
+				Warning("ContextMenu action tag duplicated on same item, later one ignored.");
+				continue;
+			}
+			SeenActionTags.Add(ActionDef.ActionTag);
+
+			if (ActionDef.ActionTag == ActionTag)
+			{
+				OutActionDef = ActionDef;
+				return true;
+			}
+		}
+		return false;
 	}
 
 	UFUNCTION(Server)

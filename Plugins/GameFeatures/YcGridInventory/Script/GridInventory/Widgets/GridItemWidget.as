@@ -108,6 +108,46 @@ class UGridItemWidget : UUserWidget
 	UFUNCTION(BlueprintOverride)
 	FEventReply OnMouseButtonDown(FGeometry InMyGeometry, FPointerEvent InMouseEvent)
 	{
+		FGameplayTag CloseMenuTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextMenu.Close");
+
+		// 右键：打开物品上下文菜单（未识别物品不允许）
+		FKey EffectingButton = InMouseEvent.GetEffectingButton();
+		if (EffectingButton.KeyName == n"RightMouseButton")
+		{
+			// 先统一关闭当前已打开的菜单：
+			// 即使本次右键目标没有可用菜单，也要收起上一个物品的菜单。
+			FGridItemContextMenuCloseMessage CloseMsg;
+			UGameplayMessageSubsystem::Get().BroadcastMessage(CloseMenuTag, CloseMsg);
+
+			if (!IsItemRevealed())
+			{
+				return Widget::Handled();
+			}
+
+			auto PlayerInventory = GetOwningPlayerGridInventory();
+			if (PlayerInventory == nullptr)
+			{
+				return Widget::Handled();
+			}
+
+			TArray<FGridItemContextMenuAction> Actions;
+			if (!PlayerInventory.GetContextMenuActionsForItem(ItemInstance, Actions))
+			{
+				return Widget::Handled();
+			}
+
+			FGridItemContextMenuOpenMessage OpenMsg;
+			OpenMsg.ItemInst = ItemInstance;
+			OpenMsg.ScreenPosition = InMouseEvent.GetScreenSpacePosition();
+			FGameplayTag OpenMenuTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextMenu.Open");
+			UGameplayMessageSubsystem::Get().BroadcastMessage(OpenMenuTag, OpenMsg);
+			return Widget::Handled();
+		}
+
+		// 左键按下时先关闭菜单，避免菜单和拖拽/双击交互冲突
+		FGridItemContextMenuCloseMessage CloseMsg;
+		UGameplayMessageSubsystem::Get().BroadcastMessage(CloseMenuTag, CloseMsg);
+
 		// 未识别状态下直接禁止拖拽起手（起手即拦截，避免无效拖拽反馈）
 		if (!IsItemRevealed())
 		{
@@ -119,6 +159,13 @@ class UGridItemWidget : UUserWidget
 	UFUNCTION(BlueprintOverride)
 	FEventReply OnMouseButtonDoubleClick(FGeometry InMyGeometry, FPointerEvent InMouseEvent)
 	{
+		FKey EffectingButton = InMouseEvent.GetEffectingButton();
+		if (EffectingButton.KeyName != n"LeftMouseButton")
+		{
+			// 仅左键双击触发物品交互，右键双击不执行双击交换逻辑。
+			return Widget::Handled();
+		}
+
 		if (!IsItemRevealed())
 		{
 			return Widget::Handled();
@@ -139,6 +186,9 @@ class UGridItemWidget : UUserWidget
 		{
 			return;
 		}
+		FGameplayTag CloseMenuTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextMenu.Close");
+		FGridItemContextMenuCloseMessage CloseMsg;
+		UGameplayMessageSubsystem::Get().BroadcastMessage(CloseMenuTag, CloseMsg);
 		CreateDragDropOperation();
 		Operation = DragDropOperation;
 	}
@@ -150,5 +200,3 @@ class UGridItemWidget : UUserWidget
 		// 创建拖拽操作
 	}
 }
-
-

@@ -12,6 +12,7 @@ public class YcGridInventoryRuntime : ModuleRules
 			new string[]
 			{
 				"Core",
+				"GameplayTags",
 				"YiChenInventory"
 			}
 		);

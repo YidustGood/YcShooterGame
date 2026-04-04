@@ -236,6 +236,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = Inventory)
 	bool RemoveItemInstance(UYcInventoryItemInstance* ItemInstance);
+
+	/**
+	 * 消费指定ItemInstance的堆叠数量
+	 * @param ItemInstance 目标物品实例
+	 * @param StackCount 要消费的数量（<=0视为失败）
+	 * @return 是否成功消费
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = Inventory)
+	bool ConsumeItemInstance(UYcInventoryItemInstance* ItemInstance, int32 StackCount = 1);
 	
 	/**
 	 * 消费库存物品

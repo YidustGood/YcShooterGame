@@ -116,6 +116,39 @@ void UYcHealthComponent::K2_DamageSelfDestruct(bool bFellOutOfWorld)
 	DamageSelfDestruct(bFellOutOfWorld);
 }
 
+bool UYcHealthComponent::ApplyHealing(const float HealAmount)
+{
+	if (HealAmount <= 0.0f || AbilitySystemComponent == nullptr)
+	{
+		return false;
+	}
+
+	const AActor* Owner = GetOwner();
+	if (!Owner || !Owner->HasAuthority())
+	{
+		return false;
+	}
+
+	const UYcCombatCoreSettings* CombatSettings = GetDefault<UYcCombatCoreSettings>();
+	const TSubclassOf<UGameplayEffect> HealGE = CombatSettings ? CombatSettings->GetHealGameplayEffect_SetByCaller() : nullptr;
+
+	if (HealGE)
+	{
+		FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(HealGE, 1.0f, AbilitySystemComponent->MakeEffectContext());
+		FGameplayEffectSpec* Spec = SpecHandle.Data.Get();
+		if (Spec)
+		{
+			Spec->SetSetByCallerMagnitude(TAG_Gameplay_Attribute_SetByCaller_Heal, HealAmount);
+			AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*Spec);
+			return true;
+		}
+	}
+
+	UE_LOG(LogCombatCore, Warning, TEXT("HealGameplayEffect_SetByCaller is not configured or failed to build spec, fallback to direct Healing attribute mod."));
+	AbilitySystemComponent->ApplyModToAttribute(UYcHealthSet::GetHealingAttribute(), EGameplayModOp::Additive, HealAmount);
+	return true;
+}
+
 void UYcHealthComponent::StartDeath()
 {
 	if (DeathState != EYcDeathState::NotDead) return;

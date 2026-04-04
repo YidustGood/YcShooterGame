@@ -369,6 +369,55 @@ bool UYcInventoryManagerComponent::RemoveItemInstance(UYcInventoryItemInstance* 
 	return bSuccess;
 }
 
+bool UYcInventoryManagerComponent::ConsumeItemInstance(UYcInventoryItemInstance* ItemInstance, int32 StackCount)
+{
+	AActor* OwningActor = GetOwner();
+	if (!OwningActor || !OwningActor->HasAuthority())
+	{
+		return false;
+	}
+	if (!IsValid(ItemInstance) || StackCount <= 0)
+	{
+		return false;
+	}
+	
+	// @TODO 如果物品数量会很多的话这里还可以做一下性能优化
+	for (FYcInventoryItemEntry& ItemEntry : ItemList.Items)
+	{
+		if (ItemEntry.Instance != ItemInstance)
+		{
+			continue;
+		}
+
+		if (ItemEntry.StackCount < StackCount)
+		{
+			return false;
+		}
+
+		const int32 OldCount = ItemEntry.StackCount;
+		ItemEntry.StackCount -= StackCount;
+
+		if (ItemEntry.StackCount > 0)
+		{
+			ItemEntry.LastObservedCount = OldCount;
+			ItemList.MarkItemDirty(ItemEntry);
+			ItemList.BroadcastChangeMessage(ItemEntry, OldCount, ItemEntry.StackCount);
+			return true;
+		}
+
+		// 剩余为0，走完整移除流程，确保FastArray与子对象复制状态一致。
+		ItemEntry.StackCount = 0;
+		const bool bRemoved = ItemList.RemoveItem(ItemInstance);
+		if (bRemoved && IsUsingRegisteredSubObjectList())
+		{
+			RemoveReplicatedSubObject(ItemInstance);
+		}
+		return bRemoved;
+	}
+
+	return false;
+}
+
 TArray<UYcInventoryItemInstance*> UYcInventoryManagerComponent::GetAllItemInstance() const
 {
 	return ItemList.GetAllItemInstance();

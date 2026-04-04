@@ -9,6 +9,9 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	UPROPERTY(BindWidget)
 	UGridInventoryWidget GridInventory;
 
+	UPROPERTY()
+	TSubclassOf<UGridItemContextMenuWidget> ContextMenuWidgetClass;
+
 	UPROPERTY(BlueprintReadOnly)
 	UGridInventoryManagerComponent OwnerInventory;
 
@@ -20,9 +23,13 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 
 	private FGameplayMessageListenerHandle GridItemContainerMsgHandle;
 	private FGameplayMessageListenerHandle SwapItemMsgHandle;
+	private FGameplayMessageListenerHandle ContextMenuOpenMsgHandle;
+	private FGameplayMessageListenerHandle ContextMenuClickMsgHandle;
+	private FGameplayMessageListenerHandle ContextMenuCloseMsgHandle;
 
 	// 当前的物品容器界面
 	private UGridInventoryWidget CurrentContainerWidget;
+	private UGridItemContextMenuWidget CurrentContextMenuWidget;
 	private TOptional<FGridItemContainerMessage> CachedCurrentContainerMsg;
 
 	UFUNCTION(BlueprintOverride)
@@ -56,6 +63,30 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 			n"OnReceivedSwapItemMessage",
 			FSwapGridItemMessage(),
 			EGameplayMessageMatch::ExactMatch);
+
+		FGameplayTag ContextOpenTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextMenu.Open");
+		ContextMenuOpenMsgHandle = UGameplayMessageSubsystem::Get().RegisterListener(
+			ContextOpenTag,
+			this,
+			n"OnReceivedContextMenuOpenMessage",
+			FGridItemContextMenuOpenMessage(),
+			EGameplayMessageMatch::ExactMatch);
+
+		FGameplayTag ContextClickTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextMenu.Click");
+		ContextMenuClickMsgHandle = UGameplayMessageSubsystem::Get().RegisterListener(
+			ContextClickTag,
+			this,
+			n"OnReceivedContextMenuClickMessage",
+			FGridItemContextMenuClickMessage(),
+			EGameplayMessageMatch::ExactMatch);
+
+		FGameplayTag ContextCloseTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextMenu.Close");
+		ContextMenuCloseMsgHandle = UGameplayMessageSubsystem::Get().RegisterListener(
+			ContextCloseTag,
+			this,
+			n"OnReceivedContextMenuCloseMessage",
+			FGridItemContextMenuCloseMessage(),
+			EGameplayMessageMatch::ExactMatch);
 	}
 
 	UFUNCTION(BlueprintOverride)
@@ -69,15 +100,20 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 
 		SwapItemMsgHandle.Unregister();
 		GridItemContainerMsgHandle.Unregister();
+		ContextMenuOpenMsgHandle.Unregister();
+		ContextMenuClickMsgHandle.Unregister();
+		ContextMenuCloseMsgHandle.Unregister();
 
 		if (CurrentContainerWidget != nullptr)
 			CurrentContainerWidget.RemoveFromParent();
+		CloseContextMenu();
 		CachedCurrentContainerMsg.Reset();
 	}
 
 	UFUNCTION(BlueprintOverride)
 	bool OnDrop(FGeometry MyGeometry, FPointerEvent PointerEvent, UDragDropOperation Operation)
 	{
+		CloseContextMenu();
 		Print("UGridInventoryMainWidget::OnDrop.");
 		return true;
 	}
@@ -85,6 +121,8 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	UFUNCTION()
 	void OnReceivedGridItemContainerMsg(FGameplayTag ActualTag, FGridItemContainerMessage Data)
 	{
+		CloseContextMenu();
+
 		if (Data.Player != nullptr && Data.Player != GetOwningPlayerPawn())
 		{
 			return;
@@ -112,6 +150,7 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 
 			if (CurrentContainerWidget != nullptr)
 				CurrentContainerWidget.RemoveFromParent();
+			CloseContextMenu();
 			CachedCurrentContainerMsg.Reset();
 		}
 	}
@@ -120,6 +159,8 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	// 双击快捷转移：容器->背包 或 背包->当前容器
 	void OnReceivedSwapItemMessage(FGameplayTag ActualTag, FSwapGridItemMessage Data)
 	{
+		CloseContextMenu();
+
 		if (!CachedCurrentContainerMsg.IsSet())
 			return;
 		auto CurrentInteractContainer = CachedCurrentContainerMsg.GetValue().ContainerInventory;
@@ -150,6 +191,85 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	FEventReply OnMouseButtonDoubleClick(FGeometry InMyGeometry, FPointerEvent InMouseEvent)
 	{
 		return FEventReply::Handled();
+	}
+
+	UFUNCTION(BlueprintOverride)
+	FEventReply OnMouseButtonDown(FGeometry InMyGeometry, FPointerEvent InMouseEvent)
+	{
+		CloseContextMenu();
+		return Widget::Unhandled();
+	}
+
+	UFUNCTION()
+	void OnReceivedContextMenuOpenMessage(FGameplayTag ActualTag, FGridItemContextMenuOpenMessage Data)
+	{
+		if (OwnerInventory == nullptr || Data.ItemInst == nullptr)
+		{
+			return;
+		}
+
+		TArray<FGridItemContextMenuAction> Actions;
+		if (!OwnerInventory.GetContextMenuActionsForItem(Data.ItemInst, Actions))
+		{
+			CloseContextMenu();
+			return;
+		}
+		if (ContextMenuWidgetClass == nullptr)
+		{
+			Warning("ContextMenuWidgetClass is nullptr.");
+			return;
+		}
+
+		if (CurrentContextMenuWidget != nullptr)
+		{
+			CurrentContextMenuWidget.RemoveFromParent();
+			CurrentContextMenuWidget = nullptr;
+		}
+
+		CurrentContextMenuWidget = Cast<UGridItemContextMenuWidget>(WidgetBlueprint::CreateWidget(ContextMenuWidgetClass, GetOwningPlayer()));
+		if (CurrentContextMenuWidget == nullptr)
+		{
+			return;
+		}
+
+		Canvas.AddChildToCanvas(CurrentContextMenuWidget);
+		CurrentContextMenuWidget.Initialize(Data.ItemInst, Actions);
+
+		FVector2D LocalPos = Canvas.GetCachedGeometry().AbsoluteToLocal(Data.ScreenPosition);
+		auto MenuSlot = WidgetLayout::SlotAsCanvasSlot(CurrentContextMenuWidget);
+		MenuSlot.SetPosition(LocalPos);
+		MenuSlot.bAutoSize = true;
+	}
+
+	UFUNCTION()
+	void OnReceivedContextMenuClickMessage(FGameplayTag ActualTag, FGridItemContextMenuClickMessage Data)
+	{
+		if (OwnerInventory == nullptr || Data.ItemInst == nullptr || !Data.ActionTag.IsValid())
+		{
+			return;
+		}
+
+		OwnerInventory.ServerRequestExecuteItemContextAction(Data.ItemInst, Data.ActionTag);
+		if (Data.bCloseMenuOnExecute)
+		{
+			CloseContextMenu();
+		}
+	}
+
+	UFUNCTION()
+	void OnReceivedContextMenuCloseMessage(FGameplayTag ActualTag, FGridItemContextMenuCloseMessage Data)
+	{
+		CloseContextMenu();
+	}
+
+	UFUNCTION()
+	void CloseContextMenu()
+	{
+		if (CurrentContextMenuWidget != nullptr)
+		{
+			CurrentContextMenuWidget.RemoveFromParent();
+			CurrentContextMenuWidget = nullptr;
+		}
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2025 YiChen. All Rights Reserved.
+﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 #pragma once
 
@@ -107,6 +107,14 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, DisplayName = "DamageSelfDestruct")
 	void K2_DamageSelfDestruct(bool bFellOutOfWorld = false);
+
+	/**
+	 * 在服务器权限下为所有者应用治疗效果。
+	 * 优先使用配置的SetByCaller治疗效果GameplayEffect；若无则回退为直接修改Healing属性。
+	 * @param HealAmount 治疗值
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "YcGameCore|Health")
+	bool ApplyHealing(float HealAmount);
 	
 	/**
 	 * 开始死亡序列

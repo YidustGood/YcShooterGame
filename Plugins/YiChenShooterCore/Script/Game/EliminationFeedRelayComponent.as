@@ -39,6 +39,9 @@ class UEliminationFeedRelayComponent : UActorComponent
 		auto Instigator = Cast<APlayerState>(Data.Instigator);
 		auto InstigatorName = FText::FromString(Instigator.GetPlayerName());
 		auto Target = Cast<APlayerState>(Data.Target);
+		// @TODO 对于没有PlayerState的简单AI Bot需要特殊处理, 需要考虑一下
+		if (Target == nullptr)
+			return;
 		auto TargetName = FText::FromString(Target.GetPlayerName());
 		auto TeamSubsystem = UYcTeamSubsystem::Get();
 		int AttackerTeamId = -1;

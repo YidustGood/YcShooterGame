@@ -108,6 +108,20 @@ public:
      * 当组件设置了一些数据后，就应调用此函数，尝试推进初始化进度，以便依赖该数据的其他组件能够继续推进他们的初始化进度。
      */
     virtual void CheckDefaultInitialization() override;
+	
+	/** 
+	 * Binds a BP delegate to get called on a state change for this feature 
+	 * 作为IGameFrameworkInitStateInterface接口的转发, 因为AngelScript不支持接口
+	 */
+	UFUNCTION(BlueprintCallable, Category = "InitState")
+	bool K2_RegisterAndCallForInitStateChange(FGameplayTag RequiredState, FActorInitStateChangedBPDelegate Delegate, bool bCallImmediately = true);
+
+	/** 
+	 * Unbinds a BP delegate from changes to this feature
+	 * 作为IGameFrameworkInitStateInterface接口的转发, 因为AngelScript不支持接口
+	 */
+	UFUNCTION(BlueprintCallable, Category = "InitState")
+	bool K2_UnregisterInitStateDelegate(FActorInitStateChangedBPDelegate Delegate);
     //~ End IGameFrameworkInitStateInterface interface
    /////////////// ~初始化状态链 ///////////////
     

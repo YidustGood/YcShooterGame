@@ -194,6 +194,17 @@ void UYcPawnExtensionComponent::CheckDefaultInitialization()
 	ContinueInitStateChain(StateChain);
 }
 
+bool UYcPawnExtensionComponent::K2_RegisterAndCallForInitStateChange(FGameplayTag RequiredState,
+	FActorInitStateChangedBPDelegate Delegate, bool bCallImmediately)
+{
+	return RegisterAndCallForInitStateChange(RequiredState, Delegate, bCallImmediately);
+}
+
+bool UYcPawnExtensionComponent::K2_UnregisterInitStateDelegate(FActorInitStateChangedBPDelegate Delegate)
+{
+	return UnregisterInitStateDelegate(Delegate);
+}
+
 void UYcPawnExtensionComponent::InitializeAbilitySystem(UYcAbilitySystemComponent* InASC, AActor* InOwnerActor)
 {
 #if DEBUG_INIT_STATE

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "AbilitySystemInterface.h"
 #include "CommonPlayerController.h"
 #include "YcTeamAgentInterface.h"
 #include "YcPlayerController.generated.h"
@@ -23,7 +24,7 @@ class UYcAbilitySystemComponent;
  * - 性能优化：直接访问 PlayerState，避免复杂查找
  */
 UCLASS(Config = Game, Meta = (ShortTooltip = "The base player controller class used by this project."))
-class YICHENGAMEPLAY_API AYcPlayerController : public ACommonPlayerController, public IYcTeamAgentInterface
+class YICHENGAMEPLAY_API AYcPlayerController : public ACommonPlayerController, public IYcTeamAgentInterface, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 public:
@@ -42,6 +43,9 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "YcGameCore|PlayerController")
 	UYcAbilitySystemComponent* GetYcAbilitySystemComponent() const;
+	
+	// IAbilitySystemInterface接口实现, 便于通过PlayerController走标准的ASC组件查询路径
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
 	//~IYcTeamAgentInterface interface
 	/**

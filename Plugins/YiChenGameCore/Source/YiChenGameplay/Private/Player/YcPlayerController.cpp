@@ -29,6 +29,11 @@ UYcAbilitySystemComponent* AYcPlayerController::GetYcAbilitySystemComponent() co
 	return (PS ? PS->GetYcAbilitySystemComponent() : nullptr);
 }
 
+UAbilitySystemComponent* AYcPlayerController::GetAbilitySystemComponent() const
+{
+	return GetYcAbilitySystemComponent();
+}
+
 void AYcPlayerController::PreProcessInput(const float DeltaTime, const bool bGamePaused)
 {
 	Super::PreProcessInput(DeltaTime, bGamePaused);

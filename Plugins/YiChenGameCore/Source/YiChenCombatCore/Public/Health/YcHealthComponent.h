@@ -46,12 +46,12 @@ public:
 	UYcHealthComponent(const FObjectInitializer& ObjectInitializer);
 	
 	/**
-	 * 查找指定Actor上的健康组件
+	 * 查找指定Actor上的健康组件, 如果传入的是Controller或者PlayerState会尝试从其关联的Pawn上寻找
 	 * @param Actor 目标Actor
 	 * @return 找到的健康组件，如果不存在则返回nullptr
 	 */
 	UFUNCTION(BlueprintPure, Category = "YcGameCore|Health")
-	static UYcHealthComponent* FindHealthComponent(const AActor* Actor) { return (Actor ? Actor->FindComponentByClass<UYcHealthComponent>() : nullptr); }
+	static UYcHealthComponent* FindHealthComponent(const AActor* Actor);
 
 	/**
 	 * 模板方法：与AbilitySystemComponent初始化时的业务逻辑

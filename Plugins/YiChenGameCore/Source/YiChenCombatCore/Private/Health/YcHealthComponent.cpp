@@ -31,6 +31,33 @@ UYcHealthComponent::UYcHealthComponent(const FObjectInitializer& ObjectInitializ
 	HealthSet = nullptr;
 }
 
+UYcHealthComponent* UYcHealthComponent::FindHealthComponent(const AActor* Actor)
+{
+	if (!Actor) return nullptr;
+	
+	UYcHealthComponent* FoundHealthComponent = Actor->FindComponentByClass<UYcHealthComponent>();
+	if (FoundHealthComponent) return FoundHealthComponent;
+	
+	if (const AController* Controller = Cast<APlayerController>(Actor))
+	{
+		if (Controller->GetPawn())
+		{
+			FoundHealthComponent = Controller->GetPawn()->FindComponentByClass<UYcHealthComponent>();
+			if (FoundHealthComponent) return FoundHealthComponent;
+		}
+	}
+	
+	if (const APlayerState* PS = Cast<APlayerState>(Actor))
+	{
+		if (PS->GetPawn())
+		{
+			FoundHealthComponent = PS->GetPawn()->FindComponentByClass<UYcHealthComponent>();
+			if (FoundHealthComponent) return FoundHealthComponent;
+		}
+	}
+	return nullptr;
+}
+
 void UYcHealthComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);

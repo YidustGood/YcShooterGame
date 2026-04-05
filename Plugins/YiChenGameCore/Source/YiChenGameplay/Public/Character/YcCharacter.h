@@ -86,6 +86,7 @@ public:
 	//~End of IYcTeamAgentInterface interface
 	
 protected:
+	virtual void BeginPlay() override;
 	// 当能力系统初始化时调用
 	virtual void OnAbilitySystemInitialized();
 	// 当能力系统反初始化时调用

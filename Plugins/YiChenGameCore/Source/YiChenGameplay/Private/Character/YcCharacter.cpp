@@ -37,11 +37,23 @@ AYcCharacter::AYcCharacter(const FObjectInitializer& ObjectInitializer)
 	
 	// 创建HealthComponent组件, 并绑定健康生命周期回调函数
 	HealthComponent = CreateDefaultSubobject<UYcHealthComponent>(TEXT("HealthComponent"));
-	HealthComponent->OnDeathStarted.AddDynamic(this, &ThisClass::OnDeathStarted);
-	HealthComponent->OnDeathFinished.AddDynamic(this, &ThisClass::OnDeathFinished);
 	
 	// 创建MovementSyncComponent组件，用于同步AttributeSet中的移动速度到CharacterMovementComponent
 	MovementSyncComponent = CreateDefaultSubobject<UYcMovementSyncComponent>(TEXT("MovementSyncComponent"));
+}
+
+void AYcCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	
+	// Actor开始游戏时运行时绑定回调，避免关卡复制带入的序列化委托污染
+	if (HealthComponent)
+	{
+		HealthComponent->OnDeathStarted.RemoveDynamic(this, &ThisClass::OnDeathStarted);
+		HealthComponent->OnDeathFinished.RemoveDynamic(this, &ThisClass::OnDeathFinished);
+		HealthComponent->OnDeathStarted.AddUniqueDynamic(this, &ThisClass::OnDeathStarted);
+		HealthComponent->OnDeathFinished.AddUniqueDynamic(this, &ThisClass::OnDeathFinished);
+	}
 }
 
 void AYcCharacter::Reset()
@@ -98,7 +110,7 @@ void AYcCharacter::OnAbilitySystemUninitialized()
 	FAbilitySystemLifeCycleMessage Message;
 	Message.ASC = GetAbilitySystemComponent();
 	Message.Owner = this;
-	MessageSubsystem.BroadcastMessage(YcGameplayTags::TAG_Ability_State_AbilitySystemInitialized, Message);
+	MessageSubsystem.BroadcastMessage(YcGameplayTags::TAG_Ability_State_AbilitySystemUninitialized, Message);
 }
 
 void AYcCharacter::PossessedBy(AController* NewController)

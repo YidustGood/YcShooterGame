@@ -22,7 +22,6 @@
 #include "YcEquipmentInstance.h"
 #include "YcEquipmentManagerComponent.h"
 #include "YcInventoryItemInstance.h"
-#include "YcInventoryLibrary.h"
 #include "YcInventoryManagerComponent.h"
 #include "YiChenEquipment.h"
 #include "Fragments/InventoryFragment_Equippable.h"
@@ -306,7 +305,7 @@ bool UYcQuickBarComponent::AddItemToSlot(const int32 SlotIndex, UYcInventoryItem
 	// 如果配置为物品离开 Inventory，则从 Inventory 移除
 	if (bItemsLeaveInventory)
 	{
-		if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryLibrary::GetInventoryManagerComponent(GetOwner()))
+		if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryManagerComponent::FindInventoryManager(GetOwner()))
 		{
 			InventoryManager->RemoveItemInstance(Item);
 		}
@@ -356,7 +355,7 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 	// 如果配置为物品离开 Inventory，则将物品回归 Inventory
 	if (bItemsLeaveInventory)
 	{
-		if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryLibrary::GetInventoryManagerComponent(GetOwner()))
+		if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryManagerComponent::FindInventoryManager(GetOwner()))
 		{
 			InventoryManager->AddItemInstance(RemovedItem, 1);
 		}

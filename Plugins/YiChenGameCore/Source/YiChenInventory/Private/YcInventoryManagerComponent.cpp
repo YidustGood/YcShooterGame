@@ -7,6 +7,7 @@
 #include "YcInventoryItemInstance.h"
 #include "YiChenInventory.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
+#include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
 
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_Inventory_Message_StackChanged, "Yc.Inventory.Message.StackChanged");
@@ -416,6 +417,82 @@ bool UYcInventoryManagerComponent::ConsumeItemInstance(UYcInventoryItemInstance*
 	}
 
 	return false;
+}
+
+UYcInventoryManagerComponent* UYcInventoryManagerComponent::FindInventoryManager(const AActor* Actor)
+{
+	if (!Actor)
+	{
+		return nullptr;
+	}
+
+	// 1. 直接从 Actor 上查找
+	if (UYcInventoryManagerComponent* Component = Actor->FindComponentByClass<UYcInventoryManagerComponent>())
+	{
+		return Component;
+	}
+
+	// 2. Pawn -> Controller / PlayerState
+	if (const APawn* Pawn = Cast<APawn>(Actor))
+	{
+		if (const AController* Controller = Pawn->GetController())
+		{
+			if (UYcInventoryManagerComponent* Component = Controller->FindComponentByClass<UYcInventoryManagerComponent>())
+			{
+				return Component;
+			}
+		}
+
+		if (const APlayerState* PlayerState = Pawn->GetPlayerState())
+		{
+			if (UYcInventoryManagerComponent* Component = PlayerState->FindComponentByClass<UYcInventoryManagerComponent>())
+			{
+				return Component;
+			}
+		}
+	}
+
+	// 3. Controller -> Pawn / PlayerState
+	if (const AController* Controller = Cast<AController>(Actor))
+	{
+		if (const APawn* Pawn = Controller->GetPawn())
+		{
+			if (UYcInventoryManagerComponent* Component = Pawn->FindComponentByClass<UYcInventoryManagerComponent>())
+			{
+				return Component;
+			}
+		}
+
+		if (const APlayerState* PlayerState = Controller->PlayerState)
+		{
+			if (UYcInventoryManagerComponent* Component = PlayerState->FindComponentByClass<UYcInventoryManagerComponent>())
+			{
+				return Component;
+			}
+		}
+	}
+
+	// 4. PlayerState -> Pawn / Controller(owner)
+	if (const APlayerState* PlayerState = Cast<APlayerState>(Actor))
+	{
+		if (const APawn* Pawn = PlayerState->GetPawn())
+		{
+			if (UYcInventoryManagerComponent* Component = Pawn->FindComponentByClass<UYcInventoryManagerComponent>())
+			{
+				return Component;
+			}
+		}
+
+		if (const AController* Controller = Cast<AController>(PlayerState->GetOwner()))
+		{
+			if (UYcInventoryManagerComponent* Component = Controller->FindComponentByClass<UYcInventoryManagerComponent>())
+			{
+				return Component;
+			}
+		}
+	}
+
+	return nullptr;
 }
 
 TArray<UYcInventoryItemInstance*> UYcInventoryManagerComponent::GetAllItemInstance() const

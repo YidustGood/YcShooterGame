@@ -344,20 +344,12 @@ void UYcEquipmentSlotComponent::SetSlotItem_Internal(int32 SlotIndex, UYcInvento
 
 UYcInventoryManagerComponent* UYcEquipmentSlotComponent::GetInventoryManager() const
 {
-	if (APawn* Pawn = GetPawn<APawn>())
-	{
-		return Pawn->FindComponentByClass<UYcInventoryManagerComponent>();
-	}
-	return nullptr;
+	return UYcInventoryManagerComponent::FindInventoryManager(GetOwner());
 }
 
 UYcEquipmentManagerComponent* UYcEquipmentSlotComponent::GetEquipmentManager() const
 {
-	if (APawn* Pawn = GetPawn<APawn>())
-	{
-		return Pawn->FindComponentByClass<UYcEquipmentManagerComponent>();
-	}
-	return nullptr;
+	return UYcEquipmentManagerComponent::FindEquipmentManager(GetOwner());
 }
 
 FGameplayTag UYcEquipmentSlotComponent::GetEquipmentSlotTag(UYcInventoryItemInstance* ItemInstance) const

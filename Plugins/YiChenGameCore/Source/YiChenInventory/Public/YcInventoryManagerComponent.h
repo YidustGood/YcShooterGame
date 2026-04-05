@@ -257,6 +257,16 @@ public:
 	
 	//~=============================================================================
 	// 物品查询
+
+	/**
+	 * 从Actor查找库存管理组件
+	 * 查找顺序：Actor自身 -> Pawn/Controller互查 -> PlayerState
+	 *
+	 * @param Actor 要查找的Actor对象
+	 * @return 找到的库存管理组件，如果不存在则返回nullptr
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = Inventory)
+	static UYcInventoryManagerComponent* FindInventoryManager(const AActor* Actor);
 	
 	/**
 	 * 获取当前库存中所有的ItemInstance对象

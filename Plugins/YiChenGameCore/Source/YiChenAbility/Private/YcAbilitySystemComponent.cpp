@@ -10,6 +10,7 @@
 #include "YcAbilityTagRelationshipMapping.h"
 #include "YcGlobalAbilitySystem.h"
 #include "Attributes/YcAttributeSet.h"
+#include "GameFramework/PlayerState.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Net/UnrealNetwork.h"
 
@@ -52,7 +53,18 @@ void UYcAbilitySystemComponent::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 UYcAbilitySystemComponent* UYcAbilitySystemComponent::GetAbilitySystemComponentFromActor(const AActor* Actor,
                                                                                          bool LookForComponent)
 {
-	return Cast<UYcAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor, LookForComponent));
+	UYcAbilitySystemComponent* FoundASC = Cast<UYcAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor, LookForComponent));
+	
+	if (FoundASC) return FoundASC;
+
+	if (const APlayerController* PC = Cast<APlayerController>(Actor))
+	{
+		FoundASC =  Cast<UYcAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(PC->GetPawn(), LookForComponent));
+		if (FoundASC) return FoundASC;
+		FoundASC =  Cast<UYcAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(PC->PlayerState, LookForComponent));
+		if (FoundASC) return FoundASC;
+	}
+	return nullptr;
 }
 
 void UYcAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor)

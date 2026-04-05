@@ -124,10 +124,11 @@ public:
 	
 	/**
 	 * 从Actor中获取UYcAbilitySystemComponent组件
-	 * @param Actor 要查询的Actor
+	 * @param Actor 要查询的Actor, 如果Actor上每查找到, 但是是PlayerController就会自动尝试从PlayerState、控制的Pawn上去查找
 	 * @param LookForComponent 是否主动查找组件。如果为false，则只查找已缓存的组件；如果为true，则会遍历所有组件
 	 * @return 找到的技能系统组件，如果不存在则返回nullptr
 	 */
+	UFUNCTION(BlueprintCallable)
 	static UYcAbilitySystemComponent* GetAbilitySystemComponentFromActor(const AActor* Actor, bool LookForComponent = false);
 	
 	/**

@@ -69,6 +69,13 @@ public:
 	 * @return 物品实例ID
 	 */
 	FORCEINLINE const FName& GetItemInstId() const { return ItemInstId; }
+
+	/**
+	 * 蓝图版本：获取物品实例唯一ID
+	 * @return 物品实例ID
+	 */
+	UFUNCTION(BlueprintPure, Category = "Inventory", DisplayName = "GetItemInstId")
+	FName K2_GetItemInstId() const { return ItemInstId; }
 	
 	//~=============================================================================
 	// Fragment查询

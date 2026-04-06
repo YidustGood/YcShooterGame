@@ -6,7 +6,9 @@
 #include "NativeGameplayTags.h"
 #include "YcInventoryItemInstance.h"
 #include "YiChenInventory.h"
+#include "GameFramework/Controller.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
 
@@ -493,6 +495,17 @@ UYcInventoryManagerComponent* UYcInventoryManagerComponent::FindInventoryManager
 	}
 
 	return nullptr;
+}
+
+UYcInventoryManagerComponent* UYcInventoryManagerComponent::FindInventoryManagerByItem(const UYcInventoryItemInstance* ItemInstance)
+{
+	if (!ItemInstance)
+	{
+		return nullptr;
+	}
+
+	const AActor* OuterActor = ItemInstance->GetTypedOuter<AActor>();
+	return FindInventoryManager(OuterActor);
 }
 
 TArray<UYcInventoryItemInstance*> UYcInventoryManagerComponent::GetAllItemInstance() const

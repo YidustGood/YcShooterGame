@@ -96,6 +96,17 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		InitializeInventory();
 		if (GetOwner().HasAuthority())
 		{
+			auto Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwner());
+			if (Router != nullptr)
+			{
+				// 向 Router 注册通用脚本处理器，Router 不感知具体业务类型。
+				Router.RegisterScriptOperationHandler(n"Inventory.SwapGrid", this, n"ValidateSwapLikeOperation", n"ExecuteSwapLikeOperation", n"BuildSwapLikeOperationDelta", false, 0);
+				Router.RegisterScriptOperationHandler(n"Container.", this, n"ValidateSwapLikeOperation", n"ExecuteSwapLikeOperation", n"BuildSwapLikeOperationDelta", true, -1);
+				Router.RegisterScriptOperationHandler(n"Search.", this, n"ValidateSwapLikeOperation", n"ExecuteSwapLikeOperation", n"BuildSwapLikeOperationDelta", true, -1);
+			}
+		}
+		if (GetOwner().HasAuthority())
+		{
 			InventoryChangedHandle = UGameplayMessageSubsystem::Get().RegisterListener(
 				GameplayTags::Yc_Inventory_Message_StackChanged,
 				this,
@@ -111,6 +122,13 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		InventoryChangedHandle.Unregister();
 		if (GetOwner().HasAuthority())
 		{
+			auto Router = UYcInventoryOperationRouterComponent::FindRouter(GetOwner());
+			if (Router != nullptr)
+			{
+				Router.UnregisterScriptOperationHandler(n"Inventory.SwapGrid", this);
+				Router.UnregisterScriptOperationHandler(n"Container.", this);
+				Router.UnregisterScriptOperationHandler(n"Search.", this);
+			}
 			ResetSearchSession_Internal();
 		}
 	}
@@ -432,6 +450,11 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		{
 			return;
 		}
+		if (!CanExecuteContextActionInAuthoritativeState(ItemInst))
+		{
+			Warning("Reject context action: authoritative item state check failed.");
+			return;
+		}
 
 		FGridItemContextMenuAction ActionDef;
 		if (!CanExecuteContextAction(ItemInst, ActionTag, ActionDef))
@@ -483,6 +506,41 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 
 		// 3) Unknown executor: keep only the raw request broadcast for custom gameplay-side handling.
 		Warning("Unknown context action executor tag, request broadcast only.");
+	}
+
+	// 服务端最终校验：防止客户端因网络延迟对“已被他人取走/转移”的旧物品发起右键操作。
+	private bool CanExecuteContextActionInAuthoritativeState(UYcInventoryItemInstance ItemInst) const
+	{
+		if (ItemInst == nullptr)
+		{
+			return false;
+		}
+
+		auto ItemOuterInventory = Cast<UGridInventoryManagerComponent>(ItemInst.GetActorOuter().GetComponentByClass(UGridInventoryManagerComponent));
+		if (ItemOuterInventory == nullptr)
+		{
+			// 物品已不在任何网格库存上下文中（可能已销毁/已转移到其他系统），拒绝执行。
+			return false;
+		}
+
+		// 1) 物品在自己的背包里：允许（仍会走动作策略校验）。
+		if (ItemOuterInventory == this)
+		{
+			return GetStackCountByItemInstance(ItemInst) > 0;
+		}
+
+		// 2) 物品在搜索容器里：必须仍属于当前会话容器，且该物品当前仍在容器且已揭示。
+		if (bSearchSessionActive && SearchContainerInventory != nullptr && ItemOuterInventory == SearchContainerInventory)
+		{
+			if (!IsItemStillInContainer(ItemInst, SearchContainerInventory))
+			{
+				return false;
+			}
+			return IsItemRevealedForContainerSession(ItemOuterInventory, ItemInst);
+		}
+
+		// 3) 其他情况（例如在其他玩家背包）一律拒绝。
+		return false;
 	}
 
 	UFUNCTION(Server)
@@ -875,40 +933,122 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		return false;
 	}
 
-	UFUNCTION(Server)
-	void ServerSwapGridItem(UGridInventoryManagerComponent OnDropInventory, UYcInventoryItemInstance ItemInst, int32 StackCount, FIntPoint Tile, bool bRotated = false)
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory")
+	bool ValidateSwapLikeOperation(FYcInventoryOperation InOperation, FString&out OutReason)
 	{
-		if (ItemInst == nullptr || OnDropInventory == nullptr)
+		OutReason = "";
+		if (InOperation.SourceInventory == nullptr || InOperation.TargetInventory == nullptr || InOperation.ItemInstance == nullptr)
 		{
-			return;
+			OutReason = "Swap-like op missing source/target/item.";
+			return false;
 		}
+		return true;
+	}
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory")
+	bool ExecuteSwapLikeOperation(FYcInventoryOperation InOperation, FString&out OutReason)
+	{
+		OutReason = "";
+		FString OutSummary;
+		bool bSuccess = ExecuteSwapGridOperation(
+			InOperation.TargetInventory,
+			InOperation.ItemInstance,
+			InOperation.StackCount,
+			InOperation.GridTile,
+			InOperation.bRotated,
+			InOperation.SourceInventory,
+			OutReason,
+			OutSummary);
+		if (bSuccess && !OutSummary.IsEmpty())
+		{
+			OutReason = OutSummary;
+		}
+		return bSuccess;
+	}
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory")
+	void BuildSwapLikeOperationDelta(FYcInventoryOperation InOperation, bool bSuccess, FYcInventoryOperationDelta&out OutDelta)
+	{
+		if (!bSuccess)
+		{
+			OutDelta.Summary = "Swap-like operation failed.";
+		}
+		if (InOperation.ItemInstance != nullptr)
+		{
+			OutDelta.AffectedItemIds.Add(InOperation.ItemInstance.GetItemInstId());
+		}
+	}
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory")
+	bool ExecuteSwapGridOperation(UYcInventoryManagerComponent OnDropInventory, UYcInventoryItemInstance ItemInst, int32 StackCount, FIntPoint Tile, bool bRotated, UYcInventoryManagerComponent ExpectedSourceInventory, FString&out OutReason, FString&out OutSummary)
+	{
+		OutReason = "";
+		OutSummary = "";
+
+		if (ItemInst == nullptr || OnDropInventory == nullptr || ExpectedSourceInventory == nullptr)
+		{
+			OutReason = "SwapGrid invalid input.";
+			return false;
+		}
+
+		auto TargetInventory = Cast<UGridInventoryManagerComponent>(OnDropInventory);
+		auto ExpectedSourceGrid = Cast<UGridInventoryManagerComponent>(ExpectedSourceInventory);
+		if (TargetInventory == nullptr || ExpectedSourceGrid == nullptr)
+		{
+			OutReason = "SwapGrid source/target inventory type invalid.";
+			return false;
+		}
+
 		auto SourceInventory = Cast<UGridInventoryManagerComponent>(ItemInst.GetActorOuter().GetComponentByClass(UGridInventoryManagerComponent));
 		if (SourceInventory == nullptr)
 		{
-			return;
+			OutReason = "SwapGrid source inventory missing.";
+			return false;
 		}
+
+		// CAS: 只有“期望源库存 == 当前真实源库存”才能继续，避免并发后请求覆盖先请求
+		if (SourceInventory != ExpectedSourceGrid)
+		{
+			OutReason = "SwapGrid source changed.";
+			return false;
+		}
+
+		// 仅允许操作自己的库存，或当前会话中的可搜索容器库存
+		if (SourceInventory != this && !SourceInventory.bEnableContainerSearch)
+		{
+			OutReason = "SwapGrid source not interactable.";
+			return false;
+		}
+		if (TargetInventory != this && TargetInventory != SourceInventory && !TargetInventory.bEnableContainerSearch)
+		{
+			OutReason = "SwapGrid target not interactable.";
+			return false;
+		}
+
 		if (!IsItemRevealedForContainerSession(SourceInventory, ItemInst))
 		{
-			Warning("Reject swap: source container item is not revealed for current player.");
-			return;
+			OutReason = "SwapGrid source item not revealed.";
+			return false;
 		}
 		int32 RealStackCount = SourceInventory.GetStackCountByItemInstance(ItemInst);
 		if (RealStackCount <= 0)
 		{
-			Warning("Reject swap: source stack count is invalid.");
-			return;
+			OutReason = "SwapGrid invalid stack.";
+			return false;
 		}
 
 		// 先服务端校验目标格子，避免“先删后加失败”导致物品丢失
-		if (!OnDropInventory.CanPlaceGridItemInst(ItemInst, Tile, bRotated))
+		if (!TargetInventory.CanPlaceGridItemInst(ItemInst, Tile, bRotated))
 		{
-			return;
+			OutReason = "SwapGrid target blocked.";
+			return false;
 		}
 
-		if (SourceInventory == OnDropInventory)
+		if (SourceInventory == TargetInventory)
 		{
 			SourceInventory.InnerSwapItemPosition(ItemInst, RealStackCount, Tile, bRotated);
-			return;
+			OutSummary = "SwapGrid same inventory.";
+			return true;
 		}
 
 		FIntPoint SourceTile = FIntPoint(0, 0);
@@ -917,14 +1057,13 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 
 		if (!SourceInventory.RemoveItemInstance(ItemInst))
 		{
-			Warning("交换失败：从源库存移除 ItemInstance 失败。");
-			return;
+			OutReason = "SwapGrid remove source failed.";
+			return false;
 		}
 
-		OnDropInventory.CachedTile.Set(Tile);
-		if (!OnDropInventory.AddItemInstance(ItemInst, RealStackCount))
+		TargetInventory.CachedTile.Set(Tile);
+		if (!TargetInventory.AddItemInstance(ItemInst, RealStackCount))
 		{
-			Warning("交换失败：添加到目标库存失败，正在回滚。");
 			if (bHasSourcePlacement && SourceInventory.CanPlaceGridItemInst(ItemInst, SourceTile, bSourceRotated))
 			{
 				SourceInventory.CachedTile.Set(SourceTile);
@@ -949,7 +1088,12 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 					Error("交换回滚失败：无法将物品放回源库存，请检查库存容量与并发逻辑。");
 				}
 			}
+			OutReason = "SwapGrid add target failed, rolled back.";
+			return false;
 		}
+
+		OutSummary = "SwapGrid completed.";
+		return true;
 	}
 	void InnerSwapItemPosition(UYcInventoryItemInstance ItemInst, int32 StackCount, FIntPoint Tile, bool bRotated = false)
 	{

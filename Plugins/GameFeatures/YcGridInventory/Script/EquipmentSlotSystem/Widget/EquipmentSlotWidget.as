@@ -11,6 +11,7 @@ class UEquipmentSlotWidget : UUserWidget
 
 	UYcEquipmentSlotComponent EquipmentSlotComponent;
 	FGameplayMessageListenerHandle EquipmentSlotChangedHandle;
+	FGameplayMessageListenerHandle InventoryOperationStateHandle;
 
 	UFUNCTION(BlueprintOverride)
 	void Construct()
@@ -29,6 +30,13 @@ class UEquipmentSlotWidget : UUserWidget
 			FYcEquipmentSlotChangedMessage(),
 			EGameplayMessageMatch::ExactMatch);
 
+		InventoryOperationStateHandle = UGameplayMessageSubsystem::Get().RegisterListener(
+			FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.ProjectedStateChanged"),
+			this,
+			n"OnProjectedStateChanged",
+			FYcInventoryProjectedStateChangedMessage(),
+			EGameplayMessageMatch::ExactMatch);
+
 		RefreshFromSlotState();
 	}
 
@@ -36,6 +44,7 @@ class UEquipmentSlotWidget : UUserWidget
 	void Destruct()
 	{
 		EquipmentSlotChangedHandle.Unregister();
+		InventoryOperationStateHandle.Unregister();
 	}
 
 	UFUNCTION(BlueprintOverride)
@@ -45,9 +54,40 @@ class UEquipmentSlotWidget : UUserWidget
 		if (DropItem == nullptr)
 			return true;
 
-		if (DropItem.FindItemFragment(FInventoryFragment_Equippable).Get(FInventoryFragment_Equippable).EquipmentDef.EquipmentSlot == EquipmentSlotTag)
+		auto EquippableFragment = DropItem.FindItemFragment(FInventoryFragment_Equippable);
+		if (EquippableFragment.IsValid() && EquippableFragment.Get(FInventoryFragment_Equippable).EquipmentDef.EquipmentSlot == EquipmentSlotTag)
 		{
-			EquipmentSlotComponent.ServerEquipItem(DropItem);
+			auto InventoryManager = Cast<UYcInventoryManagerComponent>(YcInventory::GetInventoryManagerComponent(GetOwningPlayer()));
+			if (InventoryManager != nullptr)
+			{
+				auto SourceInventory = Cast<UYcInventoryManagerComponent>(DropItem.GetActorOuter().GetComponentByClass(UYcInventoryManagerComponent));
+				if (SourceInventory == nullptr)
+				{
+					SourceInventory = InventoryManager;
+				}
+
+				FYcInventoryOperation Op;
+				Op.OpType = n"Equipment.Equip";
+				Op.ItemInstance = DropItem;
+				Op.SlotTag = EquipmentSlotTag;
+				Op.SourceInventory = SourceInventory;
+				Op.TargetInventory = InventoryManager;
+				auto Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwningPlayer());
+				if (Router != nullptr)
+				{
+					Router.SubmitInventoryOperation(InventoryManager, Op, true);
+				}
+				else
+				{
+					EquipmentSlotComponent.ServerEquipItem(DropItem);
+				}
+
+				ApplyItemVisual(DropItem); // 立即反馈预测视觉
+			}
+			else
+			{
+				EquipmentSlotComponent.ServerEquipItem(DropItem);
+			}
 		}
 		else
 		{
@@ -63,8 +103,60 @@ class UEquipmentSlotWidget : UUserWidget
 		if (ItemInstance == nullptr)
 			return FEventReply::Unhandled();
 
-		EquipmentSlotComponent.ServerUnequipSlot(EquipmentSlotTag);
+		auto InventoryManager = Cast<UYcInventoryManagerComponent>(YcInventory::GetInventoryManagerComponent(GetOwningPlayer()));
+		if (InventoryManager != nullptr)
+		{
+			FYcInventoryOperation Op;
+			Op.OpType = n"Equipment.Unequip";
+			Op.ItemInstance = ItemInstance;
+			Op.SlotTag = EquipmentSlotTag;
+			Op.SourceInventory = InventoryManager;
+			Op.TargetInventory = InventoryManager;
+			auto Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwningPlayer());
+			if (Router != nullptr)
+			{
+				Router.SubmitInventoryOperation(InventoryManager, Op, true);
+			}
+			else
+			{
+				EquipmentSlotComponent.ServerUnequipSlot(EquipmentSlotTag);
+			}
+		}
+		else
+		{
+			EquipmentSlotComponent.ServerUnequipSlot(EquipmentSlotTag);
+		}
 		return FEventReply::Handled();
+	}
+
+	UFUNCTION()
+	void OnProjectedStateChanged(FGameplayTag ActualTag, FYcInventoryProjectedStateChangedMessage Data)
+	{
+		auto LocalInventoryManager = Cast<UYcInventoryManagerComponent>(YcInventory::GetInventoryManagerComponent(GetOwningPlayer()));
+		if (LocalInventoryManager == nullptr)
+		{
+			return;
+		}
+		if (Data.Operation.SourceInventory != LocalInventoryManager && Data.Operation.TargetInventory != LocalInventoryManager)
+		{
+			return;
+		}
+
+		if (Data.Operation.OpType == n"Equipment.Equip" || Data.Operation.OpType == n"Equipment.Unequip")
+		{
+			if (Data.Operation.SlotTag == EquipmentSlotTag)
+			{
+				TObjectPtr<UYcInventoryItemInstance> ProjectedItem = nullptr;
+				if (Data.ProjectedState.EquipmentSlots.Find(EquipmentSlotTag, ProjectedItem))
+				{
+					ApplyItemVisual(ProjectedItem);
+				}
+				else
+				{
+					RefreshFromSlotState();
+				}
+			}
+		}
 	}
 
 	UFUNCTION()
@@ -96,6 +188,12 @@ class UEquipmentSlotWidget : UUserWidget
 		}
 
 		ItemInstance = NewItem;
+		ApplyItemVisual(ItemInstance);
+	}
+
+	void ApplyItemVisual(UYcInventoryItemInstance InItem)
+	{
+		ItemInstance = InItem;
 		if (ItemInstance == nullptr)
 		{
 			EquipmentItemImage.SetBrushFromMaterial(nullptr);

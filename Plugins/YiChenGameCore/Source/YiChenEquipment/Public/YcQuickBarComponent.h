@@ -8,6 +8,9 @@
 class UYcInventoryItemInstance;
 class UYcEquipmentInstance;
 class UYcEquipmentManagerComponent;
+struct FYcInventoryOperation;
+struct FYcInventoryOperationDelta;
+struct FYcInventoryProjectedState;
 
 /**
  * ============================================================================
@@ -62,6 +65,8 @@ public:
 	
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	// ========================================================================
 	// 主要接口 - 客户端预测版本（推荐使用）
@@ -149,6 +154,10 @@ public:
 	/** 是否有待确认的预测切换 */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "QuickBar")
 	bool HasPendingSlotChange() const { return bHasPendingSlotChange; }
+
+	/** 是否允许从其他容器直接拖拽物品到QuickBar（服务端仍会做权威校验） */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "QuickBar")
+	bool IsDirectContainerDropEnabled() const { return bAllowDirectContainerDropToQuickBar; }
 	
 	// ========================================================================
 	// 物品管理接口（仅服务器）
@@ -195,6 +204,10 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "QuickBar")
 	bool bItemsLeaveInventory = false;
+
+	/** 是否允许从容器直接拖拽到QuickBar（默认关闭，开启后将执行服务端原子转移防止共享同一ItemInstance） */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "QuickBar")
+	bool bAllowDirectContainerDropToQuickBar = false;
 
 	UFUNCTION()
 	void OnRep_Slots();
@@ -256,6 +269,28 @@ private:
 	 * @return true 如果装备实例已同步到客户端，可以执行预测
 	 */
 	bool CanExecutePrediction(int32 SlotIndex) const;
+	/** 向 Router 注册 QuickBar 操作处理器 */
+	void RegisterInventoryOperationHandlers();
+	/** 反注册当前组件在 Router 中登记的处理器 */
+	void UnregisterInventoryOperationHandlers();
+	/** QuickBar.Add 服务端校验 */
+	bool ValidateQuickBarAddOperation(const FYcInventoryOperation& Operation, FString& OutReason) const;
+	/** QuickBar.Add 服务端执行 */
+	bool ExecuteQuickBarAddOperation(const FYcInventoryOperation& Operation, FString& OutReason);
+	/** QuickBar.Add 增量描述 */
+	void BuildQuickBarAddOperationDelta(const FYcInventoryOperation& Operation, bool bSuccess, FYcInventoryOperationDelta& OutDelta) const;
+	/** QuickBar.Add 预测态投影。 */
+	void ProjectQuickBarAddOperationState(const FYcInventoryOperation& Operation, FYcInventoryProjectedState& InOutProjectedState) const;
+	/** QuickBar.Remove 服务端校验 */
+	bool ValidateQuickBarRemoveOperation(const FYcInventoryOperation& Operation, FString& OutReason) const;
+	/** QuickBar.Remove 服务端执行 */
+	bool ExecuteQuickBarRemoveOperation(const FYcInventoryOperation& Operation, FString& OutReason);
+	/** QuickBar.Remove 增量描述 */
+	void BuildQuickBarRemoveOperationDelta(const FYcInventoryOperation& Operation, bool bSuccess, FYcInventoryOperationDelta& OutDelta) const;
+	/** QuickBar.Remove 预测态投影。 */
+	void ProjectQuickBarRemoveOperationState(const FYcInventoryOperation& Operation, FYcInventoryProjectedState& InOutProjectedState) const;
+	/** 是否已经成功向 Router 注册操作处理器。 */
+	bool bOperationHandlersRegistered = false;
 	
 	// ========================================================================
 	// 网络复制属性
@@ -264,6 +299,9 @@ private:
 	/** 插槽物品列表 */
 	UPROPERTY(VisibleInstanceOnly, ReplicatedUsing = OnRep_Slots, Category = "QuickBar")
 	TArray<TObjectPtr<UYcInventoryItemInstance>> Slots;
+
+	/** 服务端用：该槽位物品是否由QuickBar托管（不在库存内），卸下时需要回归OwnerInventory */
+	TArray<bool> bSlotItemManagedByQuickBar;
 	
 	/** 当前激活的插槽索引 */
 	UPROPERTY(ReplicatedUsing = OnRep_ActiveSlotIndex)

@@ -18,11 +18,13 @@
 #include "YcEquipmentManagerComponent.h"
 #include "YcInventoryItemInstance.h"
 #include "YcInventoryManagerComponent.h"
+#include "YcInventoryOperationRouterComponent.h"
 #include "Fragments/InventoryFragment_Equippable.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "Net/UnrealNetwork.h"
 #include "Net/Core/PushModel/PushModel.h"
 #include "NativeGameplayTags.h"
+#include "YiChenEquipment.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcEquipmentSlotComponent)
 
@@ -32,6 +34,12 @@
 
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_EquipmentSlot_Message_SlotChanged, "Yc.EquipmentSlot.Message.SlotChanged");
 
+namespace
+{
+	static const FName OpType_Equipment_Equip(TEXT("Equipment.Equip"));
+	static const FName OpType_Equipment_Unequip(TEXT("Equipment.Unequip"));
+}
+
 // ============================================================================
 // 构造函数和生命周期
 // ============================================================================
@@ -40,6 +48,8 @@ UYcEquipmentSlotComponent::UYcEquipmentSlotComponent(const FObjectInitializer& O
 	: Super(ObjectInitializer)
 {
 	SetIsReplicatedByDefault(true);
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = true;
 }
 
 void UYcEquipmentSlotComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -55,6 +65,175 @@ void UYcEquipmentSlotComponent::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 void UYcEquipmentSlotComponent::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (GetOwner() && GetOwner()->HasAuthority())
+	{
+		RegisterInventoryOperationHandlers();
+		SetComponentTickEnabled(!bOperationHandlersRegistered);
+	}
+}
+
+void UYcEquipmentSlotComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UnregisterInventoryOperationHandlers();
+	Super::EndPlay(EndPlayReason);
+}
+
+void UYcEquipmentSlotComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	if (!GetOwner() || !GetOwner()->HasAuthority() || bOperationHandlersRegistered)
+	{
+		return;
+	}
+
+	RegisterInventoryOperationHandlers();
+	if (bOperationHandlersRegistered)
+	{
+		SetComponentTickEnabled(false);
+	}
+}
+
+void UYcEquipmentSlotComponent::RegisterInventoryOperationHandlers()
+{
+	if (bOperationHandlersRegistered)
+	{
+		return;
+	}
+
+	UYcInventoryOperationRouterComponent* Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwner());
+	if (!Router)
+	{
+		UE_LOG(LogYcEquipment, Verbose, TEXT("RegisterInventoryOperationHandlers deferred: router missing (likely not possessed yet)."));
+		return;
+	}
+
+	FYcInventoryOperationHandler EquipHandler;
+	EquipHandler.Validate.BindUObject(this, &UYcEquipmentSlotComponent::ValidateEquipOperation);
+	EquipHandler.Execute.BindUObject(this, &UYcEquipmentSlotComponent::ExecuteEquipOperation);
+	EquipHandler.BuildDelta.BindUObject(this, &UYcEquipmentSlotComponent::BuildEquipOperationDelta);
+	EquipHandler.ProjectState.BindUObject(this, &UYcEquipmentSlotComponent::ProjectEquipOperationState);
+	Router->RegisterOperationHandler(OpType_Equipment_Equip, EquipHandler);
+
+	FYcInventoryOperationHandler UnequipHandler;
+	UnequipHandler.Validate.BindUObject(this, &UYcEquipmentSlotComponent::ValidateUnequipOperation);
+	UnequipHandler.Execute.BindUObject(this, &UYcEquipmentSlotComponent::ExecuteUnequipOperation);
+	UnequipHandler.BuildDelta.BindUObject(this, &UYcEquipmentSlotComponent::BuildUnequipOperationDelta);
+	UnequipHandler.ProjectState.BindUObject(this, &UYcEquipmentSlotComponent::ProjectUnequipOperationState);
+	Router->RegisterOperationHandler(OpType_Equipment_Unequip, UnequipHandler);
+	bOperationHandlersRegistered = true;
+}
+
+void UYcEquipmentSlotComponent::UnregisterInventoryOperationHandlers()
+{
+	if (UYcInventoryOperationRouterComponent* Router = UYcInventoryOperationRouterComponent::FindRouter(GetOwner()))
+	{
+		Router->UnregisterOperationHandler(OpType_Equipment_Equip);
+		Router->UnregisterOperationHandler(OpType_Equipment_Unequip);
+	}
+	bOperationHandlersRegistered = false;
+}
+
+bool UYcEquipmentSlotComponent::ValidateEquipOperation(const FYcInventoryOperation& Operation, FString& OutReason) const
+{
+	if (!Operation.ItemInstance)
+	{
+		OutReason = TEXT("Equipment.Equip missing item.");
+		return false;
+	}
+	if (!Operation.SourceInventory)
+	{
+		OutReason = TEXT("Equipment.Equip missing source inventory.");
+		return false;
+	}
+
+	UYcInventoryManagerComponent* CurrentSource = UYcInventoryManagerComponent::FindInventoryManagerByItem(Operation.ItemInstance);
+	if (!CurrentSource)
+	{
+		OutReason = TEXT("Equipment.Equip source inventory missing.");
+		return false;
+	}
+	if (CurrentSource != Operation.SourceInventory)
+	{
+		OutReason = TEXT("Equipment.Equip source changed.");
+		return false;
+	}
+	return true;
+}
+
+bool UYcEquipmentSlotComponent::ExecuteEquipOperation(const FYcInventoryOperation& Operation, FString& OutReason)
+{
+	if (!EquipItem(Operation.ItemInstance))
+	{
+		OutReason = TEXT("EquipItem failed.");
+		return false;
+	}
+	OutReason = TEXT("Equipment equip success.");
+	return true;
+}
+
+void UYcEquipmentSlotComponent::BuildEquipOperationDelta(const FYcInventoryOperation& Operation, const bool bSuccess, FYcInventoryOperationDelta& OutDelta) const
+{
+	OutDelta.Summary = bSuccess ? TEXT("Equipment equip success.") : TEXT("Equipment equip failed.");
+	if (Operation.SlotTag.IsValid())
+	{
+		OutDelta.AffectedSlots.Add(Operation.SlotTag.GetTagName());
+	}
+	if (Operation.ItemInstance)
+	{
+		OutDelta.AffectedItemIds.Add(Operation.ItemInstance->GetItemInstId());
+	}
+}
+
+void UYcEquipmentSlotComponent::ProjectEquipOperationState(const FYcInventoryOperation& Operation, FYcInventoryProjectedState& InOutProjectedState) const
+{
+	if (Operation.SlotTag.IsValid())
+	{
+		InOutProjectedState.EquipmentSlots.Add(Operation.SlotTag, Operation.ItemInstance);
+	}
+}
+
+bool UYcEquipmentSlotComponent::ValidateUnequipOperation(const FYcInventoryOperation& Operation, FString& OutReason) const
+{
+	if (!Operation.SlotTag.IsValid())
+	{
+		OutReason = TEXT("Equipment.Unequip missing SlotTag.");
+		return false;
+	}
+	return true;
+}
+
+bool UYcEquipmentSlotComponent::ExecuteUnequipOperation(const FYcInventoryOperation& Operation, FString& OutReason)
+{
+	if (!UnequipSlot(Operation.SlotTag))
+	{
+		OutReason = TEXT("UnequipSlot failed.");
+		return false;
+	}
+	OutReason = TEXT("Equipment unequip success.");
+	return true;
+}
+
+void UYcEquipmentSlotComponent::BuildUnequipOperationDelta(const FYcInventoryOperation& Operation, const bool bSuccess, FYcInventoryOperationDelta& OutDelta) const
+{
+	OutDelta.Summary = bSuccess ? TEXT("Equipment unequip success.") : TEXT("Equipment unequip failed.");
+	if (Operation.SlotTag.IsValid())
+	{
+		OutDelta.AffectedSlots.Add(Operation.SlotTag.GetTagName());
+	}
+	if (Operation.ItemInstance)
+	{
+		OutDelta.AffectedItemIds.Add(Operation.ItemInstance->GetItemInstId());
+	}
+}
+
+void UYcEquipmentSlotComponent::ProjectUnequipOperationState(const FYcInventoryOperation& Operation, FYcInventoryProjectedState& InOutProjectedState) const
+{
+	if (Operation.SlotTag.IsValid())
+	{
+		InOutProjectedState.EquipmentSlots.Add(Operation.SlotTag, nullptr);
+	}
 }
 
 // ============================================================================
@@ -65,13 +244,13 @@ bool UYcEquipmentSlotComponent::EquipItem(UYcInventoryItemInstance* ItemInstance
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("EquipItem: Must be called on server"));
+		UE_LOG(LogYcEquipment, Warning, TEXT("EquipItem: Must be called on server"));
 		return false;
 	}
 
 	if (!ItemInstance)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("EquipItem: ItemInstance is null"));
+		UE_LOG(LogYcEquipment, Warning, TEXT("EquipItem: ItemInstance is null"));
 		return false;
 	}
 
@@ -79,7 +258,7 @@ bool UYcEquipmentSlotComponent::EquipItem(UYcInventoryItemInstance* ItemInstance
 	FGameplayTag TargetSlotTag = GetEquipmentSlotTag(ItemInstance);
 	if (!TargetSlotTag.IsValid())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("EquipItem: Item '%s' has no equipment slot defined. Check EquipmentDefinition.EquipmentSlot in DataTable."), 
+		UE_LOG(LogYcEquipment, Warning, TEXT("EquipItem: Item '%s' has no equipment slot defined. Check EquipmentDefinition.EquipmentSlot in DataTable."), 
 			*ItemInstance->GetItemRegistryId().ToString());
 		return false;
 	}
@@ -88,18 +267,22 @@ bool UYcEquipmentSlotComponent::EquipItem(UYcInventoryItemInstance* ItemInstance
 	int32 SlotIndex = FindSlotIndex(TargetSlotTag);
 	if (SlotIndex == INDEX_NONE)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("EquipItem: Slot '%s' not found in configuration for item '%s'"), 
+		UE_LOG(LogYcEquipment, Warning, TEXT("EquipItem: Slot '%s' not found in configuration for item '%s'"), 
 			*TargetSlotTag.ToString(), *ItemInstance->GetItemRegistryId().ToString());
 		return false;
 	}
 
 	// 获取 Inventory 和 EquipmentManager
-	UYcInventoryManagerComponent* InventoryManager = GetInventoryManager();
+	UYcInventoryManagerComponent* InventoryManager = UYcInventoryManagerComponent::FindInventoryManagerByItem(ItemInstance);
+	if (InventoryManager == nullptr)
+	{
+		InventoryManager = GetInventoryManager();
+	}
 	UYcEquipmentManagerComponent* EquipmentManager = GetEquipmentManager();
 	
 	if (!EquipmentManager)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("EquipItem: EquipmentManager not found"));
+		UE_LOG(LogYcEquipment, Warning, TEXT("EquipItem: EquipmentManager not found"));
 		return false;
 	}
 
@@ -113,7 +296,18 @@ bool UYcEquipmentSlotComponent::EquipItem(UYcInventoryItemInstance* ItemInstance
 	// 从 Inventory 移出物品
 	if (InventoryManager)
 	{
-		InventoryManager->RemoveItemInstance(ItemInstance);
+		if (!InventoryManager->RemoveItemInstance(ItemInstance))
+		{
+			UE_LOG(LogYcEquipment, Warning, TEXT("EquipItem: Failed to remove item '%s' from source inventory"),
+				*ItemInstance->GetItemRegistryId().ToString());
+			return false;
+		}
+	}
+	else
+	{
+		UE_LOG(LogYcEquipment, Warning, TEXT("EquipItem: Source InventoryManager not found for item '%s'"),
+			*ItemInstance->GetItemRegistryId().ToString());
+		return false;
 	}
 
 	// 放入槽位
@@ -134,7 +328,7 @@ bool UYcEquipmentSlotComponent::EquipItem(UYcInventoryItemInstance* ItemInstance
 	Message.ItemInstance = ItemInstance;
 	MessageSubsystem.BroadcastMessage(TAG_Yc_EquipmentSlot_Message_SlotChanged, Message);
 
-	UE_LOG(LogTemp, Log, TEXT("EquipItem: Item '%s' equipped to slot '%s'"), 
+	UE_LOG(LogYcEquipment, Log, TEXT("EquipItem: Item '%s' equipped to slot '%s'"), 
 		*ItemInstance->GetItemRegistryId().ToString(), *TargetSlotTag.ToString());
 
 	return true;
@@ -144,13 +338,13 @@ UYcInventoryItemInstance* UYcEquipmentSlotComponent::UnequipSlot(FGameplayTag Sl
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UnequipSlot: Must be called on server"));
+		UE_LOG(LogYcEquipment, Warning, TEXT("UnequipSlot: Must be called on server"));
 		return nullptr;
 	}
 
 	if (!SlotTag.IsValid())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UnequipSlot: SlotTag is invalid"));
+		UE_LOG(LogYcEquipment, Warning, TEXT("UnequipSlot: SlotTag is invalid"));
 		return nullptr;
 	}
 
@@ -158,7 +352,7 @@ UYcInventoryItemInstance* UYcEquipmentSlotComponent::UnequipSlot(FGameplayTag Sl
 	int32 SlotIndex = FindSlotIndex(SlotTag);
 	if (SlotIndex == INDEX_NONE)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UnequipSlot: Slot %s not found"), *SlotTag.ToString());
+		UE_LOG(LogYcEquipment, Warning, TEXT("UnequipSlot: Slot %s not found"), *SlotTag.ToString());
 		return nullptr;
 	}
 
@@ -166,7 +360,7 @@ UYcInventoryItemInstance* UYcEquipmentSlotComponent::UnequipSlot(FGameplayTag Sl
 	UYcInventoryItemInstance* ItemInstance = Slots[SlotIndex].ItemInstance;
 	if (!ItemInstance)
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("UnequipSlot: Slot '%s' is already empty"), *SlotTag.ToString());
+		UE_LOG(LogYcEquipment, Verbose, TEXT("UnequipSlot: Slot '%s' is already empty"), *SlotTag.ToString());
 		return nullptr;
 	}
 
@@ -200,7 +394,7 @@ UYcInventoryItemInstance* UYcEquipmentSlotComponent::UnequipSlot(FGameplayTag Sl
 	Message.ItemInstance = nullptr;
 	MessageSubsystem.BroadcastMessage(TAG_Yc_EquipmentSlot_Message_SlotChanged, Message);
 
-	UE_LOG(LogTemp, Log, TEXT("UnequipSlot: Item '%s' unequipped from slot '%s'"), 
+	UE_LOG(LogYcEquipment, Log, TEXT("UnequipSlot: Item '%s' unequipped from slot '%s'"), 
 		*ItemInstance->GetItemRegistryId().ToString(), *SlotTag.ToString());
 
 	return ItemInstance;
@@ -208,11 +402,48 @@ UYcInventoryItemInstance* UYcEquipmentSlotComponent::UnequipSlot(FGameplayTag Sl
 
 void UYcEquipmentSlotComponent::ServerEquipItem_Implementation(UYcInventoryItemInstance* ItemInstance)
 {
+	if (UYcInventoryManagerComponent* InventoryManager = GetInventoryManager())
+	{
+		FYcInventoryOperation Op;
+		Op.OpType = FName(TEXT("Equipment.Equip"));
+		Op.ItemInstance = ItemInstance;
+		Op.SlotTag = GetEquipmentSlotTag(ItemInstance);
+		Op.RequestActor = GetOwner();
+		Op.SourceInventory = InventoryManager;
+		Op.TargetInventory = InventoryManager;
+		if (UYcInventoryOperationRouterComponent* Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwner()))
+		{
+			Router->SubmitInventoryOperation(InventoryManager, Op, false);
+			return;
+		}
+
+		UE_LOG(LogYcEquipment, Warning, TEXT("ServerEquipItem rejected: inventory router missing."));
+		return;
+	}
+
 	EquipItem(ItemInstance);
 }
 
 void UYcEquipmentSlotComponent::ServerUnequipSlot_Implementation(FGameplayTag SlotTag)
 {
+	if (UYcInventoryManagerComponent* InventoryManager = GetInventoryManager())
+	{
+		FYcInventoryOperation Op;
+		Op.OpType = FName(TEXT("Equipment.Unequip"));
+		Op.SlotTag = SlotTag;
+		Op.RequestActor = GetOwner();
+		Op.SourceInventory = InventoryManager;
+		Op.TargetInventory = InventoryManager;
+		if (UYcInventoryOperationRouterComponent* Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwner()))
+		{
+			Router->SubmitInventoryOperation(InventoryManager, Op, false);
+			return;
+		}
+
+		UE_LOG(LogYcEquipment, Warning, TEXT("ServerUnequipSlot rejected: inventory router missing."));
+		return;
+	}
+
 	UnequipSlot(SlotTag);
 }
 
@@ -311,8 +542,22 @@ UYcEquipmentSlotComponent* UYcEquipmentSlotComponent::FindEquipmentSlotComponent
 
 void UYcEquipmentSlotComponent::OnRep_Slots()
 {
-	// 客户端同步槽位变化
-	// 可以在这里触发 UI 更新
+	// 客户端收到槽位复制后，广播当前状态驱动UI刷新。
+	// 注意：服务端在Equip/Unequip时的Broadcast不会自动跨网络到客户端。
+	UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(GetWorld());
+	for (const FYcEquipmentSlot& Slot : Slots)
+	{
+		if (!Slot.SlotTag.IsValid())
+		{
+			continue;
+		}
+
+		FYcEquipmentSlotChangedMessage Message;
+		Message.Owner = GetOwner();
+		Message.SlotTag = Slot.SlotTag;
+		Message.ItemInstance = Slot.ItemInstance;
+		MessageSubsystem.BroadcastMessage(TAG_Yc_EquipmentSlot_Message_SlotChanged, Message);
+	}
 }
 
 // ============================================================================

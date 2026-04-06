@@ -172,7 +172,19 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 			if (CurrentInteractContainer.FindFirstFitPosition(Data.ItemInst.ItemRegistryId, Tile, bRotated))
 			{
 				int32 StackCount = OwnerInventory.GetStackCountByItemInstance(Data.ItemInst);
-				OwnerInventory.ServerSwapGridItem(CurrentInteractContainer, Data.ItemInst, StackCount, Tile);
+				FYcInventoryOperation Op;
+				Op.OpType = n"Inventory.SwapGrid";
+				Op.ItemInstance = Data.ItemInst;
+				Op.SourceInventory = OwnerInventory;
+				Op.TargetInventory = CurrentInteractContainer;
+				Op.StackCount = StackCount;
+				Op.GridTile = Tile;
+				Op.bRotated = bRotated;
+				auto Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwningPlayer());
+				if (Router != nullptr)
+				{
+					Router.SubmitInventoryOperation(OwnerInventory, Op, true);
+				}
 			}
 		}
 		else if (CurrentInteractContainer != nullptr)
@@ -182,7 +194,19 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 			if (OwnerInventory.FindFirstFitPosition(Data.ItemInst.ItemRegistryId, Tile, bRotated))
 			{
 				int32 StackCount = CurrentInteractContainer.GetStackCountByItemInstance(Data.ItemInst);
-				OwnerInventory.ServerSwapGridItem(OwnerInventory, Data.ItemInst, StackCount, Tile);
+				FYcInventoryOperation Op;
+				Op.OpType = n"Inventory.SwapGrid";
+				Op.ItemInstance = Data.ItemInst;
+				Op.SourceInventory = CurrentInteractContainer;
+				Op.TargetInventory = OwnerInventory;
+				Op.StackCount = StackCount;
+				Op.GridTile = Tile;
+				Op.bRotated = bRotated;
+				auto Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwningPlayer());
+				if (Router != nullptr)
+				{
+					Router.SubmitInventoryOperation(OwnerInventory, Op, true);
+				}
 			}
 		}
 	}

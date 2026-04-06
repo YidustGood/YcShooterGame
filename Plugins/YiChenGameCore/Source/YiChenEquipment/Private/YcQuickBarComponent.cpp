@@ -23,6 +23,7 @@
 #include "YcEquipmentManagerComponent.h"
 #include "YcInventoryItemInstance.h"
 #include "YcInventoryManagerComponent.h"
+#include "YcInventoryOperationRouterComponent.h"
 #include "YiChenEquipment.h"
 #include "Fragments/InventoryFragment_Equippable.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
@@ -39,6 +40,12 @@
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_QuickBar_Message_SlotsChanged, "Yc.QuickBar.Message.SlotsChanged");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_QuickBar_Message_ActiveIndexChanged, "Yc.QuickBar.Message.ActiveIndexChanged");
 
+namespace
+{
+	static const FName OpType_QuickBar_Add(TEXT("QuickBar.Add"));
+	static const FName OpType_QuickBar_Remove(TEXT("QuickBar.Remove"));
+}
+
 // ============================================================================
 // 构造函数和生命周期
 // ============================================================================
@@ -47,6 +54,8 @@ UYcQuickBarComponent::UYcQuickBarComponent(const FObjectInitializer& ObjectIniti
 	: Super(ObjectInitializer)
 {
 	SetIsReplicatedByDefault(true);
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = true;
 }
 
 void UYcQuickBarComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -68,8 +77,178 @@ void UYcQuickBarComponent::BeginPlay()
 		Slots.AddDefaulted(NumSlots - Slots.Num());
 		MARK_PROPERTY_DIRTY_FROM_NAME(UYcQuickBarComponent, Slots, this);
 	}
+	if (bSlotItemManagedByQuickBar.Num() < NumSlots)
+	{
+		bSlotItemManagedByQuickBar.SetNumZeroed(NumSlots);
+	}
 
 	Super::BeginPlay();
+
+	if (GetOwner() && GetOwner()->HasAuthority())
+	{
+		RegisterInventoryOperationHandlers();
+		SetComponentTickEnabled(!bOperationHandlersRegistered);
+	}
+}
+
+void UYcQuickBarComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UnregisterInventoryOperationHandlers();
+	Super::EndPlay(EndPlayReason);
+}
+
+void UYcQuickBarComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	if (!GetOwner() || !GetOwner()->HasAuthority() || bOperationHandlersRegistered)
+	{
+		return;
+	}
+
+	RegisterInventoryOperationHandlers();
+	if (bOperationHandlersRegistered)
+	{
+		SetComponentTickEnabled(false);
+	}
+}
+
+void UYcQuickBarComponent::RegisterInventoryOperationHandlers()
+{
+	if (bOperationHandlersRegistered)
+	{
+		return;
+	}
+
+	UYcInventoryOperationRouterComponent* Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwner());
+	if (!Router)
+	{
+		UE_LOG(LogYcEquipment, Verbose, TEXT("RegisterInventoryOperationHandlers deferred: router missing."));
+		return;
+	}
+
+	FYcInventoryOperationHandler AddHandler;
+	AddHandler.Validate.BindUObject(this, &UYcQuickBarComponent::ValidateQuickBarAddOperation);
+	AddHandler.Execute.BindUObject(this, &UYcQuickBarComponent::ExecuteQuickBarAddOperation);
+	AddHandler.BuildDelta.BindUObject(this, &UYcQuickBarComponent::BuildQuickBarAddOperationDelta);
+	AddHandler.ProjectState.BindUObject(this, &UYcQuickBarComponent::ProjectQuickBarAddOperationState);
+	Router->RegisterOperationHandler(OpType_QuickBar_Add, AddHandler);
+
+	FYcInventoryOperationHandler RemoveHandler;
+	RemoveHandler.Validate.BindUObject(this, &UYcQuickBarComponent::ValidateQuickBarRemoveOperation);
+	RemoveHandler.Execute.BindUObject(this, &UYcQuickBarComponent::ExecuteQuickBarRemoveOperation);
+	RemoveHandler.BuildDelta.BindUObject(this, &UYcQuickBarComponent::BuildQuickBarRemoveOperationDelta);
+	RemoveHandler.ProjectState.BindUObject(this, &UYcQuickBarComponent::ProjectQuickBarRemoveOperationState);
+	Router->RegisterOperationHandler(OpType_QuickBar_Remove, RemoveHandler);
+	bOperationHandlersRegistered = true;
+}
+
+void UYcQuickBarComponent::UnregisterInventoryOperationHandlers()
+{
+	if (UYcInventoryOperationRouterComponent* Router = UYcInventoryOperationRouterComponent::FindRouter(GetOwner()))
+	{
+		Router->UnregisterOperationHandler(OpType_QuickBar_Add);
+		Router->UnregisterOperationHandler(OpType_QuickBar_Remove);
+	}
+	bOperationHandlersRegistered = false;
+}
+
+bool UYcQuickBarComponent::ValidateQuickBarAddOperation(const FYcInventoryOperation& Operation, FString& OutReason) const
+{
+	if (!Operation.ItemInstance || Operation.SlotIndex == INDEX_NONE)
+	{
+		OutReason = TEXT("QuickBar.Add missing item/slot index.");
+		return false;
+	}
+	if (!Operation.SourceInventory)
+	{
+		OutReason = TEXT("QuickBar.Add missing source inventory.");
+		return false;
+	}
+
+	if (Operation.SourceInventory->GetStackCountByItemInstance(Operation.ItemInstance) <= 0)
+	{
+		OutReason = TEXT("QuickBar.Add source inventory missing.");
+		return false;
+	}
+
+	UYcInventoryManagerComponent* OwnerInventory = UYcInventoryManagerComponent::FindInventoryManager(GetOwner());
+	if (!OwnerInventory)
+	{
+		OutReason = TEXT("QuickBar.Add owner inventory missing.");
+		return false;
+	}
+
+	if (Operation.SourceInventory != OwnerInventory && !bAllowDirectContainerDropToQuickBar)
+	{
+		OutReason = TEXT("QuickBar.Add item must be in owner inventory.");
+		return false;
+	}
+	return true;
+}
+
+bool UYcQuickBarComponent::ExecuteQuickBarAddOperation(const FYcInventoryOperation& Operation, FString& OutReason)
+{
+	if (!AddItemToSlot(Operation.SlotIndex, Operation.ItemInstance))
+	{
+		OutReason = TEXT("AddItemToSlot failed.");
+		return false;
+	}
+	OutReason = TEXT("QuickBar add success.");
+	return true;
+}
+
+void UYcQuickBarComponent::BuildQuickBarAddOperationDelta(const FYcInventoryOperation& Operation, const bool bSuccess, FYcInventoryOperationDelta& OutDelta) const
+{
+	OutDelta.Summary = bSuccess ? TEXT("QuickBar add success.") : TEXT("QuickBar add failed.");
+	if (Operation.ItemInstance)
+	{
+		OutDelta.AffectedItemIds.Add(Operation.ItemInstance->GetItemInstId());
+	}
+	OutDelta.AffectedSlots.Add(*FString::FromInt(Operation.SlotIndex));
+}
+
+void UYcQuickBarComponent::ProjectQuickBarAddOperationState(const FYcInventoryOperation& Operation, FYcInventoryProjectedState& InOutProjectedState) const
+{
+	if (Operation.SlotIndex != INDEX_NONE)
+	{
+		InOutProjectedState.QuickBarSlots.Add(Operation.SlotIndex, Operation.ItemInstance);
+	}
+}
+
+bool UYcQuickBarComponent::ValidateQuickBarRemoveOperation(const FYcInventoryOperation& Operation, FString& OutReason) const
+{
+	if (Operation.SlotIndex == INDEX_NONE)
+	{
+		OutReason = TEXT("QuickBar.Remove missing slot index.");
+		return false;
+	}
+	return true;
+}
+
+bool UYcQuickBarComponent::ExecuteQuickBarRemoveOperation(const FYcInventoryOperation& Operation, FString& OutReason)
+{
+	if (!RemoveItemFromSlot(Operation.SlotIndex))
+	{
+		OutReason = TEXT("RemoveItemFromSlot failed.");
+		return false;
+	}
+	OutReason = TEXT("QuickBar remove success.");
+	return true;
+}
+
+void UYcQuickBarComponent::BuildQuickBarRemoveOperationDelta(const FYcInventoryOperation& Operation, const bool bSuccess, FYcInventoryOperationDelta& OutDelta) const
+{
+	OutDelta.Summary = bSuccess ? TEXT("QuickBar remove success.") : TEXT("QuickBar remove failed.");
+	OutDelta.AffectedSlots.Add(*FString::FromInt(Operation.SlotIndex));
+}
+
+void UYcQuickBarComponent::ProjectQuickBarRemoveOperationState(const FYcInventoryOperation& Operation, FYcInventoryProjectedState& InOutProjectedState) const
+{
+	if (Operation.SlotIndex != INDEX_NONE)
+	{
+		InOutProjectedState.QuickBarSlots.Add(Operation.SlotIndex, nullptr);
+	}
 }
 
 // ============================================================================
@@ -301,18 +480,52 @@ bool UYcQuickBarComponent::AddItemToSlot(const int32 SlotIndex, UYcInventoryItem
 	{
 		return false;
 	}
-	
-	// 如果配置为物品离开 Inventory，则从 Inventory 移除
-	if (bItemsLeaveInventory)
+
+	// QuickBar 引用模式（物品不离开Inventory）下，禁止直接绑定“非本人库存”物品，避免多玩家共享同一ItemInstance。
+	UYcInventoryManagerComponent* OwnerInventory = UYcInventoryManagerComponent::FindInventoryManager(GetOwner());
+	UYcInventoryManagerComponent* ItemInventoryManager = UYcInventoryManagerComponent::FindInventoryManagerByItem(Item);
+	if (!OwnerInventory || !ItemInventoryManager)
 	{
-		if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryManagerComponent::FindInventoryManager(GetOwner()))
+		UE_LOG(LogYcEquipment, Warning, TEXT("AddItemToSlot: Missing inventory context for item %s"), *GetNameSafe(Item));
+		return false;
+	}
+	if (!bItemsLeaveInventory && ItemInventoryManager != OwnerInventory && !bAllowDirectContainerDropToQuickBar)
+	{
+		UE_LOG(LogYcEquipment, Warning,
+			TEXT("AddItemToSlot: Reject non-owner inventory item in reference mode (direct drop disabled). item=%s ownerInv=%s itemInv=%s"),
+			*GetNameSafe(Item),
+			*GetNameSafe(OwnerInventory),
+			*GetNameSafe(ItemInventoryManager));
+		return false;
+	}
+
+	bool bManagedByQuickBar = false;
+	
+	// 配置为离开Inventory，或者来源不是OwnerInventory（容器直拖）时，执行原子转移到QuickBar托管，避免共享同一ItemInstance。
+	if (bItemsLeaveInventory || ItemInventoryManager != OwnerInventory)
+	{
+		if (ItemInventoryManager && !ItemInventoryManager->RemoveItemInstance(Item))
 		{
-			InventoryManager->RemoveItemInstance(Item);
+			UE_LOG(LogYcEquipment, Warning, TEXT("AddItemToSlot: Failed to remove item from source inventory. item=%s source=%s"),
+				*GetNameSafe(Item), *GetNameSafe(ItemInventoryManager));
+			return false;
 		}
+
+		// QuickBar托管时把Outer归属到Owner，避免容器生命周期导致悬空引用。
+		if (Item->GetOuter() != GetOwner())
+		{
+			Item->Rename(nullptr, GetOwner());
+		}
+		bManagedByQuickBar = true;
 	}
 	
 	// 设置插槽物品
 	SetSlotItem_Internal(SlotIndex, Item);
+	if (!bSlotItemManagedByQuickBar.IsValidIndex(SlotIndex))
+	{
+		bSlotItemManagedByQuickBar.SetNumZeroed(NumSlots);
+	}
+	bSlotItemManagedByQuickBar[SlotIndex] = bManagedByQuickBar;
 	
 	// 预创建装备实例（如果物品可装备）
 	CreateSlotEquipment(SlotIndex);
@@ -352,8 +565,14 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 	// 清除插槽
 	SetSlotItem_Internal(SlotIndex, nullptr);
 	
-	// 如果配置为物品离开 Inventory，则将物品回归 Inventory
-	if (bItemsLeaveInventory)
+	const bool bNeedReturnToInventory = bItemsLeaveInventory || (bSlotItemManagedByQuickBar.IsValidIndex(SlotIndex) && bSlotItemManagedByQuickBar[SlotIndex]);
+	if (bSlotItemManagedByQuickBar.IsValidIndex(SlotIndex))
+	{
+		bSlotItemManagedByQuickBar[SlotIndex] = false;
+	}
+
+	// 托管模式下将物品回归OwnerInventory
+	if (bNeedReturnToInventory)
 	{
 		if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryManagerComponent::FindInventoryManager(GetOwner()))
 		{
@@ -373,11 +592,52 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 
 void UYcQuickBarComponent::ServerAddItemToSlot_Implementation(int32 SlotIndex, UYcInventoryItemInstance* Item)
 {
+	if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryManagerComponent::FindInventoryManager(GetOwner()))
+	{
+		FYcInventoryOperation Op;
+		Op.OpType = FName(TEXT("QuickBar.Add"));
+		Op.ItemInstance = Item;
+		Op.SlotIndex = SlotIndex;
+		Op.RequestActor = GetOwner();
+		Op.SourceInventory = UYcInventoryManagerComponent::FindInventoryManagerByItem(Item);
+		if (!Op.SourceInventory)
+		{
+			Op.SourceInventory = InventoryManager;
+		}
+		Op.TargetInventory = InventoryManager;
+		if (UYcInventoryOperationRouterComponent* Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwner()))
+		{
+			Router->SubmitInventoryOperation(InventoryManager, Op, false);
+			return;
+		}
+
+		UE_LOG(LogYcEquipment, Warning, TEXT("ServerAddItemToSlot rejected: inventory router missing."));
+		return;
+	}
+
 	AddItemToSlot(SlotIndex, Item);
 }
 
 void UYcQuickBarComponent::ServerRemoveItemFromSlot_Implementation(int32 SlotIndex)
 {
+	if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryManagerComponent::FindInventoryManager(GetOwner()))
+	{
+		FYcInventoryOperation Op;
+		Op.OpType = FName(TEXT("QuickBar.Remove"));
+		Op.SlotIndex = SlotIndex;
+		Op.RequestActor = GetOwner();
+		Op.SourceInventory = InventoryManager;
+		Op.TargetInventory = InventoryManager;
+		if (UYcInventoryOperationRouterComponent* Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwner()))
+		{
+			Router->SubmitInventoryOperation(InventoryManager, Op, false);
+			return;
+		}
+
+		UE_LOG(LogYcEquipment, Warning, TEXT("ServerRemoveItemFromSlot rejected: inventory router missing."));
+		return;
+	}
+
 	RemoveItemFromSlot(SlotIndex);
 }
 

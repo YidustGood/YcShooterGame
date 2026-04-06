@@ -8,9 +8,9 @@
 #include "YcInventoryManagerComponent.generated.h"
 
 struct FYcInventoryItemDefinition;
-class UYcInventoryManagerComponent;
 class UYcInventoryItemInstance;
 struct FYcInventoryItemList;
+class AActor;
 
 /**
  * 库存物品变化消息结构体
@@ -267,6 +267,16 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = Inventory)
 	static UYcInventoryManagerComponent* FindInventoryManager(const AActor* Actor);
+
+	/**
+	 * 从物品实例反查其所属库存管理组件
+	 * 通过 ItemInstance 的 Outer Actor 定位库存组件
+	 *
+	 * @param ItemInstance 物品实例
+	 * @return 所属库存管理组件，如果不存在则返回nullptr
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = Inventory)
+	static UYcInventoryManagerComponent* FindInventoryManagerByItem(const UYcInventoryItemInstance* ItemInstance);
 	
 	/**
 	 * 获取当前库存中所有的ItemInstance对象

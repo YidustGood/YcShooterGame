@@ -14,6 +14,7 @@ class UQuickBarSlotWidget : UUserWidget
 
 	UYcQuickBarComponent QuickBarComponent;
 	FGameplayMessageListenerHandle QuickBarSlotsChangedHandle;
+	FGameplayMessageListenerHandle InventoryOperationStateHandle;
 
 	UFUNCTION(BlueprintOverride)
 	void Construct()
@@ -32,6 +33,13 @@ class UQuickBarSlotWidget : UUserWidget
 			FYcQuickBarSlotsChangedMessage(),
 			EGameplayMessageMatch::ExactMatch);
 
+		InventoryOperationStateHandle = UGameplayMessageSubsystem::Get().RegisterListener(
+			FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.ProjectedStateChanged"),
+			this,
+			n"OnProjectedStateChanged",
+			FYcInventoryProjectedStateChangedMessage(),
+			EGameplayMessageMatch::ExactMatch);
+
 		RefreshFromSlotState();
 	}
 
@@ -39,6 +47,7 @@ class UQuickBarSlotWidget : UUserWidget
 	void Destruct()
 	{
 		QuickBarSlotsChangedHandle.Unregister();
+		InventoryOperationStateHandle.Unregister();
 	}
 
 	UFUNCTION(BlueprintOverride)
@@ -48,7 +57,46 @@ class UQuickBarSlotWidget : UUserWidget
 		if (DropItem == nullptr)
 			return true;
 
-		QuickBarComponent.ServerAddItemToSlot(SlotIndex, DropItem);
+		auto InventoryManager = Cast<UYcInventoryManagerComponent>(YcInventory::GetInventoryManagerComponent(GetOwningPlayer()));
+		if (InventoryManager != nullptr)
+		{
+			auto SourceInventory = Cast<UYcInventoryManagerComponent>(DropItem.GetActorOuter().GetComponentByClass(UYcInventoryManagerComponent));
+			if (SourceInventory == nullptr)
+			{
+				SourceInventory = InventoryManager;
+			}
+
+			// QuickBar 引用模式只允许绑定本人背包物品；容器物品需先转入背包再绑定。
+			if (SourceInventory != InventoryManager)
+			{
+				if (QuickBarComponent == nullptr || !QuickBarComponent.IsDirectContainerDropEnabled())
+				{
+					return true;
+				}
+			}
+
+			FYcInventoryOperation Op;
+			Op.OpType = n"QuickBar.Add";
+			Op.ItemInstance = DropItem;
+			Op.SlotIndex = SlotIndex;
+			Op.SourceInventory = SourceInventory;
+			Op.TargetInventory = InventoryManager;
+			auto Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwningPlayer());
+			if (Router != nullptr)
+			{
+				Router.SubmitInventoryOperation(InventoryManager, Op, true);
+			}
+			else
+			{
+				QuickBarComponent.ServerAddItemToSlot(SlotIndex, DropItem);
+			}
+
+			ApplyItemVisual(DropItem); // 立即反馈预测视觉
+		}
+		else
+		{
+			QuickBarComponent.ServerAddItemToSlot(SlotIndex, DropItem);
+		}
 
 		return true;
 	}
@@ -59,8 +107,57 @@ class UQuickBarSlotWidget : UUserWidget
 		if (ItemInstance == nullptr)
 			return FEventReply::Unhandled();
 
-		QuickBarComponent.ServerRemoveItemFromSlot(SlotIndex);
+		auto InventoryManager = Cast<UYcInventoryManagerComponent>(YcInventory::GetInventoryManagerComponent(GetOwningPlayer()));
+		if (InventoryManager != nullptr)
+		{
+			FYcInventoryOperation Op;
+			Op.OpType = n"QuickBar.Remove";
+			Op.ItemInstance = ItemInstance;
+			Op.SlotIndex = SlotIndex;
+			Op.SourceInventory = InventoryManager;
+			Op.TargetInventory = InventoryManager;
+			auto Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwningPlayer());
+			if (Router != nullptr)
+			{
+				Router.SubmitInventoryOperation(InventoryManager, Op, true);
+			}
+			else
+			{
+				QuickBarComponent.ServerRemoveItemFromSlot(SlotIndex);
+			}
+		}
+		else
+		{
+			QuickBarComponent.ServerRemoveItemFromSlot(SlotIndex);
+		}
 		return FEventReply::Handled();
+	}
+
+	UFUNCTION()
+	void OnProjectedStateChanged(FGameplayTag ActualTag, FYcInventoryProjectedStateChangedMessage Data)
+	{
+		auto LocalInventoryManager = Cast<UYcInventoryManagerComponent>(YcInventory::GetInventoryManagerComponent(GetOwningPlayer()));
+		if (LocalInventoryManager == nullptr)
+		{
+			return;
+		}
+		if (Data.Operation.SourceInventory != LocalInventoryManager && Data.Operation.TargetInventory != LocalInventoryManager)
+		{
+			return;
+		}
+
+		if ((Data.Operation.OpType == n"QuickBar.Add" || Data.Operation.OpType == n"QuickBar.Remove") && Data.Operation.SlotIndex == SlotIndex)
+		{
+			TObjectPtr<UYcInventoryItemInstance> ProjectedItem = nullptr;
+			if (Data.ProjectedState.QuickBarSlots.Find(SlotIndex, ProjectedItem))
+			{
+				ApplyItemVisual(ProjectedItem);
+			}
+			else
+			{
+				RefreshFromSlotState();
+			}
+		}
 	}
 
 	UFUNCTION()
@@ -88,6 +185,12 @@ class UQuickBarSlotWidget : UUserWidget
 		}
 
 		ItemInstance = NewItem;
+		ApplyItemVisual(ItemInstance);
+	}
+
+	void ApplyItemVisual(UYcInventoryItemInstance InItem)
+	{
+		ItemInstance = InItem;
 		if (ItemInstance == nullptr)
 		{
 			ItemImage.SetBrushFromMaterial(nullptr);

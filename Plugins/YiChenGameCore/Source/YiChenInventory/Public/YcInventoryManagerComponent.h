@@ -5,8 +5,10 @@
 #include "DataRegistryId.h"
 #include "Components/ActorComponent.h"
 #include "Net/Serialization/FastArraySerializer.h"
+#include "YcItemInstanceId.h"
 #include "YcInventoryManagerComponent.generated.h"
 
+class UYcInventoryManagerComponent;
 struct FYcInventoryItemDefinition;
 class UYcInventoryItemInstance;
 struct FYcInventoryItemList;
@@ -105,7 +107,7 @@ public:
 	 * @param StackCount 堆叠数量
 	 * @return 新创建的ItemInstance对象，失败返回nullptr
 	 */ 
-	UYcInventoryItemInstance* AddItem(const FDataRegistryId& ItemRegistryId, int32 StackCount);
+	UYcInventoryItemInstance* AddItem(const FDataRegistryId& ItemRegistryId, int32 StackCount, FYcItemInstanceId ForcedItemInstId = FYcItemInstanceId());
 
 	/**
 	 * 通过ItemInstance实例对象添加物品
@@ -128,7 +130,7 @@ public:
 	 * @param OutItemEntry 找到的Item数据条目
 	 * @return 是否成功找到
 	 */
-	bool FindItemById(const FName& ItemId, FYcInventoryItemEntry& OutItemEntry);
+	bool FindItemById(const FYcItemInstanceId& ItemId, FYcInventoryItemEntry& OutItemEntry);
 
 private:
 	/**
@@ -144,11 +146,10 @@ private:
 	void RemoveItemToMap_Internal(const FYcInventoryItemEntry& Item);
 	
 	/**
-	 * 生成下一个不重复的ItemId
-	 * 同一个物品的第一份会占用ItemId，如果超过了堆叠数量需要新建另一份
-	 * 此时不能再延用ItemId，使用这个函数生成带后缀的唯一ID
+	 * 生成新的物品实例唯一ID（GUID）。
+	 * 该ID作为库存内索引主键，避免跨Inventory场景冲突。
 	 */
-	FName GenerateNextItemId(const FYcInventoryItemEntry& Item) const;
+	FYcItemInstanceId GenerateNewItemInstanceId(const FYcInventoryItemEntry& Item) const;
 	
 	friend UYcInventoryManagerComponent;
 	
@@ -161,7 +162,7 @@ private:
 	 * TMap查询速度>TArray，但TMap在UE中不支持网络复制
 	 * 在FastArray的三个网络复制辅助函数中手动操作以保证数据一致性
 	 */
-	TMap<FName, FYcInventoryItemEntry*> ItemsMap;
+	TMap<FYcItemInstanceId, FYcInventoryItemEntry*> ItemsMap;
 	
 	UPROPERTY(NotReplicated)
 	TObjectPtr<UActorComponent> OwnerComponent;
@@ -216,6 +217,13 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = Inventory)
 	UYcInventoryItemInstance* AddItem(const FDataRegistryId& ItemRegistryId, int32 StackCount = 1);
+
+	/**
+	 * 通过DataRegistry ID添加物品，并指定恢复用的ItemInstId
+	 * 主要用于本地化存档恢复，常规运行请调用AddItem
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = Inventory)
+	UYcInventoryItemInstance* AddItemWithInstanceId(const FDataRegistryId& ItemRegistryId, FYcItemInstanceId ForcedItemInstId, int32 StackCount = 1);
 	
 	/**
 	 * 通过物品实例对象添加物品
@@ -317,7 +325,7 @@ public:
 	 * @return 是否成功找到
 	 */
 	UFUNCTION(BlueprintCallable, Category = Inventory, BlueprintPure)
-	bool FindItemById(const FName& ItemId, FYcInventoryItemEntry& OutItemEntry);
+	bool FindItemById(const FYcItemInstanceId& ItemId, FYcInventoryItemEntry& OutItemEntry);
 	
 private:
 	/** 基于FastArray进行网络复制的库存物品列表 */

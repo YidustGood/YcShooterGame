@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Delegates/Delegate.h"
 #include "GameplayTagContainer.h"
+#include "YcItemInstanceId.h"
 #include "YcInventoryOperationTypes.generated.h"
 
 class AActor;
@@ -66,7 +67,7 @@ struct YICHENINVENTORY_API FYcInventoryOperationDelta
 
 	/** 受影响的物品实例 ID 列表。 */
 	UPROPERTY(BlueprintReadWrite, Category = Inventory)
-	TArray<FName> AffectedItemIds;
+	TArray<FYcItemInstanceId> AffectedItemIds;
 
 	/** 受影响的槽位列表（如装备槽 TagName）。 */
 	UPROPERTY(BlueprintReadWrite, Category = Inventory)

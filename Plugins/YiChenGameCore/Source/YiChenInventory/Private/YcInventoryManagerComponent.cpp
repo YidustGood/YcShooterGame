@@ -89,7 +89,7 @@ TArray<UYcInventoryItemInstance*> FYcInventoryItemList::GetAllItemInstance() con
 	return Results;
 }
 
-UYcInventoryItemInstance* FYcInventoryItemList::AddItem(const FDataRegistryId& ItemRegistryId, const int32 StackCount)
+UYcInventoryItemInstance* FYcInventoryItemList::AddItem(const FDataRegistryId& ItemRegistryId, const int32 StackCount, const FYcItemInstanceId ForcedItemInstId)
 {
 	check(OwnerComponent);
 	
@@ -148,7 +148,21 @@ UYcInventoryItemInstance* FYcInventoryItemList::AddItem(const FDataRegistryId& I
 	
 	// 设置ItemRegistryId（这会触发缓存物品定义）
 	NewItemEntry.Instance->SetItemRegistryId(ItemRegistryId);
-	NewItemEntry.Instance->SetItemInstId(GenerateNextItemId(NewItemEntry));
+
+	const FYcItemInstanceId FinalInstanceId = ForcedItemInstId.IsValid() ? ForcedItemInstId : GenerateNewItemInstanceId(NewItemEntry);
+	if (!FinalInstanceId.IsValid())
+	{
+		UE_LOG(LogYcInventory, Error, TEXT("FYcInventoryItemList::AddItem - failed to resolve ItemInstId for: %s"), *ItemRegistryId.ToString());
+		Items.RemoveAt(Items.Num() - 1);
+		return nullptr;
+	}
+	if (ForcedItemInstId.IsValid() && ItemsMap.Contains(FinalInstanceId))
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("FYcInventoryItemList::AddItem - duplicate forced ItemInstId in same inventory: %s"), *FinalInstanceId.ToString());
+		Items.RemoveAt(Items.Num() - 1);
+		return nullptr;
+	}
+	NewItemEntry.Instance->SetItemInstId(FinalInstanceId);
 	
 	// 从ItemDef中获取所有的Fragment，遍历调用Fragment->OnInstanceCreated通知
 	for (const auto& Fragment : ItemDef->Fragments)
@@ -217,9 +231,9 @@ bool FYcInventoryItemList::RemoveItem(UYcInventoryItemInstance* Instance)
 	return false;
 }
 
-bool FYcInventoryItemList::FindItemById(const FName& ItemId, FYcInventoryItemEntry& OutItemEntry)
+bool FYcInventoryItemList::FindItemById(const FYcItemInstanceId& ItemId, FYcInventoryItemEntry& OutItemEntry)
 {
-	if (ItemId.IsNone()) return false;
+	if (!ItemId.IsValid()) return false;
 	if (!ItemsMap.Contains(ItemId)) return false;
 	
 	OutItemEntry = *ItemsMap[ItemId];
@@ -262,29 +276,24 @@ void FYcInventoryItemList::RemoveItemToMap_Internal(const FYcInventoryItemEntry&
 	}
 }
 
-FName FYcInventoryItemList::GenerateNextItemId(const FYcInventoryItemEntry& Item) const
+FYcItemInstanceId FYcInventoryItemList::GenerateNewItemInstanceId(const FYcInventoryItemEntry& Item) const
 {
-	const FYcInventoryItemDefinition* ItemDef = Item.Instance ? Item.Instance->GetItemDef() : nullptr;
-	if (!ItemDef) return NAME_None;
-	
-	FName NextItemId = ItemDef->ItemId;
-	int32 Attempts = 0;
-	const int32 MaxAttempts = 1000; // 防止无限循环
-	
-	while (Attempts < MaxAttempts)
+	(void)Item;
+	for (int32 Attempts = 0; Attempts < 32; ++Attempts)
 	{
-		if (!ItemsMap.Contains(NextItemId))
+		const FYcItemInstanceId Candidate = FYcItemInstanceId::NewId();
+		if (!Candidate.IsValid())
 		{
-			return NextItemId;
+			continue;
 		}
-		const int32 AppendNo = FMath::Rand();
-		NextItemId = FName(*FString::Printf(TEXT("%s_%d"), *ItemDef->ItemId.ToString(), AppendNo));
-		++Attempts;
+		if (!ItemsMap.Contains(Candidate))
+		{
+			return Candidate;
+		}
 	}
-	
-	UE_LOG(LogYcInventory, Error, TEXT("FYcInventoryItemList::GenerateNextItemId - Failed to generate unique ID after %d attempts for: %s"),
-		MaxAttempts, *ItemDef->ItemId.ToString());
-	return NAME_None;
+
+	UE_LOG(LogYcInventory, Error, TEXT("FYcInventoryItemList::GenerateNewItemInstanceId - Failed to generate unique ItemInstGuid after retries."));
+	return FYcItemInstanceId();
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -337,6 +346,18 @@ UYcInventoryItemInstance* UYcInventoryManagerComponent::AddItem(const FDataRegis
 		AddReplicatedSubObject(Result);
 	}
 	
+	return Result;
+}
+
+UYcInventoryItemInstance* UYcInventoryManagerComponent::AddItemWithInstanceId(const FDataRegistryId& ItemRegistryId, const FYcItemInstanceId ForcedItemInstId, const int32 StackCount)
+{
+	UYcInventoryItemInstance* Result = ItemList.AddItem(ItemRegistryId, StackCount, ForcedItemInstId);
+
+	if (Result && IsUsingRegisteredSubObjectList() && IsReadyForReplication())
+	{
+		AddReplicatedSubObject(Result);
+	}
+
 	return Result;
 }
 
@@ -515,9 +536,20 @@ TArray<UYcInventoryItemInstance*> UYcInventoryManagerComponent::GetAllItemInstan
 
 UYcInventoryItemInstance* UYcInventoryManagerComponent::FindFirstItemInstByDefinition(const FYcInventoryItemDefinition& ItemDef) const
 {
-	const FYcInventoryItemEntry* const* ItemEntry = ItemList.ItemsMap.Find(ItemDef.ItemId);
-	if (ItemEntry == nullptr) return nullptr;
-	return (*ItemEntry)->Instance;
+	for (const FYcInventoryItemEntry& ItemEntry : ItemList.Items)
+	{
+		if (!IsValid(ItemEntry.Instance))
+		{
+			continue;
+		}
+
+		const FYcInventoryItemDefinition* EntryItemDef = ItemEntry.Instance->GetItemDef();
+		if (EntryItemDef && EntryItemDef->ItemId == ItemDef.ItemId)
+		{
+			return ItemEntry.Instance;
+		}
+	}
+	return nullptr;
 }
 
 int32 UYcInventoryManagerComponent::GetTotalItemCountByDefinition(const FYcInventoryItemDefinition& ItemDef)
@@ -551,7 +583,7 @@ int32 UYcInventoryManagerComponent::GetStackCountByItemInstance(const UYcInvento
 	return 0;
 }
 
-bool UYcInventoryManagerComponent::FindItemById(const FName& ItemId, FYcInventoryItemEntry& OutItemEntry)
+bool UYcInventoryManagerComponent::FindItemById(const FYcItemInstanceId& ItemId, FYcInventoryItemEntry& OutItemEntry)
 {
 	return ItemList.FindItemById(ItemId, OutItemEntry);
 }

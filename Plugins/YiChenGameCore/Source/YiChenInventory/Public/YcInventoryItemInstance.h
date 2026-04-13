@@ -9,6 +9,7 @@
 #include "YiChenGameCore/Public/YcReplicableObject.h"
 #include "YcGameplayTagStack.h"
 #include "YcGameplayTagFloatStack.h"
+#include "YcItemInstanceId.h"
 #include "YcInventoryItemInstance.generated.h"
 
 class UYcInventoryManagerComponent;
@@ -68,14 +69,20 @@ public:
 	 * 同一物品定义可能存在多个实例，每个实例有唯一的ItemInstId
 	 * @return 物品实例ID
 	 */
-	FORCEINLINE const FName& GetItemInstId() const { return ItemInstId; }
+	FORCEINLINE const FYcItemInstanceId& GetItemInstId() const { return ItemInstId; }
 
 	/**
 	 * 蓝图版本：获取物品实例唯一ID
 	 * @return 物品实例ID
 	 */
 	UFUNCTION(BlueprintPure, Category = "Inventory", DisplayName = "GetItemInstId")
-	FName K2_GetItemInstId() const { return ItemInstId; }
+	FYcItemInstanceId K2_GetItemInstId() const { return ItemInstId; }
+
+	/** 导出运行时Tag状态（用于外部系统构建持久化记录）。 */
+	void ExportTagStates(TArray<TPair<FGameplayTag, int32>>& OutIntTagStacks, TArray<TPair<FGameplayTag, float>>& OutFloatTagStacks, FGameplayTagContainer& OutOwnedTags) const;
+
+	/** 导入运行时Tag状态（用于外部系统恢复持久化记录）。 */
+	void ImportTagStates(const TArray<TPair<FGameplayTag, int32>>& InIntTagStacks, const TArray<TPair<FGameplayTag, float>>& InFloatTagStacks, const FGameplayTagContainer& InOwnedTags);
 	
 	//~=============================================================================
 	// Fragment查询
@@ -225,7 +232,7 @@ protected:
 	 */
 	UFUNCTION()
 	void OnRep_ItemRegistryId();
-	
+
 private:
 	friend struct FYcInventoryItemFragment;
 	friend struct FYcInventoryItemList;
@@ -241,7 +248,7 @@ private:
 	 * 设置物品实例的唯一ID
 	 * @param NewId 新的实例ID
 	 */
-	void SetItemInstId(const FName NewId);
+	void SetItemInstId(const FYcItemInstanceId& NewId);
 	
 	/**
 	 * 从DataRegistry获取并缓存物品定义
@@ -272,7 +279,7 @@ private:
 	 * 后续实例会自动生成带后缀的唯一ID
 	 */
 	UPROPERTY(Replicated, BlueprintReadOnly, VisibleInstanceOnly, meta = (AllowPrivateAccess = "true"))
-	FName ItemInstId;
+	FYcItemInstanceId ItemInstId;
 	
 	/**
 	 * 标签堆叠容器

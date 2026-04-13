@@ -37,7 +37,7 @@ void UYcInventoryItemInstance::SetItemRegistryId(const FDataRegistryId& InItemRe
 	CacheItemDefFromRegistry();
 }
 
-void UYcInventoryItemInstance::SetItemInstId(const FName NewId)
+void UYcInventoryItemInstance::SetItemInstId(const FYcItemInstanceId& NewId)
 {
 	ItemInstId = NewId;
 }
@@ -177,6 +177,20 @@ void UYcInventoryItemInstance::OnRep_ItemRegistryId()
 	// 清除旧缓存并尝试重新获取
 	ItemDef = nullptr;
 	CacheItemDefFromRegistry();
+}
+
+void UYcInventoryItemInstance::ExportTagStates(TArray<TPair<FGameplayTag, int32>>& OutIntTagStacks, TArray<TPair<FGameplayTag, float>>& OutFloatTagStacks, FGameplayTagContainer& OutOwnedTags) const
+{
+	TagsStack.ExportStacks(OutIntTagStacks);
+	FloatTagsStack.ExportStacks(OutFloatTagStacks);
+	OutOwnedTags = OwnedTags;
+}
+
+void UYcInventoryItemInstance::ImportTagStates(const TArray<TPair<FGameplayTag, int32>>& InIntTagStacks, const TArray<TPair<FGameplayTag, float>>& InFloatTagStacks, const FGameplayTagContainer& InOwnedTags)
+{
+	TagsStack.ImportStacks(InIntTagStacks);
+	FloatTagsStack.ImportStacks(InFloatTagStacks);
+	OwnedTags = InOwnedTags;
 }
 
 //~=============================================================================

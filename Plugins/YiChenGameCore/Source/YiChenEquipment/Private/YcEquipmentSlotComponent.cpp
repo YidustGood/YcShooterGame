@@ -1,4 +1,4 @@
-// Copyright (c) 2025 YiChen. All Rights Reserved.
+﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 /**
  * ============================================================================
@@ -308,6 +308,18 @@ bool UYcEquipmentSlotComponent::EquipItem(UYcInventoryItemInstance* ItemInstance
 		UE_LOG(LogYcEquipment, Warning, TEXT("EquipItem: Source InventoryManager not found for item '%s'"),
 			*ItemInstance->GetItemRegistryId().ToString());
 		return false;
+	}
+	
+	// 在从非玩家库存（储物箱/容器）直接装备时，移交所有权到玩家。
+	if (ItemInstance->GetOuter() != GetOwner())
+	{
+		if (!ItemInstance->Rename(nullptr, GetOwner()))
+		{
+			UE_LOG(LogYcEquipment, Warning, TEXT("EquipItem: Failed to transfer item ownership to owner. item=%s owner=%s"),
+				*GetNameSafe(ItemInstance), *GetNameSafe(GetOwner()));
+			InventoryManager->AddItemInstance(ItemInstance, 1);
+			return false;
+		}
 	}
 
 	// 放入槽位

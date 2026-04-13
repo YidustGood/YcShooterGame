@@ -1,4 +1,4 @@
-class UQuickBarSlotWidget : UUserWidget
+﻿class UQuickBarSlotWidget : UUserWidget
 {
 	UPROPERTY()
 	FGameplayTag SlotTag;
@@ -19,11 +19,12 @@ class UQuickBarSlotWidget : UUserWidget
 	UFUNCTION(BlueprintOverride)
 	void Construct()
 	{
+		ApplyItemVisual(nullptr);
+
 		QuickBarComponent = UYcQuickBarComponent::FindQuickBarComponent(GetOwningPlayer());
 		if (QuickBarComponent == nullptr)
 		{
-			Error("UQuickBarSlotWidget::Construct - QuickBarComponent is nullptr");
-			return;
+			Warning("UQuickBarSlotWidget::Construct - QuickBarComponent is nullptr, will retry lazily.");
 		}
 
 		QuickBarSlotsChangedHandle = UGameplayMessageSubsystem::Get().RegisterListener(
@@ -66,9 +67,13 @@ class UQuickBarSlotWidget : UUserWidget
 				SourceInventory = InventoryManager;
 			}
 
-			// QuickBar 引用模式只允许绑定本人背包物品；容器物品需先转入背包再绑定。
+			// QuickBar 引用模式仅允许绑定本人背包物品；容器物品需先转入背包再绑定。
 			if (SourceInventory != InventoryManager)
 			{
+				if (QuickBarComponent == nullptr)
+				{
+					QuickBarComponent = UYcQuickBarComponent::FindQuickBarComponent(GetOwningPlayer());
+				}
 				if (QuickBarComponent == nullptr || !QuickBarComponent.IsDirectContainerDropEnabled())
 				{
 					return true;
@@ -88,14 +93,28 @@ class UQuickBarSlotWidget : UUserWidget
 			}
 			else
 			{
-				QuickBarComponent.ServerAddItemToSlot(SlotIndex, DropItem);
+				if (QuickBarComponent == nullptr)
+				{
+					QuickBarComponent = UYcQuickBarComponent::FindQuickBarComponent(GetOwningPlayer());
+				}
+				if (QuickBarComponent != nullptr)
+				{
+					QuickBarComponent.ServerAddItemToSlot(SlotIndex, DropItem);
+				}
 			}
 
 			ApplyItemVisual(DropItem); // 立即反馈预测视觉
 		}
 		else
 		{
-			QuickBarComponent.ServerAddItemToSlot(SlotIndex, DropItem);
+			if (QuickBarComponent == nullptr)
+			{
+				QuickBarComponent = UYcQuickBarComponent::FindQuickBarComponent(GetOwningPlayer());
+			}
+			if (QuickBarComponent != nullptr)
+			{
+				QuickBarComponent.ServerAddItemToSlot(SlotIndex, DropItem);
+			}
 		}
 
 		return true;
@@ -123,12 +142,26 @@ class UQuickBarSlotWidget : UUserWidget
 			}
 			else
 			{
-				QuickBarComponent.ServerRemoveItemFromSlot(SlotIndex);
+				if (QuickBarComponent == nullptr)
+				{
+					QuickBarComponent = UYcQuickBarComponent::FindQuickBarComponent(GetOwningPlayer());
+				}
+				if (QuickBarComponent != nullptr)
+				{
+					QuickBarComponent.ServerRemoveItemFromSlot(SlotIndex);
+				}
 			}
 		}
 		else
 		{
-			QuickBarComponent.ServerRemoveItemFromSlot(SlotIndex);
+			if (QuickBarComponent == nullptr)
+			{
+				QuickBarComponent = UYcQuickBarComponent::FindQuickBarComponent(GetOwningPlayer());
+			}
+			if (QuickBarComponent != nullptr)
+			{
+				QuickBarComponent.ServerRemoveItemFromSlot(SlotIndex);
+			}
 		}
 		return FEventReply::Handled();
 	}
@@ -163,9 +196,9 @@ class UQuickBarSlotWidget : UUserWidget
 	UFUNCTION()
 	void OnQuickBarSlotsChanged(FGameplayTag ActualTag, FYcQuickBarSlotsChangedMessage Data)
 	{
-		if (QuickBarComponent == nullptr || Data.Owner != QuickBarComponent.GetOwner())
+		if (QuickBarComponent == nullptr)
 		{
-			return;
+			QuickBarComponent = UYcQuickBarComponent::FindQuickBarComponent(GetOwningPlayer());
 		}
 		RefreshFromSlotState();
 	}
@@ -175,7 +208,12 @@ class UQuickBarSlotWidget : UUserWidget
 	{
 		if (QuickBarComponent == nullptr)
 		{
-			return;
+			QuickBarComponent = UYcQuickBarComponent::FindQuickBarComponent(GetOwningPlayer());
+			if (QuickBarComponent == nullptr)
+			{
+				ApplyItemVisual(nullptr);
+				return;
+			}
 		}
 
 		auto NewItem = QuickBarComponent.GetSlotItem(SlotIndex);
@@ -194,6 +232,7 @@ class UQuickBarSlotWidget : UUserWidget
 		if (ItemInstance == nullptr)
 		{
 			ItemImage.SetBrushFromMaterial(nullptr);
+			ItemImage.SetVisibility(ESlateVisibility::Hidden);
 			return;
 		}
 
@@ -201,12 +240,14 @@ class UQuickBarSlotWidget : UUserWidget
 		if (GridFragment.Icon == nullptr)
 		{
 			ItemImage.SetBrushFromMaterial(nullptr);
+			ItemImage.SetVisibility(ESlateVisibility::Hidden);
 			return;
 		}
 
 		auto DynamicMaterial = Material::CreateDynamicMaterialInstance(GridFragment.Icon);
 		DynamicMaterial.SetTextureParameterValue(n"ItemIcon", GridFragment.IconTexture);
 		ItemImage.SetBrushFromMaterial(DynamicMaterial);
+		ItemImage.SetVisibility(ESlateVisibility::Visible);
 	}
 
 	FInventoryFragment_Equippable GetEquippableFragment()

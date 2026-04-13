@@ -1,4 +1,4 @@
-class UEquipmentSlotWidget : UUserWidget
+﻿class UEquipmentSlotWidget : UUserWidget
 {
 	UPROPERTY()
 	FGameplayTag EquipmentSlotTag;
@@ -16,11 +16,12 @@ class UEquipmentSlotWidget : UUserWidget
 	UFUNCTION(BlueprintOverride)
 	void Construct()
 	{
+		ApplyItemVisual(nullptr);
+
 		EquipmentSlotComponent = UYcEquipmentSlotComponent::FindEquipmentSlotComponent(GetOwningPlayer());
 		if (EquipmentSlotComponent == nullptr)
 		{
-			Error("UEquipmentSlotWidget::Construct - EquipmentSlotComponent is nullptr");
-			return;
+			Warning("UEquipmentSlotWidget::Construct - EquipmentSlotComponent is nullptr, will retry lazily.");
 		}
 
 		EquipmentSlotChangedHandle = UGameplayMessageSubsystem::Get().RegisterListener(
@@ -79,14 +80,28 @@ class UEquipmentSlotWidget : UUserWidget
 				}
 				else
 				{
-					EquipmentSlotComponent.ServerEquipItem(DropItem);
+					if (EquipmentSlotComponent == nullptr)
+					{
+						EquipmentSlotComponent = UYcEquipmentSlotComponent::FindEquipmentSlotComponent(GetOwningPlayer());
+					}
+					if (EquipmentSlotComponent != nullptr)
+					{
+						EquipmentSlotComponent.ServerEquipItem(DropItem);
+					}
 				}
 
 				ApplyItemVisual(DropItem); // 立即反馈预测视觉
 			}
 			else
 			{
-				EquipmentSlotComponent.ServerEquipItem(DropItem);
+				if (EquipmentSlotComponent == nullptr)
+				{
+					EquipmentSlotComponent = UYcEquipmentSlotComponent::FindEquipmentSlotComponent(GetOwningPlayer());
+				}
+				if (EquipmentSlotComponent != nullptr)
+				{
+					EquipmentSlotComponent.ServerEquipItem(DropItem);
+				}
 			}
 		}
 		else
@@ -119,12 +134,26 @@ class UEquipmentSlotWidget : UUserWidget
 			}
 			else
 			{
-				EquipmentSlotComponent.ServerUnequipSlot(EquipmentSlotTag);
+				if (EquipmentSlotComponent == nullptr)
+				{
+					EquipmentSlotComponent = UYcEquipmentSlotComponent::FindEquipmentSlotComponent(GetOwningPlayer());
+				}
+				if (EquipmentSlotComponent != nullptr)
+				{
+					EquipmentSlotComponent.ServerUnequipSlot(EquipmentSlotTag);
+				}
 			}
 		}
 		else
 		{
-			EquipmentSlotComponent.ServerUnequipSlot(EquipmentSlotTag);
+			if (EquipmentSlotComponent == nullptr)
+			{
+				EquipmentSlotComponent = UYcEquipmentSlotComponent::FindEquipmentSlotComponent(GetOwningPlayer());
+			}
+			if (EquipmentSlotComponent != nullptr)
+			{
+				EquipmentSlotComponent.ServerUnequipSlot(EquipmentSlotTag);
+			}
 		}
 		return FEventReply::Handled();
 	}
@@ -162,13 +191,14 @@ class UEquipmentSlotWidget : UUserWidget
 	UFUNCTION()
 	void OnEquipmentSlotChanged(FGameplayTag ActualTag, FYcEquipmentSlotChangedMessage Data)
 	{
-		if (EquipmentSlotComponent == nullptr || Data.Owner != EquipmentSlotComponent.GetOwner())
-		{
-			return;
-		}
 		if (Data.SlotTag != EquipmentSlotTag)
 		{
 			return;
+		}
+
+		if (EquipmentSlotComponent == nullptr)
+		{
+			EquipmentSlotComponent = UYcEquipmentSlotComponent::FindEquipmentSlotComponent(GetOwningPlayer());
 		}
 		RefreshFromSlotState();
 	}
@@ -178,7 +208,12 @@ class UEquipmentSlotWidget : UUserWidget
 	{
 		if (EquipmentSlotComponent == nullptr)
 		{
-			return;
+			EquipmentSlotComponent = UYcEquipmentSlotComponent::FindEquipmentSlotComponent(GetOwningPlayer());
+			if (EquipmentSlotComponent == nullptr)
+			{
+				ApplyItemVisual(nullptr);
+				return;
+			}
 		}
 
 		auto NewItem = EquipmentSlotComponent.GetItemInSlot(EquipmentSlotTag);
@@ -197,6 +232,7 @@ class UEquipmentSlotWidget : UUserWidget
 		if (ItemInstance == nullptr)
 		{
 			EquipmentItemImage.SetBrushFromMaterial(nullptr);
+			EquipmentItemImage.SetVisibility(ESlateVisibility::Hidden);
 			return;
 		}
 
@@ -204,12 +240,14 @@ class UEquipmentSlotWidget : UUserWidget
 		if (GridFragment.Icon == nullptr)
 		{
 			EquipmentItemImage.SetBrushFromMaterial(nullptr);
+			EquipmentItemImage.SetVisibility(ESlateVisibility::Hidden);
 			return;
 		}
 
 		auto DynamicMaterial = Material::CreateDynamicMaterialInstance(GridFragment.Icon);
 		DynamicMaterial.SetTextureParameterValue(n"ItemIcon", GridFragment.IconTexture);
 		EquipmentItemImage.SetBrushFromMaterial(DynamicMaterial);
+		EquipmentItemImage.SetVisibility(ESlateVisibility::Visible);
 	}
 
 	FInventoryFragment_Equippable GetEquippableFragment()

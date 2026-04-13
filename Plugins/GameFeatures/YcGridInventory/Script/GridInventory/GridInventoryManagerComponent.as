@@ -1,11 +1,11 @@
-﻿// 单个网格槽位数据：记录占用状态、所属物品与相对偏移
+// 单个网格槽位数据：记录占用状态、所属物品与相对偏移
 USTRUCT()
 struct FGridInventorySlot
 {
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bOccupied = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FName OccupyingItemID;
+	FYcItemInstanceId OccupyingItemID;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	int32 ItemRelativeX;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -16,7 +16,7 @@ struct FGridInventorySlot
 	void Reset()
 	{
 		bOccupied = false;
-		OccupyingItemID = NAME_None;
+		OccupyingItemID = FYcItemInstanceId();
 		ItemRelativeX = 0;
 		ItemRelativeY = 0;
 		ItemInstance = nullptr;
@@ -49,6 +49,8 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 	int32 InventoryRows = 10;
 	UPROPERTY(Replicated, EditAnywhere, BlueprintReadWrite, Category = "Search")
 	bool bEnableContainerSearch = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	bool bAllowDirectContainerInteraction = false;
 	UPROPERTY(Replicated, EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	TArray<FGridInventorySlot> InventorySlots;
 	UPROPERTY(Replicated)
@@ -248,7 +250,7 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 				FYcInventoryItemDefinition ItemDef;
 				ItemInst.GetItemDef(ItemDef);
 				InventorySlots[Index].bOccupied = true;
-				InventorySlots[Index].OccupyingItemID = ItemDef.ItemId;
+				InventorySlots[Index].OccupyingItemID = ItemInst.GetItemInstId();
 				InventorySlots[Index].ItemInstance = ItemInst;
 				InventorySlots[Index].ItemRelativeX = X - Tile.X;
 				InventorySlots[Index].ItemRelativeY = Y - Tile.Y;
@@ -1014,12 +1016,12 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		}
 
 		// 仅允许操作自己的库存，或当前会话中的可搜索容器库存
-		if (SourceInventory != this && !SourceInventory.bEnableContainerSearch)
+		if (SourceInventory != this && !SourceInventory.bEnableContainerSearch && !SourceInventory.bAllowDirectContainerInteraction)
 		{
 			OutReason = "SwapGrid source not interactable.";
 			return false;
 		}
-		if (TargetInventory != this && TargetInventory != SourceInventory && !TargetInventory.bEnableContainerSearch)
+		if (TargetInventory != this && TargetInventory != SourceInventory && !TargetInventory.bEnableContainerSearch && !TargetInventory.bAllowDirectContainerInteraction)
 		{
 			OutReason = "SwapGrid target not interactable.";
 			return false;
@@ -1100,7 +1102,7 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		OnGridItemInstanceAdded(ItemInst, StackCount, Tile, bRotated);
 	}
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	bool GetItemLeftTopPosition(FName ItemID, FIntPoint&out OutPoint)
+	bool GetItemLeftTopPosition(FYcItemInstanceId ItemID, FIntPoint&out OutPoint)
 	{
 		FYcInventoryItemEntry ItemEntry;
 		if (!FindItemById(ItemID, ItemEntry))
@@ -1108,7 +1110,7 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 
 		for (int32 i = 0; i < InventorySlots.Num(); i++)
 		{
-			if (InventorySlots[i].OccupyingItemID == ItemID &&
+			if (InventorySlots[i].OccupyingItemID.Value == ItemID.Value &&
 				InventorySlots[i].ItemRelativeX == 0 &&
 				InventorySlots[i].ItemRelativeY == 0)
 			{
@@ -1133,6 +1135,53 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 			Items.Add(InventorySlots[i].ItemInstance, Tile);
 		}
 		return Items;
+	}
+
+	UFUNCTION()
+	TMap<UYcInventoryItemInstance, bool> GetGridItemRotationMap()
+	{
+		TMap<UYcInventoryItemInstance, bool> Rotations;
+		for (int32 i = 0; i < InventorySlots.Num(); i++)
+		{
+			auto Slot = InventorySlots[i];
+			if (!Slot.bOccupied || Slot.ItemInstance == nullptr)
+			{
+				continue;
+			}
+
+			if (Rotations.Contains(Slot.ItemInstance))
+			{
+				continue;
+			}
+
+			int32 MaxRelX = 0;
+			int32 MaxRelY = 0;
+			for (int32 j = 0; j < InventorySlots.Num(); j++)
+			{
+				auto Slot2 = InventorySlots[j];
+				if (!Slot2.bOccupied || Slot2.ItemInstance != Slot.ItemInstance)
+				{
+					continue;
+				}
+				MaxRelX = Math::Max(MaxRelX, Slot2.ItemRelativeX);
+				MaxRelY = Math::Max(MaxRelY, Slot2.ItemRelativeY);
+			}
+
+			int32 PlacedWidth = MaxRelX + 1;
+			int32 PlacedHeight = MaxRelY + 1;
+			auto IF_Grid = GetItemFragmentGrid(Slot.ItemInstance.ItemRegistryId);
+
+			bool bRotated = false;
+			if (PlacedWidth == IF_Grid.Dimensions.Y && PlacedHeight == IF_Grid.Dimensions.X &&
+				(PlacedWidth != IF_Grid.Dimensions.X || PlacedHeight != IF_Grid.Dimensions.Y))
+			{
+				bRotated = true;
+			}
+
+			Rotations.Add(Slot.ItemInstance, bRotated);
+		}
+
+		return Rotations;
 	}
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool FindFirstFitPosition(FDataRegistryId ItemDefId, FIntPoint&out Tile, bool&out OutRotated)
@@ -1269,3 +1318,6 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		Log(DebugStr);
 	}
 }
+
+
+

@@ -100,6 +100,45 @@ void FYcGameplayTagFloatStackContainer::SetStack(FGameplayTag Tag, float Value)
 	TagToValueMap.Add(Tag, Value);
 }
 
+void FYcGameplayTagFloatStackContainer::ExportStacks(TArray<TPair<FGameplayTag, float>>& OutStacks) const
+{
+	OutStacks.Reset();
+	OutStacks.Reserve(Stacks.Num());
+	for (const FYcGameplayTagFloatStack& Stack : Stacks)
+	{
+		if (!Stack.Tag.IsValid())
+		{
+			continue;
+		}
+		OutStacks.Emplace(Stack.Tag, Stack.Value);
+	}
+}
+
+void FYcGameplayTagFloatStackContainer::ImportStacks(const TArray<TPair<FGameplayTag, float>>& InStacks)
+{
+	Stacks.Reset();
+	TagToValueMap.Reset();
+
+	TMap<FGameplayTag, float> Merged;
+	for (const TPair<FGameplayTag, float>& Pair : InStacks)
+	{
+		if (!Pair.Key.IsValid())
+		{
+			continue;
+		}
+		Merged.FindOrAdd(Pair.Key) += Pair.Value;
+	}
+
+	Stacks.Reserve(Merged.Num());
+	for (const TPair<FGameplayTag, float>& Pair : Merged)
+	{
+		FYcGameplayTagFloatStack& NewStack = Stacks.Emplace_GetRef(Pair.Key, Pair.Value);
+		TagToValueMap.Add(Pair.Key, Pair.Value);
+		MarkItemDirty(NewStack);
+	}
+	MarkArrayDirty();
+}
+
 void FYcGameplayTagFloatStackContainer::PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize)
 {
 	for (int32 Index : RemovedIndices)

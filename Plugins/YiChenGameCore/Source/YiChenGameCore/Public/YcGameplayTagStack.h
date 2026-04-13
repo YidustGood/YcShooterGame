@@ -71,6 +71,12 @@ public:
 		return TagToCountMap.Contains(Tag);
 	}
 
+	/** 导出所有有效堆叠条目（Tag + Count） */
+	void ExportStacks(TArray<TPair<FGameplayTag, int32>>& OutStacks) const;
+
+	/** 导入并覆盖当前堆叠数据（同Tag自动合并） */
+	void ImportStacks(const TArray<TPair<FGameplayTag, int32>>& InStacks);
+
 	//~FFastArraySerializer contract 这三个函数都只会在收到同步的客户端上被调用
 	void PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize); //客户端收到删除同步，应用同步数据前所调用的函数，用于在删除前进行一些数据处理，参数是即将被删除的元素下标列表
 	void PostReplicatedAdd(const TArrayView<int32> AddedIndices, int32 FinalSize); //客户端收到添加数据同步并完成后调用的函数，参数是新增的元素下表列表

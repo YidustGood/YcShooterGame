@@ -78,6 +78,45 @@ void FYcGameplayTagStackContainer::RemoveStack(FGameplayTag Tag, int32 StackCoun
 	}
 }
 
+void FYcGameplayTagStackContainer::ExportStacks(TArray<TPair<FGameplayTag, int32>>& OutStacks) const
+{
+	OutStacks.Reset();
+	OutStacks.Reserve(Stacks.Num());
+	for (const FYcGameplayTagStack& Stack : Stacks)
+	{
+		if (!Stack.Tag.IsValid())
+		{
+			continue;
+		}
+		OutStacks.Emplace(Stack.Tag, Stack.StackCount);
+	}
+}
+
+void FYcGameplayTagStackContainer::ImportStacks(const TArray<TPair<FGameplayTag, int32>>& InStacks)
+{
+	Stacks.Reset();
+	TagToCountMap.Reset();
+
+	TMap<FGameplayTag, int32> Merged;
+	for (const TPair<FGameplayTag, int32>& Pair : InStacks)
+	{
+		if (!Pair.Key.IsValid())
+		{
+			continue;
+		}
+		Merged.FindOrAdd(Pair.Key) += Pair.Value;
+	}
+
+	Stacks.Reserve(Merged.Num());
+	for (const TPair<FGameplayTag, int32>& Pair : Merged)
+	{
+		FYcGameplayTagStack& NewStack = Stacks.Emplace_GetRef(Pair.Key, Pair.Value);
+		TagToCountMap.Add(Pair.Key, Pair.Value);
+		MarkItemDirty(NewStack);
+	}
+	MarkArrayDirty();
+}
+
 void FYcGameplayTagStackContainer::PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize)
 {
 	// 由于TMap不可复制，所以移除Tag的时候，TMap中映射的Tag需要我们收到预删除通知时手动进行清理，以保证与服务器达成同步，后面的添加修改同理，在收到相应同步后，从Stacks列表中取得数据并同步设置到TMap中

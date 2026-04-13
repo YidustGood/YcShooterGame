@@ -102,6 +102,12 @@ public:
         return TagToValueMap.Contains(Tag);
     }
 
+    /** 导出所有有效浮点堆叠条目（Tag + Value） */
+    void ExportStacks(TArray<TPair<FGameplayTag, float>>& OutStacks) const;
+
+    /** 导入并覆盖当前浮点堆叠（同Tag自动合并） */
+    void ImportStacks(const TArray<TPair<FGameplayTag, float>>& InStacks);
+
     //~FFastArraySerializer contract 这三个函数都只会在收到同步的客户端上被调用
     void PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize);
     void PostReplicatedAdd(const TArrayView<int32> AddedIndices, int32 FinalSize);

@@ -35,10 +35,13 @@ namespace
 	static const FName Fn_AddItemToSlot(TEXT("AddItemToSlot"));
 	static const FName Fn_OnRep_Slots(TEXT("OnRep_Slots"));
 	static const FName Fn_GetGridItemsTileMap(TEXT("GetGridItemsTileMap"));
+	static const FName Fn_GetGridItemsTileMapByRegion(TEXT("GetGridItemsTileMapByRegion"));
 	static const FName Fn_GetGridItemRotationMap(TEXT("GetGridItemRotationMap"));
+	static const FName Fn_GetItemPlacementRegion(TEXT("GetItemPlacementRegion"));
 	static const FName Fn_OnRemoveGridItem(TEXT("OnRemoveGridItem"));
 	static const FName Fn_OnGridItemInstanceAdded(TEXT("OnGridItemInstanceAdded"));
 	static const FName Fn_FindFirstFitPosition(TEXT("FindFirstFitPosition"));
+	static const FName Fn_FindFirstFitPlacement(TEXT("FindFirstFitPlacement"));
 
 	static const FName OperationStateChangedTagName(TEXT("Yc.Inventory.Message.Operation.StateChanged"));
 }
@@ -602,7 +605,7 @@ bool UYcMetaInventorySubsystem::ApplyPlayerSnapshot(const AActor* ContextOwner, 
 	ClearQuickBar(ContextOwner);
 
 	TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>> PlayerItemMap;
-	if (!RestoreInventoryRecords(PlayerInventory, PlayerSnapshot.InventoryItems, PlayerSnapshot.InventoryGridPlacements, PlayerItemMap))
+	if (!RestoreInventoryRecords(PlayerInventory, PlayerSnapshot.InventoryItems, TArray<FYcMetaGridPlacementRecord>(), PlayerItemMap))
 	{
 		return false;
 	}
@@ -610,6 +613,10 @@ bool UYcMetaInventorySubsystem::ApplyPlayerSnapshot(const AActor* ContextOwner, 
 	TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>> EmptyStashMap;
 	RestoreEquipment(ContextOwner, PlayerSnapshot.EquipmentSlots, PlayerItemMap, EmptyStashMap);
 	RestoreQuickBar(ContextOwner, PlayerSnapshot.QuickBarSlots, PlayerItemMap, EmptyStashMap);
+	if (!ApplyInventoryGridPlacements(PlayerInventory, PlayerItemMap, PlayerSnapshot.InventoryGridPlacements))
+	{
+		return false;
+	}
 
 	// 强制广播一次当前槽位状态，确保跨场景持久化UI能立即刷新图标。
 	if (UActorComponent* EquipmentComp = FindComponentAcrossOwnerChain(ContextOwner, EquipmentSlotComponentClassName))
@@ -702,15 +709,39 @@ bool UYcMetaInventorySubsystem::BuildInventoryRecords(UYcInventoryManagerCompone
 		return A.ItemInstId.ToString() < B.ItemInstId.ToString();
 	});
 
-	UFunction* TileMapFn = Inventory->FindFunction(Fn_GetGridItemsTileMap);
+	UFunction* TileMapFn = Inventory->FindFunction(Fn_GetGridItemsTileMapByRegion);
+	const bool bUseByRegionTileMap = (TileMapFn != nullptr);
+	if (!TileMapFn)
+	{
+		TileMapFn = Inventory->FindFunction(Fn_GetGridItemsTileMap);
+	}
 	if (TileMapFn)
 	{
-		struct FGetGridItemsTileMapParams
+		TMap<TObjectPtr<UYcInventoryItemInstance>, FIntPoint> TileMap;
+		if (bUseByRegionTileMap)
 		{
-			TMap<TObjectPtr<UYcInventoryItemInstance>, FIntPoint> ReturnValue;
-		};
-		FGetGridItemsTileMapParams TileMapParams;
-		Inventory->ProcessEvent(TileMapFn, &TileMapParams);
+			struct FGetGridItemsTileMapByRegionParams
+			{
+				FGameplayTag RegionId;
+				int32 PocketIndex = -1;
+				TMap<TObjectPtr<UYcInventoryItemInstance>, FIntPoint> ReturnValue;
+			};
+			FGetGridItemsTileMapByRegionParams TileMapParams;
+			TileMapParams.RegionId = FGameplayTag();
+			TileMapParams.PocketIndex = -1;
+			Inventory->ProcessEvent(TileMapFn, &TileMapParams);
+			TileMap = MoveTemp(TileMapParams.ReturnValue);
+		}
+		else
+		{
+			struct FGetGridItemsTileMapParams
+			{
+				TMap<TObjectPtr<UYcInventoryItemInstance>, FIntPoint> ReturnValue;
+			};
+			FGetGridItemsTileMapParams TileMapParams;
+			Inventory->ProcessEvent(TileMapFn, &TileMapParams);
+			TileMap = MoveTemp(TileMapParams.ReturnValue);
+		}
 
 		TMap<TObjectPtr<UYcInventoryItemInstance>, bool> RotationMap;
 		UFunction* RotationMapFn = Inventory->FindFunction(Fn_GetGridItemRotationMap);
@@ -725,7 +756,7 @@ bool UYcMetaInventorySubsystem::BuildInventoryRecords(UYcInventoryManagerCompone
 			RotationMap = MoveTemp(RotationMapParams.ReturnValue);
 		}
 
-		for (const TPair<TObjectPtr<UYcInventoryItemInstance>, FIntPoint>& Pair : TileMapParams.ReturnValue)
+		for (const TPair<TObjectPtr<UYcInventoryItemInstance>, FIntPoint>& Pair : TileMap)
 		{
 			if (!IsValid(Pair.Key))
 			{
@@ -739,6 +770,26 @@ bool UYcMetaInventorySubsystem::BuildInventoryRecords(UYcInventoryManagerCompone
 			{
 				Placement.bRotated = *FoundRotated;
 			}
+
+			if (UFunction* GetPlacementRegionFn = Inventory->FindFunction(Fn_GetItemPlacementRegion))
+			{
+				struct FGetItemPlacementRegionParams
+				{
+					UYcInventoryItemInstance* ItemInst = nullptr;
+					FGameplayTag OutRegionId;
+					int32 OutPocketIndex = -1;
+					bool ReturnValue = false;
+				};
+				FGetItemPlacementRegionParams RegionParams;
+				RegionParams.ItemInst = Pair.Key;
+				Inventory->ProcessEvent(GetPlacementRegionFn, &RegionParams);
+				if (RegionParams.ReturnValue)
+				{
+					Placement.GridRegionId = RegionParams.OutRegionId;
+					Placement.GridPocketIndex = RegionParams.OutPocketIndex;
+				}
+			}
+
 			OutPlacements.Add(Placement);
 		}
 
@@ -800,79 +851,133 @@ bool UYcMetaInventorySubsystem::RestoreInventoryRecords(UYcInventoryManagerCompo
 
 	if (!InPlacements.IsEmpty())
 	{
-		UFunction* RemoveGridFn = Inventory->FindFunction(Fn_OnRemoveGridItem);
-		UFunction* AddGridFn = Inventory->FindFunction(Fn_OnGridItemInstanceAdded);
-		if (RemoveGridFn && AddGridFn)
-		{
-			struct FRemoveGridParams
-			{
-				UYcInventoryItemInstance* ItemInst;
-			};
+		ApplyInventoryGridPlacements(Inventory, OutItemMap, InPlacements);
+	}
 
-			for (const TPair<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& Pair : OutItemMap)
+	return true;
+}
+
+bool UYcMetaInventorySubsystem::ApplyInventoryGridPlacements(UYcInventoryManagerComponent* Inventory, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& ItemMap, const TArray<FYcMetaGridPlacementRecord>& InPlacements) const
+{
+	if (!IsValid(Inventory) || InPlacements.IsEmpty())
+	{
+		return IsValid(Inventory);
+	}
+
+	UFunction* RemoveGridFn = Inventory->FindFunction(Fn_OnRemoveGridItem);
+	UFunction* AddGridFn = Inventory->FindFunction(Fn_OnGridItemInstanceAdded);
+	if (!RemoveGridFn || !AddGridFn)
+	{
+		return true;
+	}
+
+	struct FRemoveGridParams
+	{
+		UYcInventoryItemInstance* ItemInst = nullptr;
+	};
+
+	for (const TPair<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& Pair : ItemMap)
+	{
+		if (!IsValid(Pair.Value))
+		{
+			continue;
+		}
+		FRemoveGridParams RemoveParams;
+		RemoveParams.ItemInst = Pair.Value;
+		Inventory->ProcessEvent(RemoveGridFn, &RemoveParams);
+	}
+
+	struct FAddGridParams
+	{
+		UYcInventoryItemInstance* ItemInst = nullptr;
+		int32 StackCount = 0;
+		FIntPoint Tile = FIntPoint::ZeroValue;
+		bool bRotated = false;
+		FGameplayTag RegionId;
+		int32 PocketIndex = -1;
+		bool ReturnValue = false;
+	};
+
+	UFunction* FindFirstFitFn = Inventory->FindFunction(Fn_FindFirstFitPosition);
+	struct FFindFirstFitParams
+	{
+		FDataRegistryId ItemDefId;
+		FIntPoint Tile = FIntPoint::ZeroValue;
+		bool OutRotated = false;
+		bool ReturnValue = false;
+	};
+
+	for (const FYcMetaGridPlacementRecord& Placement : InPlacements)
+	{
+		const TObjectPtr<UYcInventoryItemInstance>* FoundItem = ItemMap.Find(Placement.ItemInstId);
+		if (!FoundItem || !IsValid(*FoundItem))
+		{
+			continue;
+		}
+
+		FAddGridParams AddParams;
+		AddParams.ItemInst = *FoundItem;
+		AddParams.StackCount = FMath::Max(1, Inventory->GetStackCountByItemInstance(*FoundItem));
+		AddParams.Tile = Placement.GridTile;
+		AddParams.bRotated = Placement.bRotated;
+		AddParams.RegionId = Placement.GridRegionId;
+		AddParams.PocketIndex = Placement.GridPocketIndex;
+		AddParams.ReturnValue = false;
+		Inventory->ProcessEvent(AddGridFn, &AddParams);
+
+		if (!AddParams.ReturnValue)
+		{
+			bool bFallbackPlaced = false;
+			if (UFunction* FindFirstFitPlacementFn = Inventory->FindFunction(Fn_FindFirstFitPlacement))
 			{
-				if (!IsValid(Pair.Value))
+				struct FFindFirstFitPlacementParams
 				{
-					continue;
+					FDataRegistryId ItemDefId;
+					FGameplayTag OutRegionId;
+					int32 OutPocketIndex = -1;
+					FIntPoint Tile = FIntPoint::ZeroValue;
+					bool OutRotated = false;
+					bool ReturnValue = false;
+				};
+
+				FFindFirstFitPlacementParams FitPlacementParams;
+				FitPlacementParams.ItemDefId = (*FoundItem)->GetItemRegistryId();
+				Inventory->ProcessEvent(FindFirstFitPlacementFn, &FitPlacementParams);
+				if (FitPlacementParams.ReturnValue)
+				{
+					FAddGridParams FallbackAddParams;
+					FallbackAddParams.ItemInst = *FoundItem;
+					FallbackAddParams.StackCount = FMath::Max(1, Inventory->GetStackCountByItemInstance(*FoundItem));
+					FallbackAddParams.Tile = FitPlacementParams.Tile;
+					FallbackAddParams.bRotated = FitPlacementParams.OutRotated;
+					FallbackAddParams.RegionId = FitPlacementParams.OutRegionId;
+					FallbackAddParams.PocketIndex = FitPlacementParams.OutPocketIndex;
+					FallbackAddParams.ReturnValue = false;
+					Inventory->ProcessEvent(AddGridFn, &FallbackAddParams);
+					bFallbackPlaced = FallbackAddParams.ReturnValue;
 				}
-				FRemoveGridParams RemoveParams;
-				RemoveParams.ItemInst = Pair.Value;
-				Inventory->ProcessEvent(RemoveGridFn, &RemoveParams);
 			}
 
-			struct FAddGridParams
+			if (!bFallbackPlaced && FindFirstFitFn)
 			{
-				UYcInventoryItemInstance* ItemInst;
-				int32 StackCount;
-				FIntPoint Tile;
-				bool bRotated;
-				bool ReturnValue;
-			};
+				FFindFirstFitParams FitParams;
+				FitParams.ItemDefId = (*FoundItem)->GetItemRegistryId();
+				FitParams.Tile = FIntPoint::ZeroValue;
+				FitParams.OutRotated = false;
+				FitParams.ReturnValue = false;
+				Inventory->ProcessEvent(FindFirstFitFn, &FitParams);
 
-			UFunction* FindFirstFitFn = Inventory->FindFunction(Fn_FindFirstFitPosition);
-			struct FFindFirstFitParams
-			{
-				FDataRegistryId ItemDefId;
-				FIntPoint Tile;
-				bool OutRotated;
-				bool ReturnValue;
-			};
-
-			for (const FYcMetaGridPlacementRecord& Placement : InPlacements)
-			{
-				const TObjectPtr<UYcInventoryItemInstance>* FoundItem = OutItemMap.Find(Placement.ItemInstId);
-				if (!FoundItem || !IsValid(*FoundItem))
+				if (FitParams.ReturnValue)
 				{
-					continue;
-				}
-
-				FAddGridParams AddParams;
-				AddParams.ItemInst = *FoundItem;
-				AddParams.StackCount = FMath::Max(1, Inventory->GetStackCountByItemInstance(*FoundItem));
-				AddParams.Tile = Placement.GridTile;
-				AddParams.bRotated = Placement.bRotated;
-				AddParams.ReturnValue = false;
-				Inventory->ProcessEvent(AddGridFn, &AddParams);
-
-				if (!AddParams.ReturnValue && FindFirstFitFn)
-				{
-					FFindFirstFitParams FitParams;
-					FitParams.ItemDefId = (*FoundItem)->GetItemRegistryId();
-					FitParams.Tile = FIntPoint::ZeroValue;
-					FitParams.OutRotated = false;
-					FitParams.ReturnValue = false;
-					Inventory->ProcessEvent(FindFirstFitFn, &FitParams);
-
-					if (FitParams.ReturnValue)
-					{
-						FAddGridParams FallbackAddParams;
-						FallbackAddParams.ItemInst = *FoundItem;
-						FallbackAddParams.StackCount = FMath::Max(1, Inventory->GetStackCountByItemInstance(*FoundItem));
-						FallbackAddParams.Tile = FitParams.Tile;
-						FallbackAddParams.bRotated = FitParams.OutRotated;
-						FallbackAddParams.ReturnValue = false;
-						Inventory->ProcessEvent(AddGridFn, &FallbackAddParams);
-					}
+					FAddGridParams FallbackAddParams;
+					FallbackAddParams.ItemInst = *FoundItem;
+					FallbackAddParams.StackCount = FMath::Max(1, Inventory->GetStackCountByItemInstance(*FoundItem));
+					FallbackAddParams.Tile = FitParams.Tile;
+					FallbackAddParams.bRotated = FitParams.OutRotated;
+					FallbackAddParams.RegionId = FGameplayTag();
+					FallbackAddParams.PocketIndex = -1;
+					FallbackAddParams.ReturnValue = false;
+					Inventory->ProcessEvent(AddGridFn, &FallbackAddParams);
 				}
 			}
 		}

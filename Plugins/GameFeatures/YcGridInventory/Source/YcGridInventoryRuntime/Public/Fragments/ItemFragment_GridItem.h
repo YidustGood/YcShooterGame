@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "YcInventoryItemDefinition.h"
 
 #include "ItemFragment_GridItem.generated.h"
@@ -94,6 +95,13 @@ struct YCGRIDINVENTORYRUNTIME_API FItemFragment_GridItem : public FYcInventoryIt
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite)
 	bool bCanRotate = true;
+
+	/**
+	 * 静态放置标签（用于区域/口袋的允许或禁止规则匹配）。
+	 * Static placement tags used by region/pocket allow-deny rule matching.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite)
+	TArray<FGameplayTag> PlacementTags;
 
 	/**
 	 * 容器搜索基础时长（秒）。

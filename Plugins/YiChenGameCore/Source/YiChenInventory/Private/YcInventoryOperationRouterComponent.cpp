@@ -648,6 +648,12 @@ void UYcInventoryOperationRouterComponent::RefreshProjectedStateFromAuthoritativ
 	{
 		int32& Revision = ProjectedState.InventoryGridRevision.FindOrAdd(Operation.TargetInventory->GetFName());
 		++Revision;
+		if (Operation.GridRegionId.IsValid())
+		{
+			const FName RegionKey = *FString::Printf(TEXT("%s.%s.P%d"), *Operation.TargetInventory->GetName(), *Operation.GridRegionId.ToString(), Operation.GridPocketIndex);
+			int32& RegionRevision = ProjectedState.InventoryRegionRevision.FindOrAdd(RegionKey);
+			++RegionRevision;
+		}
 	}
 	if (const FYcInventoryOperationHandler* Handler = ResolveOperationHandler(Operation.OpType))
 	{

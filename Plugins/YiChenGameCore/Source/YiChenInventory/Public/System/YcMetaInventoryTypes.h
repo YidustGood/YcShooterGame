@@ -106,6 +106,14 @@ struct YICHENINVENTORY_API FYcMetaGridPlacementRecord
 	/** 是否旋转放置。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	bool bRotated = false;
+
+	/** 所在网格区域（多区域库存）。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	FGameplayTag GridRegionId;
+
+	/** 所在分区索引（同一区域下的Pocket索引）。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	int32 GridPocketIndex = -1;
 };
 
 UENUM(BlueprintType)

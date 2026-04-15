@@ -26,9 +26,11 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	private FGameplayMessageListenerHandle ContextMenuOpenMsgHandle;
 	private FGameplayMessageListenerHandle ContextMenuClickMsgHandle;
 	private FGameplayMessageListenerHandle ContextMenuCloseMsgHandle;
+	private FGameplayMessageListenerHandle EquipmentSlotChangedMsgHandle;
 
 	// 当前的物品容器界面
 	private UGridInventoryWidget CurrentContainerWidget;
+	private TArray<UGridInventoryWidget> OwnerRegionWidgets;
 	private UGridItemContextMenuWidget CurrentContextMenuWidget;
 	private TOptional<FGridItemContainerMessage> CachedCurrentContainerMsg;
 
@@ -47,8 +49,7 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 			return;
 		}
 
-		GridInventory.Initialize(OwnerInventory, TileSize);
-		GridInventory.Refresh();
+		BuildOwnerRegionWidgets();
 
 		GridItemContainerMsgHandle = UGameplayMessageSubsystem::Get().RegisterListener(
 			GameplayTags::Yc_Inventory_Message_Grid_Container_Push,
@@ -87,6 +88,13 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 			n"OnReceivedContextMenuCloseMessage",
 			FGridItemContextMenuCloseMessage(),
 			EGameplayMessageMatch::ExactMatch);
+
+		EquipmentSlotChangedMsgHandle = UGameplayMessageSubsystem::Get().RegisterListener(
+			GameplayTags::Yc_EquipmentSlot_Message_SlotChanged,
+			this,
+			n"OnOwnerEquipmentSlotChanged",
+			FYcEquipmentSlotChangedMessage(),
+			EGameplayMessageMatch::ExactMatch);
 	}
 
 	UFUNCTION(BlueprintOverride)
@@ -103,9 +111,18 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 		ContextMenuOpenMsgHandle.Unregister();
 		ContextMenuClickMsgHandle.Unregister();
 		ContextMenuCloseMsgHandle.Unregister();
+		EquipmentSlotChangedMsgHandle.Unregister();
 
 		if (CurrentContainerWidget != nullptr)
 			CurrentContainerWidget.RemoveFromParent();
+		for (int32 i = 0; i < OwnerRegionWidgets.Num(); i++)
+		{
+			if (OwnerRegionWidgets[i] != nullptr && OwnerRegionWidgets[i] != GridInventory)
+			{
+				OwnerRegionWidgets[i].RemoveFromParent();
+			}
+		}
+		OwnerRegionWidgets.Empty();
 		CloseContextMenu();
 		CachedCurrentContainerMsg.Reset();
 	}
@@ -169,7 +186,9 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 		{
 			FIntPoint Tile;
 			bool bRotated;
-			if (CurrentInteractContainer.FindFirstFitPosition(Data.ItemInst.ItemRegistryId, Tile, bRotated))
+			FGameplayTag TargetRegionId;
+			int32 TargetPocketIndex = -1;
+			if (CurrentInteractContainer.FindFirstFitPlacement(Data.ItemInst.ItemRegistryId, TargetRegionId, TargetPocketIndex, Tile, bRotated))
 			{
 				int32 StackCount = OwnerInventory.GetStackCountByItemInstance(Data.ItemInst);
 				FYcInventoryOperation Op;
@@ -180,6 +199,9 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 				Op.StackCount = StackCount;
 				Op.GridTile = Tile;
 				Op.bRotated = bRotated;
+				Op.GridRegionId = TargetRegionId;
+				Op.GridPocketIndex = TargetPocketIndex;
+				OwnerInventory.GetItemPlacementRegion(Data.ItemInst, Op.SourceGridRegionId, Op.SourceGridPocketIndex);
 				auto Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwningPlayer());
 				if (Router != nullptr)
 				{
@@ -191,7 +213,9 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 		{
 			FIntPoint Tile;
 			bool bRotated;
-			if (OwnerInventory.FindFirstFitPosition(Data.ItemInst.ItemRegistryId, Tile, bRotated))
+			FGameplayTag TargetRegionId;
+			int32 TargetPocketIndex = -1;
+			if (OwnerInventory.FindFirstFitPlacement(Data.ItemInst.ItemRegistryId, TargetRegionId, TargetPocketIndex, Tile, bRotated))
 			{
 				int32 StackCount = CurrentInteractContainer.GetStackCountByItemInstance(Data.ItemInst);
 				FYcInventoryOperation Op;
@@ -202,6 +226,9 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 				Op.StackCount = StackCount;
 				Op.GridTile = Tile;
 				Op.bRotated = bRotated;
+				Op.GridRegionId = TargetRegionId;
+				Op.GridPocketIndex = TargetPocketIndex;
+				CurrentInteractContainer.GetItemPlacementRegion(Data.ItemInst, Op.SourceGridRegionId, Op.SourceGridPocketIndex);
 				auto Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwningPlayer());
 				if (Router != nullptr)
 				{
@@ -222,6 +249,143 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	{
 		CloseContextMenu();
 		return Widget::Unhandled();
+	}
+
+	UFUNCTION()
+	void BuildOwnerRegionWidgets()
+	{
+		for (int32 i = 0; i < OwnerRegionWidgets.Num(); i++)
+		{
+			if (OwnerRegionWidgets[i] != nullptr && OwnerRegionWidgets[i] != GridInventory)
+			{
+				OwnerRegionWidgets[i].RemoveFromParent();
+			}
+		}
+		OwnerRegionWidgets.Empty();
+		TArray<FGridInventoryRegionRuntimeState> States = OwnerInventory.GetEnabledPocketStates();
+		for (int32 i = 0; i < States.Num(); i++)
+		{
+			for (int32 j = i + 1; j < States.Num(); j++)
+			{
+				int32 IPriority = States[i].Priority;
+				int32 JPriority = States[j].Priority;
+				if (JPriority < IPriority)
+				{
+					auto Tmp = States[i];
+					States[i] = States[j];
+					States[j] = Tmp;
+				}
+			}
+		}
+		if (States.Num() <= 0)
+		{
+			GridInventory.Initialize(OwnerInventory, TileSize);
+			GridInventory.Refresh();
+			OwnerRegionWidgets.Add(GridInventory);
+			return;
+		}
+
+		GridInventory.Initialize(OwnerInventory, TileSize, States[0].RegionId, States[0].PocketIndex);
+		GridInventory.Refresh();
+		OwnerRegionWidgets.Add(GridInventory);
+
+		auto RootSlot = WidgetLayout::SlotAsCanvasSlot(GridInventory);
+		if (RootSlot == nullptr)
+		{
+			if (Canvas != nullptr && GridInventory.GetParent() == nullptr)
+			{
+				Canvas.AddChildToCanvas(GridInventory);
+				RootSlot = WidgetLayout::SlotAsCanvasSlot(GridInventory);
+			}
+			if (RootSlot == nullptr)
+			{
+				Warning("GridInventory root slot is not CanvasSlot.");
+				return;
+			}
+		}
+		FAnchors RootAnchors = RootSlot.GetAnchors();
+		FVector2D RootAlignment = RootSlot.Alignment;
+		FVector2D RootPos = RootSlot.GetPosition();
+		FIntPoint BaseLayoutOffset = States[0].LayoutOffset;
+
+		for (int32 i = 1; i < States.Num(); i++)
+		{
+			auto NewWidget = Cast<UGridInventoryWidget>(WidgetBlueprint::CreateWidget(GridInventory.GetClass(), GetOwningPlayer()));
+			if (NewWidget == nullptr)
+			{
+				continue;
+			}
+
+			Canvas.AddChildToCanvas(NewWidget);
+			auto Slot = WidgetLayout::SlotAsCanvasSlot(NewWidget);
+			Slot.SetAnchors(RootAnchors);
+			Slot.Alignment = RootAlignment;
+			FIntPoint RelativeOffset = States[i].LayoutOffset - BaseLayoutOffset;
+			Slot.SetPosition(RootPos + FVector2D(RelativeOffset.X * TileSize, RelativeOffset.Y * TileSize));
+			Slot.bAutoSize = true;
+
+			NewWidget.Initialize(OwnerInventory, TileSize, States[i].RegionId, States[i].PocketIndex);
+			NewWidget.Refresh();
+			OwnerRegionWidgets.Add(NewWidget);
+		}
+	}
+
+	UFUNCTION()
+	void OnOwnerEquipmentSlotChanged(FGameplayTag ActualTag, FYcEquipmentSlotChangedMessage Data)
+	{
+		if (OwnerInventory == nullptr)
+		{
+			return;
+		}
+		if (!IsOwnerActorMatched(Data.Owner, OwnerInventory.GetOwner()))
+		{
+			return;
+		}
+		BuildOwnerRegionWidgets();
+	}
+
+	private bool IsOwnerActorMatched(AActor MessageOwner, AActor LocalOwner) const
+	{
+		if (MessageOwner == nullptr || LocalOwner == nullptr)
+		{
+			return false;
+		}
+		if (MessageOwner == LocalOwner)
+		{
+			return true;
+		}
+
+		APawn MessagePawn = Cast<APawn>(MessageOwner);
+		AController MessageController = Cast<AController>(MessageOwner);
+		if (MessageController != nullptr)
+		{
+			MessagePawn = MessageController.ControlledPawn;
+		}
+		else if (MessagePawn != nullptr)
+		{
+			MessageController = Cast<AController>(MessagePawn.GetController());
+		}
+
+		APawn LocalPawn = Cast<APawn>(LocalOwner);
+		AController LocalController = Cast<AController>(LocalOwner);
+		if (LocalController != nullptr)
+		{
+			LocalPawn = LocalController.ControlledPawn;
+		}
+		else if (LocalPawn != nullptr)
+		{
+			LocalController = Cast<AController>(LocalPawn.GetController());
+		}
+
+		if (MessagePawn != nullptr && LocalPawn != nullptr && MessagePawn == LocalPawn)
+		{
+			return true;
+		}
+		if (MessageController != nullptr && LocalController != nullptr && MessageController == LocalController)
+		{
+			return true;
+		}
+		return false;
 	}
 
 	UFUNCTION()
@@ -324,6 +488,3 @@ struct FGridItemContainerMessage
 	TSubclassOf<UGridInventoryWidget> ContainerWidgetClass;
 	bool bIsOpen;
 }
-
-
-

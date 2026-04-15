@@ -1,4 +1,4 @@
-// µ¥¸öÍø¸ñ¿â´æÊÓÍ¼£º¸ºÔğÍø¸ñ»æÖÆ¡¢ÎïÆ·WidgetÔöÁ¿Ë¢ĞÂÓëÍÏ×§Âäµã´¦Àí
+ï»¿// ç½‘æ ¼èƒŒåŒ…UIï¼šè´Ÿè´£ç»˜åˆ¶ç½‘æ ¼çº¿ã€æ‹–æ‹½æŠ•æ”¾é¢„è§ˆï¼Œå¹¶åœ¨åº“å­˜å˜åŒ–æ—¶åˆ·æ–°ç‰©å“Widget
 class UGridInventoryWidget : UUserWidget
 {
 	UPROPERTY(BindWidget)
@@ -13,15 +13,17 @@ class UGridInventoryWidget : UUserWidget
 	UPROPERTY()
 	UGridInventoryManagerComponent GridInventoryManager;
 
-	// ÏßÌõÎ»ÖÃÊı¾İ
+	// ç½‘æ ¼çº¿æ®µç¼“å­˜
 	private TArray<FGridInventoryLine> Lines;
 
-	// ¿â´æ¸ñ×Ó´óĞ¡ ÏÔÊ¾³¤¿í
+	// æ¯ä¸ªæ ¼å­çš„åƒç´ å¤§å°ï¼ˆç”¨äºæ˜¾ç¤ºä¸å¸ƒå±€ï¼‰
 	UPROPERTY()
 	float TileSize;
 
 	private int32 Columns;
 	private int32 Rows;
+	private FGameplayTag CurrentRegionId;
+	private int32 CurrentPocketIndex = -1;
 
 	UPROPERTY()
 	FIntPoint DraggedItemTopLeftTile;
@@ -39,7 +41,7 @@ class UGridInventoryWidget : UUserWidget
 	FGameplayMessageListenerHandle OperationStateHandle;
 
 	UFUNCTION()
-	void Initialize(UGridInventoryManagerComponent InGridInventoryManager, float InTileSize)
+	void Initialize(UGridInventoryManagerComponent InGridInventoryManager, float InTileSize, FGameplayTag InRegionId = FGameplayTag(), int32 InPocketIndex = -1)
 	{
 		if (InGridInventoryManager == nullptr)
 		{
@@ -48,9 +50,19 @@ class UGridInventoryWidget : UUserWidget
 		}
 
 		GridInventoryManager = InGridInventoryManager;
+		CurrentRegionId = InRegionId;
+		if (!CurrentRegionId.IsValid())
+		{
+			CurrentRegionId = GridInventoryManager.GetPrimaryRegionId();
+		}
+		CurrentPocketIndex = InPocketIndex;
+		if (CurrentPocketIndex < 0)
+		{
+			CurrentPocketIndex = GridInventoryManager.GetPrimaryPocketIndex(CurrentRegionId);
+		}
 		TileSize = InTileSize;
-		Columns = GridInventoryManager.InventoryColumns;
-		Rows = GridInventoryManager.InventoryRows;
+		Columns = GridInventoryManager.GetRegionColumns(CurrentRegionId, CurrentPocketIndex);
+		Rows = GridInventoryManager.GetRegionRows(CurrentRegionId, CurrentPocketIndex);
 		CachedGridRevision = -1;
 		CachedSearchRevision = -1;
 		bForceItemVisualRefresh = true;
@@ -59,7 +71,7 @@ class UGridInventoryWidget : UUserWidget
 		GridCanvasPanel.ClearChildren();
 
 		auto GridBorderSlot = WidgetLayout::SlotAsCanvasSlot(GridBorder);
-		GridBorderSlot.SetSize(FVector2D(TileSize * GridInventoryManager.InventoryColumns, TileSize * GridInventoryManager.InventoryRows));
+		GridBorderSlot.SetSize(FVector2D(TileSize * Columns, TileSize * Rows));
 
 		CreateLineSegments();
 		GridInventoryManager.OnInventoryGridChanged.AddUFunction(this, n"OnInventoryGridChanged");
@@ -129,7 +141,7 @@ class UGridInventoryWidget : UUserWidget
 			}
 		}
 
-		// ÈİÆ÷ËÑË÷½ø¶È·´À¡£¨¶¥²¿Ï¸½ø¶ÈÌõ£¬½öµ±Ç°»á»°ÈİÆ÷ÏÔÊ¾£©
+		// è‹¥å½“å‰å®¹å™¨æ­£åœ¨è¢«æœç´¢ï¼Œåœ¨ç½‘æ ¼é¡¶éƒ¨ç»˜åˆ¶æœç´¢è¿›åº¦æ¡
 		auto PlayerInventory = GetOwningPlayerGridInventory();
 		if (PlayerInventory != nullptr)
 		{
@@ -247,7 +259,7 @@ class UGridInventoryWidget : UUserWidget
 
 		if (Op.TargetInventory == GridInventoryManager)
 		{
-			return GridInventoryManager.CanPlaceGridItemInst(Op.ItemInstance, Op.GridTile, Op.bRotated);
+			return GridInventoryManager.CanPlaceGridItemInst(Op.ItemInstance, Op.GridTile, Op.bRotated, Op.GridRegionId, Op.GridPocketIndex);
 		}
 
 		return true;
@@ -262,13 +274,13 @@ class UGridInventoryWidget : UUserWidget
 			return false;
 		}
 
-		TMap<UYcInventoryItemInstance, FIntPoint> Items = GridInventoryManager.GetGridItemsTileMap();
+		TMap<UYcInventoryItemInstance, FIntPoint> Items = GridInventoryManager.GetGridItemsTileMapByRegion(CurrentRegionId, CurrentPocketIndex);
 		if (Items.Find(ItemInstance, OutTile))
 		{
 			return true;
 		}
 
-		return GridInventoryManager.FindFirstFitPosition(ItemInstance.ItemRegistryId, OutTile, OutRotated);
+		return GridInventoryManager.FindFirstFitPositionInRegion(ItemInstance.ItemRegistryId, CurrentRegionId, CurrentPocketIndex, OutTile, OutRotated);
 	}
 
 	UFUNCTION()
@@ -339,8 +351,12 @@ class UGridInventoryWidget : UUserWidget
 			return;
 		}
 
-		bool bSourceIsThis = (Op.SourceInventory == GridInventoryManager);
-		bool bTargetIsThis = (Op.TargetInventory == GridInventoryManager);
+		bool bSourceIsThis = (Op.SourceInventory == GridInventoryManager
+			&& (!Op.SourceGridRegionId.IsValid() || Op.SourceGridRegionId == CurrentRegionId)
+			&& (Op.SourceGridPocketIndex < 0 || Op.SourceGridPocketIndex == CurrentPocketIndex));
+		bool bTargetIsThis = (Op.TargetInventory == GridInventoryManager
+			&& (!Op.GridRegionId.IsValid() || Op.GridRegionId == CurrentRegionId)
+			&& (Op.GridPocketIndex < 0 || Op.GridPocketIndex == CurrentPocketIndex));
 		if (!bSourceIsThis && !bTargetIsThis)
 		{
 			return;
@@ -429,7 +445,7 @@ class UGridInventoryWidget : UUserWidget
 	}
 
 	UFUNCTION()
-	// ËÑË÷»á»°°æ±¾±ä»¯Ê±Ë¢ĞÂ¿É¼ûĞÔ£¨Î´Öª/ÒÑÊ¶±ğ£©
+	// æœç´¢ä¼šè¯ç‰ˆæœ¬å˜åŒ–æ—¶åˆ·æ–°å¯è§æ€§ï¼ˆæœªçŸ¥/å·²è¯†åˆ«çŠ¶æ€ï¼‰
 	void UpdateSearchPresentation()
 	{
 		auto PlayerInventory = GetOwningPlayerGridInventory();
@@ -457,7 +473,7 @@ class UGridInventoryWidget : UUserWidget
 	}
 
 	UFUNCTION()
-	// Íø¸ñÄÚÈİ°æ±¾±ä»¯Ê±Ë¢ĞÂÎïÆ·²¼¾Ö
+	// èƒŒåŒ…ç½‘æ ¼ç‰ˆæœ¬å˜åŒ–æ—¶åˆ·æ–°ç‰©å“æ˜¾ç¤º
 	void UpdateInventoryPresentation()
 	{
 		if (GridInventoryManager == nullptr)
@@ -482,9 +498,9 @@ class UGridInventoryWidget : UUserWidget
 			return;
 		}
 
-		auto Items = GridInventoryManager.GetGridItemsTileMap();
+		auto Items = GridInventoryManager.GetGridItemsTileMapByRegion(CurrentRegionId, CurrentPocketIndex);
 
-		// É¾³ıÒÑ¾­²»ÔÚ¿â´æÖĞµÄWidget£¬±ÜÃâÕû±íÖØ½¨Ôì³ÉÉÁË¸
+		// åˆ é™¤å·²ä¸åœ¨å½“å‰ç½‘æ ¼ä¸­çš„ç¼“å­˜Widgetï¼Œé¿å…æ®‹ç•™
 		TArray<UYcInventoryItemInstance> CachedKeys;
 		TArray<UGridItemWidget> CachedWidgets;
 		for (auto Entry : ItemWidgetMap)
@@ -506,7 +522,7 @@ class UGridInventoryWidget : UUserWidget
 			}
 		}
 
-		// ÔöÁ¿¸üĞÂ£ºÒÑÓĞWidget½ö¸üĞÂÎ»ÖÃºÍÏÔÊ¾£¬ĞÂÔöÎïÆ·²Å´´½¨Widget
+		// ä¸ºæ¯ä¸ªç‰©å“åˆ›å»ºæˆ–å¤ç”¨Widgetï¼Œå¹¶æ›´æ–°å…¶ç½‘æ ¼ä½ç½®
 		for (auto Item : Items)
 		{
 			auto ItemInstance = Item.Key;
@@ -555,7 +571,7 @@ class UGridInventoryWidget : UUserWidget
 	UFUNCTION()
 	bool IsRoomAvailable(UYcInventoryItemInstance ItemInst) const
 	{
-		return GridInventoryManager.CanPlaceGridItemInst(ItemInst, DraggedItemTopLeftTile);
+		return GridInventoryManager.CanPlaceGridItemInst(ItemInst, DraggedItemTopLeftTile, false, CurrentRegionId, CurrentPocketIndex);
 	}
 
 	UFUNCTION()
@@ -587,7 +603,7 @@ class UGridInventoryWidget : UUserWidget
 
 		auto ItemStack = GridInventoryManager.GetStackCountByItemInstance(ItemInst);
 
-        if (!GridInventoryManager.CanPlaceGridItemInst(ItemInst, DraggedItemTopLeftTile, false))
+        if (!GridInventoryManager.CanPlaceGridItemInst(ItemInst, DraggedItemTopLeftTile, false, CurrentRegionId, CurrentPocketIndex))
         {
             return true;
         }
@@ -601,10 +617,17 @@ class UGridInventoryWidget : UUserWidget
         {
             return true;
         }
+		auto SourceGridInventory = Cast<UGridInventoryManagerComponent>(Op.SourceInventory);
+		if (SourceGridInventory != nullptr)
+		{
+			SourceGridInventory.GetItemPlacementRegion(ItemInst, Op.SourceGridRegionId, Op.SourceGridPocketIndex);
+		}
 		Op.TargetInventory = GridInventoryManager;
 		Op.StackCount = ItemStack;
 		Op.GridTile = DraggedItemTopLeftTile;
 		Op.bRotated = false;
+		Op.GridRegionId = CurrentRegionId;
+		Op.GridPocketIndex = CurrentPocketIndex;
 		auto Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwningPlayer());
 		if (Router != nullptr)
 		{
@@ -653,7 +676,7 @@ class UGridInventoryWidget : UUserWidget
 	UFUNCTION(BlueprintOverride)
 	FEventReply OnPreviewMouseButtonDown(FGeometry InMyGeometry, FPointerEvent InMouseEvent)
 	{
-		// Ô¤´¦Àí½×¶ÎÀ¹½Ø¿Õ°×ÇøÓòµã»÷£¨×ó/ÓÒ¼ü£©£¬ÎÈ¶¨¹Ø±ÕÓÒ¼ü²Ëµ¥¡£
+		// é¢„å¤„ç†é¼ æ ‡æŒ‰ä¸‹ï¼šç‚¹å‡»ç©ºç™½å¤„æ—¶å…³é—­å³é”®èœå•ï¼Œé¿å…èœå•æ®‹ç•™
 		FGameplayTag CloseMenuTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextMenu.Close");
 		FGridItemContextMenuCloseMessage CloseMsg;
 		UGameplayMessageSubsystem::Get().BroadcastMessage(CloseMenuTag, CloseMsg);

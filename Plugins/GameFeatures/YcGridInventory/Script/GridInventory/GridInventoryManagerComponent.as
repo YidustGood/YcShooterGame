@@ -1,4 +1,4 @@
-// 单个网格槽位数据：记录占用状态、所属物品与相对偏移
+﻿// 单个网格槽位数据：记录占用状态、所属物品与相对偏移
 USTRUCT()
 struct FGridInventorySlot
 {
@@ -31,18 +31,142 @@ struct FItemGridInfo
 	{
 		TilePos = InTilePos;
 		ItemSize = InItemSize;
+		RegionId = FGameplayTag();
+		PocketIndex = 0;
 	}
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FIntPoint TilePos;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FIntPoint ItemSize;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FGameplayTag RegionId;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 PocketIndex = 0;
+};
+
+USTRUCT()
+struct FGridInventoryRegionRuntimeState
+{
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FGameplayTag RegionId;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 PocketIndex = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FText DisplayName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 Priority = 100;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 Columns = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 Rows = 1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FIntPoint LayoutOffset = FIntPoint(0, 0);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bEnabled = true;
+};
+
+// 区域一个口袋的槽位数据
+USTRUCT()
+struct FGridInventoryRegionSlotsStorage
+{
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FGameplayTag RegionId;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 PocketIndex = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TArray<FGridInventorySlot> Slots;
+};
+
+// 区域一个口袋的形状数据
+USTRUCT()
+struct FGridInventoryRegionShapeStorage
+{
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FGameplayTag RegionId;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 PocketIndex = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TArray<FIntPoint> ShapeCells;
+};
+
+// 区域标签约束
+USTRUCT()
+struct FGridInventoryRegionTagConstraintStorage
+{
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FGameplayTag RegionId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FGridRegionTagConstraint Constraint;
+};
+
+// 与装备槽绑定的区域ID列表
+USTRUCT()
+struct FEquipmentSlotRegionBinding
+{
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FGameplayTag SlotTag;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TArray<FGameplayTag> RegionIds;
+};
+
+USTRUCT()
+struct FUnequipRelocateMove
+{
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UYcInventoryItemInstance ItemInstance;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FGameplayTag RegionId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 PocketIndex = -1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FIntPoint Tile = FIntPoint(0, 0);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bRotated = false;
+};
+
+USTRUCT()
+struct FUnequipRegionPocketSimState
+{
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 PocketIndex = -1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 Priority = 9999;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 Columns = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 Rows = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TArray<FGridInventorySlot> Slots;
 };
 event void FInventoryGridChanged();
 
 // @TODO 后续可以考虑迁移到C++层实现以获得更好的性能
 // 网格库存核心组件：负责格子占用、物品放置、容器搜索会话与服务端交换校验
+// 网格库存架构：
+// 按照区域划分网格区域，例如胸挂区域、背包区域、安全箱区域用Tag标识区分，可动态增删区域。每个区域包含一个或多个口袋，每个口袋包含一个或多个物品槽位，物品根据物品大小占用对应数量的物品槽位。
 class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 {
+	// 基础区域定义
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Regions")
+	TArray<FGridInventoryRegionDefinition> BaseRegionDefinitions;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	int32 InventoryColumns = 10;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
@@ -51,18 +175,39 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 	bool bEnableContainerSearch = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	bool bAllowDirectContainerInteraction = false;
-	UPROPERTY(Replicated, EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadWrite, Category = "Inventory")
 	TArray<FGridInventorySlot> InventorySlots;
 	UPROPERTY(Replicated)
 	int32 InventoryGridRevision = 0;
 	TMap<UYcInventoryItemInstance, FItemGridInfo> ItemInstanceToTileMap;
 
+	// 运行时区域状态
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "Inventory|Regions")
+	TArray<FGridInventoryRegionRuntimeState> RegionStates;
+	UPROPERTY(VisibleAnywhere, Category = "Inventory|Regions")
+	private TArray<FGridInventoryRegionSlotsStorage> RegionSlotsStorage;
+	UPROPERTY(VisibleAnywhere, Category = "Inventory|Regions")
+	private TArray<FGridInventoryRegionShapeStorage> RegionShapeStorage;
+	UPROPERTY(VisibleAnywhere, Category = "Inventory|Regions")
+	private TArray<FGridInventoryRegionTagConstraintStorage> RegionTagConstraintStorage;
+	UPROPERTY(VisibleAnywhere, Category = "Inventory|Regions")
+	private TArray<FEquipmentSlotRegionBinding> EquipmentSlotRegionBindings;
+	UPROPERTY(VisibleAnywhere, Category = "Inventory|Regions")
+	private TOptional<FGameplayTag> CachedRegionId;
+	UPROPERTY(VisibleAnywhere, Category = "Inventory|Regions")
+	private TOptional<int32> CachedPocketIndex;
+
 	UPROPERTY()
 	FInventoryGridChanged OnInventoryGridChanged;
 
 	FGameplayMessageListenerHandle InventoryChangedHandle;
+	FGameplayMessageListenerHandle EquipmentSlotChangedHandle;
 
 	private FIntPoint CurrentHandleTile;
+	private FGameplayTag CurrentHandleRegionId;
+	private FGameplayTag CurrentExpectedSourceRegionId;
+	private int32 CurrentHandlePocketIndex = -1;
+	private int32 CurrentExpectedSourcePocketIndex = -1;
 
 	TOptional<FIntPoint> CachedTile;
 	UPROPERTY(Replicated)
@@ -116,12 +261,19 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 				FYcInventoryItemChangeMessage(),
 				EGameplayMessageMatch::ExactMatch);
 		}
+		EquipmentSlotChangedHandle = UGameplayMessageSubsystem::Get().RegisterListener(
+			GameplayTags::Yc_EquipmentSlot_Message_SlotChanged,
+			this,
+			n"OnEquipmentSlotChanged",
+			FYcEquipmentSlotChangedMessage(),
+			EGameplayMessageMatch::ExactMatch);
 	}
 
 	UFUNCTION(BlueprintOverride)
 	void EndPlay(EEndPlayReason EndPlayReason)
 	{
 		InventoryChangedHandle.Unregister();
+		EquipmentSlotChangedHandle.Unregister();
 		if (GetOwner().HasAuthority())
 		{
 			auto Router = UYcInventoryOperationRouterComponent::FindRouter(GetOwner());
@@ -134,14 +286,74 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 			ResetSearchSession_Internal();
 		}
 	}
+
+	UFUNCTION()
+	void OnEquipmentSlotChanged(FGameplayTag ActualTag, FYcEquipmentSlotChangedMessage Data)
+	{
+		if (!IsOwnerActorMatched(Data.Owner, GetOwner()))
+		{
+			return;
+		}
+
+		BuildRegionsFromCurrentLoadout();
+		SyncPrimaryRegionToLegacySlots();
+		InventoryGridRevision++;
+		OnInventoryGridChanged.Broadcast();
+	}
+
+	private bool IsOwnerActorMatched(AActor MessageOwner, AActor LocalOwner) const
+	{
+		if (MessageOwner == nullptr || LocalOwner == nullptr)
+		{
+			return false;
+		}
+		if (MessageOwner == LocalOwner)
+		{
+			return true;
+		}
+
+		APawn MessagePawn = Cast<APawn>(MessageOwner);
+		AController MessageController = Cast<AController>(MessageOwner);
+		if (MessageController != nullptr)
+		{
+			MessagePawn = MessageController.ControlledPawn;
+		}
+		else if (MessagePawn != nullptr)
+		{
+			MessageController = Cast<AController>(MessagePawn.GetController());
+		}
+
+		APawn LocalPawn = Cast<APawn>(LocalOwner);
+		AController LocalController = Cast<AController>(LocalOwner);
+		if (LocalController != nullptr)
+		{
+			LocalPawn = LocalController.ControlledPawn;
+		}
+		else if (LocalPawn != nullptr)
+		{
+			LocalController = Cast<AController>(LocalPawn.GetController());
+		}
+
+		if (MessagePawn != nullptr && LocalPawn != nullptr && MessagePawn == LocalPawn)
+		{
+			return true;
+		}
+		if (MessageController != nullptr && LocalController != nullptr && MessageController == LocalController)
+		{
+			return true;
+		}
+		return false;
+	}
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void InitializeInventory()
 	{
+		BuildRegionsFromCurrentLoadout();
 		InventorySlots.SetNum(InventoryColumns * InventoryRows);
 		for (int32 i = 0; i < InventorySlots.Num(); i++)
 		{
 			InventorySlots[i].Reset();
 		}
+		SyncPrimaryRegionToLegacySlots();
 	}
 	UFUNCTION()
 	void OnInventoryChanged(FGameplayTag ActualTag, FYcInventoryItemChangeMessage Data)
@@ -152,15 +364,25 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 			{
 				if (CachedTile.IsSet())
 				{
-					OnGridItemInstanceAdded(Data.ItemInstance, Data.NewCount, CachedTile.GetValue(), false);
+					OnGridItemInstanceAdded(
+						Data.ItemInstance,
+						Data.NewCount,
+						CachedTile.GetValue(),
+						false,
+						CachedRegionId.IsSet() ? CachedRegionId.GetValue() : FGameplayTag(),
+						CachedPocketIndex.IsSet() ? CachedPocketIndex.GetValue() : 0);
 					CachedTile.Reset();
+					CachedRegionId.Reset();
+					CachedPocketIndex.Reset();
 					return;
 				}
 				bool bRotated;
 				FIntPoint Tile;
-				if (FindFirstFitPosition(Data.ItemInstance.ItemRegistryId, Tile, bRotated))
+				FGameplayTag RegionId;
+				int32 PocketIndex = 0;
+				if (FindFirstFitPlacementForItemInst(Data.ItemInstance, RegionId, PocketIndex, Tile, bRotated))
 				{
-					OnGridItemInstanceAdded(Data.ItemInstance, Data.NewCount, Tile, bRotated);
+					OnGridItemInstanceAdded(Data.ItemInstance, Data.NewCount, Tile, bRotated, RegionId, PocketIndex);
 				}
 				else
 				{
@@ -181,55 +403,61 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		}
 	}
 	UFUNCTION(BlueprintCallable, Category = "Inventory", BlueprintAuthorityOnly)
-	bool TryAddGridItemByDefinition(FDataRegistryId ItemDefId, int32 StackCount, FIntPoint Tile, bool bRotated = false)
+	bool TryAddGridItemByDefinition(FDataRegistryId ItemDefId, int32 StackCount, FIntPoint Tile, bool bRotated = false, FGameplayTag RegionId = FGameplayTag(), int32 PocketIndex = -1)
 	{
-		if (!CanPlaceGridItem(ItemDefId, Tile, bRotated))
+		if (!CanPlaceGridItem(ItemDefId, Tile, bRotated, RegionId, PocketIndex))
 		{
 			return false;
 		}
 
+		CachedTile.Set(Tile);
+		FGameplayTag FinalRegionId = ResolvePlacementRegionId(RegionId);
+		CachedRegionId.Set(FinalRegionId);
+		CachedPocketIndex.Set(ResolvePlacementPocketIndex(FinalRegionId, PocketIndex));
 		auto ItemInstance = AddItem(ItemDefId, StackCount);
 		if (ItemInstance == nullptr)
 		{
+			CachedTile.Reset();
+			CachedRegionId.Reset();
+			CachedPocketIndex.Reset();
 			Error("ItemInstance is invalid!");
 			return false;
 		}
 		return true;
 	}
 	UFUNCTION(BlueprintCallable, Category = "Inventory", BlueprintAuthorityOnly)
-	bool TryAddGridItemInstance(UYcInventoryItemInstance ItemInst, int32 StackCount, FIntPoint Tile, bool bRotated = false)
+	bool TryAddGridItemInstance(UYcInventoryItemInstance ItemInst, int32 StackCount, FIntPoint Tile, bool bRotated = false, FGameplayTag RegionId = FGameplayTag(), int32 PocketIndex = -1)
 	{
 		check(ItemInst != nullptr, "ItemInst is nullptr");
 
-		if (!CanPlaceGridItem(ItemInst.ItemRegistryId, Tile, bRotated))
+		if (!CanPlaceGridItem(ItemInst.ItemRegistryId, Tile, bRotated, RegionId, PocketIndex))
 		{
 			return false;
 		}
 
+		CachedTile.Set(Tile);
+		FGameplayTag FinalRegionId = ResolvePlacementRegionId(RegionId);
+		CachedRegionId.Set(FinalRegionId);
+		CachedPocketIndex.Set(ResolvePlacementPocketIndex(FinalRegionId, PocketIndex));
 		AddItemInstance(ItemInst, StackCount);
 		return true;
 	}
 	UFUNCTION(BlueprintCallable, Category = "Inventory", BlueprintAuthorityOnly)
 	bool RemoveGridItem(UYcInventoryItemInstance ItemInst)
 	{
-		bool bValidRemove = false;
-		for (int32 i = 0; i < InventorySlots.Num(); i++)
-		{
-			if (InventorySlots[i].ItemInstance == ItemInst)
-			{
-				InventorySlots[i].Reset();
-				bValidRemove = true;
-			}
-		}
+		bool bValidRemove = ItemInstanceToTileMap.Contains(ItemInst);
+		OnRemoveGridItem(ItemInst);
 		RemoveItemInstance(ItemInst);
 		return bValidRemove;
 	}
 	UFUNCTION(BlueprintCallable, Category = "Inventory", BlueprintAuthorityOnly)
-	bool OnGridItemInstanceAdded(UYcInventoryItemInstance ItemInst, int32 StackCount, FIntPoint Tile, bool bRotated = false)
+	bool OnGridItemInstanceAdded(UYcInventoryItemInstance ItemInst, int32 StackCount, FIntPoint Tile, bool bRotated = false, FGameplayTag RegionId = FGameplayTag(), int32 PocketIndex = -1)
 	{
 		check(ItemInst != nullptr, "ItemInst is nullptr");
 
-		if (!CanPlaceGridItemInst(ItemInst, Tile, bRotated))
+		FGameplayTag FinalRegionId = ResolvePlacementRegionId(RegionId);
+		int32 FinalPocketIndex = ResolvePlacementPocketIndex(FinalRegionId, PocketIndex);
+		if (!CanPlaceGridItemInst(ItemInst, Tile, bRotated, FinalRegionId, FinalPocketIndex))
 		{
 			return false;
 		}
@@ -241,22 +469,27 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		{
 			OnRemoveGridItem(ItemInst);
 		}
-		ItemInstanceToTileMap.Add(ItemInst, FItemGridInfo(Tile, FIntPoint(ItemWidth, ItemHeight)));
+		FItemGridInfo ItemInfo = FItemGridInfo(Tile, FIntPoint(ItemWidth, ItemHeight));
+		ItemInfo.RegionId = FinalRegionId;
+		ItemInfo.PocketIndex = FinalPocketIndex;
+		ItemInstanceToTileMap.Add(ItemInst, ItemInfo);
+		auto RegionSlots = GetRegionSlots(FinalRegionId, FinalPocketIndex);
+		int32 Columns = GetRegionColumns(FinalRegionId, FinalPocketIndex);
 		for (int32 Y = Tile.Y; Y < Tile.Y + ItemHeight; Y++)
 		{
 			for (int32 X = Tile.X; X < Tile.X + ItemWidth; X++)
 			{
-				int32 Index = TileToIndex(FIntPoint(X, Y));
-				FYcInventoryItemDefinition ItemDef;
-				ItemInst.GetItemDef(ItemDef);
-				InventorySlots[Index].bOccupied = true;
-				InventorySlots[Index].OccupyingItemID = ItemInst.GetItemInstId();
-				InventorySlots[Index].ItemInstance = ItemInst;
-				InventorySlots[Index].ItemRelativeX = X - Tile.X;
-				InventorySlots[Index].ItemRelativeY = Y - Tile.Y;
+				int32 Index = TileToIndexInRegion(FIntPoint(X, Y), Columns);
+				RegionSlots[Index].bOccupied = true;
+				RegionSlots[Index].OccupyingItemID = ItemInst.GetItemInstId();
+				RegionSlots[Index].ItemInstance = ItemInst;
+				RegionSlots[Index].ItemRelativeX = X - Tile.X;
+				RegionSlots[Index].ItemRelativeY = Y - Tile.Y;
 			}
 		}
+		SetRegionSlots(FinalRegionId, FinalPocketIndex, RegionSlots);
 		InventoryGridRevision++;
+		SyncPrimaryRegionToLegacySlots();
 		OnInventoryGridChanged.Broadcast();
 		return true;
 	}
@@ -268,31 +501,156 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 			return;
 		}
 		auto ItemGridInfo = ItemInstanceToTileMap[ItemInst];
+		auto RegionSlots = GetRegionSlots(ItemGridInfo.RegionId, ItemGridInfo.PocketIndex);
+		int32 Columns = GetRegionColumns(ItemGridInfo.RegionId, ItemGridInfo.PocketIndex);
 		for (int X = ItemGridInfo.TilePos.X; X < ItemGridInfo.TilePos.X + ItemGridInfo.ItemSize.X; X++)
 		{
 			for (int Y = ItemGridInfo.TilePos.Y; Y < ItemGridInfo.TilePos.Y + ItemGridInfo.ItemSize.Y; Y++)
 			{
-				int32 Index = TileToIndex(FIntPoint(X, Y));
-				InventorySlots[Index].Reset();
+				int32 Index = TileToIndexInRegion(FIntPoint(X, Y), Columns);
+				if (RegionSlots.IsValidIndex(Index))
+				{
+					RegionSlots[Index].Reset();
+				}
 			}
 		}
+		SetRegionSlots(ItemGridInfo.RegionId, ItemGridInfo.PocketIndex, RegionSlots);
 		ItemInstanceToTileMap.Remove(ItemInst);
 		InventoryGridRevision++;
+		SyncPrimaryRegionToLegacySlots();
 		OnInventoryGridChanged.Broadcast();
 	}
 
 	private bool TryGetItemPlacementInfo(UYcInventoryItemInstance ItemInst, FIntPoint&out OutTile, bool&out bOutRotated)
 	{
+		FGameplayTag UnusedRegionId;
+		int32 UnusedPocketIndex = -1;
+		return TryGetItemPlacementInfoWithRegion(ItemInst, UnusedRegionId, UnusedPocketIndex, OutTile, bOutRotated);
+	}
+
+	private bool TryGetItemPlacementInfoWithRegion(UYcInventoryItemInstance ItemInst, FGameplayTag&out OutRegionId, int32&out OutPocketIndex, FIntPoint&out OutTile, bool&out bOutRotated)
+	{
+		OutRegionId = FGameplayTag();
+		OutPocketIndex = -1;
 		if (ItemInst == nullptr || !ItemInstanceToTileMap.Contains(ItemInst))
 		{
 			return false;
 		}
 
 		auto ItemGridInfo = ItemInstanceToTileMap[ItemInst];
+		OutRegionId = ItemGridInfo.RegionId;
+		OutPocketIndex = ItemGridInfo.PocketIndex;
 		OutTile = ItemGridInfo.TilePos;
 		auto IF_Grid = GetItemFragmentGrid(ItemInst.ItemRegistryId);
 		bOutRotated = (ItemGridInfo.ItemSize.X == IF_Grid.Dimensions.Y && ItemGridInfo.ItemSize.Y == IF_Grid.Dimensions.X);
 		return true;
+	}
+
+	private bool IsRegionStateEnabled(FGameplayTag RegionId, int32 PocketIndex) const
+	{
+		for (int32 i = 0; i < RegionStates.Num(); i++)
+		{
+			if (RegionStates[i].bEnabled && RegionStates[i].RegionId == RegionId && RegionStates[i].PocketIndex == PocketIndex)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private bool CommitPlacementWithoutBroadcast(UYcInventoryItemInstance ItemInst, FIntPoint Tile, bool bRotated, FGameplayTag RegionId, int32 PocketIndex)
+	{
+		// 仅落地网格占用与映射，不触发版本号和广播；用于批量重建阶段。
+		if (ItemInst == nullptr)
+		{
+			return false;
+		}
+		if (!CanPlaceGridItemInst(ItemInst, Tile, bRotated, RegionId, PocketIndex))
+		{
+			return false;
+		}
+
+		auto IF_Grid = GetItemFragmentGrid(ItemInst.ItemRegistryId);
+		int32 ItemWidth = bRotated ? IF_Grid.Dimensions.Y : IF_Grid.Dimensions.X;
+		int32 ItemHeight = bRotated ? IF_Grid.Dimensions.X : IF_Grid.Dimensions.Y;
+		FItemGridInfo ItemInfo = FItemGridInfo(Tile, FIntPoint(ItemWidth, ItemHeight));
+		ItemInfo.RegionId = RegionId;
+		ItemInfo.PocketIndex = PocketIndex;
+		ItemInstanceToTileMap.Add(ItemInst, ItemInfo);
+
+		auto RegionSlots = GetRegionSlots(RegionId, PocketIndex);
+		int32 Columns = GetRegionColumns(RegionId, PocketIndex);
+		for (int32 Y = Tile.Y; Y < Tile.Y + ItemHeight; Y++)
+		{
+			for (int32 X = Tile.X; X < Tile.X + ItemWidth; X++)
+			{
+				int32 Index = TileToIndexInRegion(FIntPoint(X, Y), Columns);
+				RegionSlots[Index].bOccupied = true;
+				RegionSlots[Index].OccupyingItemID = ItemInst.GetItemInstId();
+				RegionSlots[Index].ItemInstance = ItemInst;
+				RegionSlots[Index].ItemRelativeX = X - Tile.X;
+				RegionSlots[Index].ItemRelativeY = Y - Tile.Y;
+			}
+		}
+		SetRegionSlots(RegionId, PocketIndex, RegionSlots);
+		return true;
+	}
+
+	private void RebuildRegionSlotsFromPlacementMap()
+	{
+		// 根据当前 ItemInstanceToTileMap 重新生成所有区域槽位缓存。
+		// 若原位置不可用，则尝试自动找新位置；仍失败则从映射中移除避免脏数据。
+		RegionSlotsStorage.Empty();
+
+		TArray<UYcInventoryItemInstance> Items;
+		for (auto It : ItemInstanceToTileMap)
+		{
+			Items.Add(It.Key);
+		}
+
+		TArray<UYcInventoryItemInstance> ItemsToRemove;
+		for (int32 i = 0; i < Items.Num(); i++)
+		{
+			auto ItemInst = Items[i];
+			if (ItemInst == nullptr || !ItemInstanceToTileMap.Contains(ItemInst))
+			{
+				continue;
+			}
+
+			auto OldInfo = ItemInstanceToTileMap[ItemInst];
+			auto IF_Grid = GetItemFragmentGrid(ItemInst.ItemRegistryId);
+			bool bOldRotated = (OldInfo.ItemSize.X == IF_Grid.Dimensions.Y && OldInfo.ItemSize.Y == IF_Grid.Dimensions.X);
+			bool bPlaced = false;
+
+			if (IsRegionStateEnabled(OldInfo.RegionId, OldInfo.PocketIndex))
+			{
+				// 优先尝试“原区域+原口袋+原朝向”，尽量保持玩家已有布局。
+				bPlaced = CommitPlacementWithoutBroadcast(ItemInst, OldInfo.TilePos, bOldRotated, OldInfo.RegionId, OldInfo.PocketIndex);
+			}
+
+			if (!bPlaced)
+			{
+				FGameplayTag NewRegionId;
+				int32 NewPocketIndex = -1;
+				FIntPoint NewTile;
+				bool bNewRotated = false;
+				if (FindFirstFitPlacementForItemInst(ItemInst, NewRegionId, NewPocketIndex, NewTile, bNewRotated))
+				{
+					bPlaced = CommitPlacementWithoutBroadcast(ItemInst, NewTile, bNewRotated, NewRegionId, NewPocketIndex);
+				}
+			}
+
+			if (!bPlaced)
+			{
+				ItemsToRemove.Add(ItemInst);
+				Warning("RebuildRegionSlotsFromPlacementMap: item has no valid placement and was removed from grid map.");
+			}
+		}
+
+		for (int32 i = 0; i < ItemsToRemove.Num(); i++)
+		{
+			ItemInstanceToTileMap.Remove(ItemsToRemove[i]);
+		}
 	}
 	UFUNCTION(BlueprintCallable, Category = "Search")
 	float GetSearchSpeedMultiplier() const
@@ -314,7 +672,7 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 			return false;
 		}
 
-		auto ItemOuterInventory = Cast<UGridInventoryManagerComponent>(ItemInst.GetActorOuter().GetComponentByClass(UGridInventoryManagerComponent));
+		UGridInventoryManagerComponent ItemOuterInventory = ItemInst.GetActorOuter().GetComponentByClass(UGridInventoryManagerComponent);
 		if (ItemOuterInventory == nullptr)
 		{
 			return true;
@@ -518,7 +876,7 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 			return false;
 		}
 
-		auto ItemOuterInventory = Cast<UGridInventoryManagerComponent>(ItemInst.GetActorOuter().GetComponentByClass(UGridInventoryManagerComponent));
+		UGridInventoryManagerComponent ItemOuterInventory = ItemInst.GetActorOuter().GetComponentByClass(UGridInventoryManagerComponent);
 		if (ItemOuterInventory == nullptr)
 		{
 			// 物品已不在任何网格库存上下文中（可能已销毁/已转移到其他系统），拒绝执行。
@@ -601,6 +959,7 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		CurrentSearchProgress01 = Math::Clamp(CurrentSearchProgress01, 0.0f, 1.0f);
 		if (CurrentSearchProgress01 >= 1.0f)
 		{
+			// 当前物品检索完成后立即切换到下一项，维持连续检索体验。
 			RevealItem(CurrentSearchingItem);
 			StartNextSearchItem();
 			return;
@@ -677,6 +1036,7 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 								  IsItemStillInContainer(CurrentSearchingItem, SearchContainerInventory) &&
 								  !IsItemKnownInMatch(CurrentSearchingItem);
 
+		// 一次性重建“待搜索”和“已揭示”两组数据，避免多人并发改动导致状态不一致。
 		TArray<UYcInventoryItemInstance> NewPendingQueue;
 		TArray<UYcInventoryItemInstance> NewRevealedItems;
 
@@ -689,6 +1049,7 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 			}
 			if (Slot.ItemRelativeX != 0 || Slot.ItemRelativeY != 0)
 			{
+				// 只看物品左上角主格，防止同一物品按占用格被重复统计。
 				continue;
 			}
 
@@ -775,6 +1136,7 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		// 持续弹出直到找到一个可搜索目标，或队列耗尽
 		while (PendingSearchQueue.Num() > 0)
 		{
+			// 队列可能含有“已被拿走/已知”的旧项，这里边弹边清洗。
 			UYcInventoryItemInstance NextItem = PendingSearchQueue[0];
 			PendingSearchQueue.RemoveAt(0);
 			if (NextItem == nullptr)
@@ -952,6 +1314,11 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 	{
 		OutReason = "";
 		FString OutSummary;
+		// 将本次操作上下文暂存到组件字段，供 ExecuteSwapGridOperation 读取区域与口袋预期。
+		CurrentHandleRegionId = InOperation.GridRegionId;
+		CurrentExpectedSourceRegionId = InOperation.SourceGridRegionId;
+		CurrentHandlePocketIndex = InOperation.GridPocketIndex;
+		CurrentExpectedSourcePocketIndex = InOperation.SourceGridPocketIndex;
 		bool bSuccess = ExecuteSwapGridOperation(
 			InOperation.TargetInventory,
 			InOperation.ItemInstance,
@@ -961,6 +1328,11 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 			InOperation.SourceInventory,
 			OutReason,
 			OutSummary);
+		CurrentHandleRegionId = FGameplayTag();
+		CurrentExpectedSourceRegionId = FGameplayTag();
+		CurrentHandlePocketIndex = -1;
+		CurrentExpectedSourcePocketIndex = -1;
+		// 及时清空上下文，避免污染后续请求。
 		if (bSuccess && !OutSummary.IsEmpty())
 		{
 			OutReason = OutSummary;
@@ -1001,7 +1373,7 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 			return false;
 		}
 
-		auto SourceInventory = Cast<UGridInventoryManagerComponent>(ItemInst.GetActorOuter().GetComponentByClass(UGridInventoryManagerComponent));
+		UGridInventoryManagerComponent SourceInventory = ItemInst.GetActorOuter().GetComponentByClass(UGridInventoryManagerComponent);
 		if (SourceInventory == nullptr)
 		{
 			OutReason = "SwapGrid source inventory missing.";
@@ -1040,7 +1412,9 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		}
 
 		// 先服务端校验目标格子，避免“先删后加失败”导致物品丢失
-		if (!TargetInventory.CanPlaceGridItemInst(ItemInst, Tile, bRotated))
+		FGameplayTag TargetRegionId = TargetInventory.ResolvePlacementRegionId(CurrentHandleRegionId);
+		int32 TargetPocketIndex = TargetInventory.ResolvePlacementPocketIndex(TargetRegionId, CurrentHandlePocketIndex);
+		if (!TargetInventory.CanPlaceGridItemInst(ItemInst, Tile, bRotated, TargetRegionId, TargetPocketIndex))
 		{
 			OutReason = "SwapGrid target blocked.";
 			return false;
@@ -1048,14 +1422,26 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 
 		if (SourceInventory == TargetInventory)
 		{
-			SourceInventory.InnerSwapItemPosition(ItemInst, RealStackCount, Tile, bRotated);
+			SourceInventory.InnerSwapItemPosition(ItemInst, RealStackCount, Tile, bRotated, TargetRegionId, TargetPocketIndex);
 			OutSummary = "SwapGrid same inventory.";
 			return true;
 		}
 
+		FGameplayTag SourceRegionId;
+		int32 SourcePocketIndex = -1;
 		FIntPoint SourceTile = FIntPoint(0, 0);
 		bool bSourceRotated = false;
-		bool bHasSourcePlacement = SourceInventory.TryGetItemPlacementInfo(ItemInst, SourceTile, bSourceRotated);
+		bool bHasSourcePlacement = SourceInventory.TryGetItemPlacementInfoWithRegion(ItemInst, SourceRegionId, SourcePocketIndex, SourceTile, bSourceRotated);
+		if (CurrentExpectedSourceRegionId.IsValid() && SourceRegionId != CurrentExpectedSourceRegionId)
+		{
+			OutReason = "SwapGrid source region changed.";
+			return false;
+		}
+		if (CurrentExpectedSourcePocketIndex >= 0 && SourcePocketIndex != CurrentExpectedSourcePocketIndex)
+		{
+			OutReason = "SwapGrid source pocket changed.";
+			return false;
+		}
 
 		if (!SourceInventory.RemoveItemInstance(ItemInst))
 		{
@@ -1064,25 +1450,36 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		}
 
 		TargetInventory.CachedTile.Set(Tile);
+		TargetInventory.CachedRegionId.Set(TargetRegionId);
+		TargetInventory.CachedPocketIndex.Set(TargetPocketIndex);
 		if (!TargetInventory.AddItemInstance(ItemInst, RealStackCount))
 		{
-			if (bHasSourcePlacement && SourceInventory.CanPlaceGridItemInst(ItemInst, SourceTile, bSourceRotated))
+			// 目标添加失败时进行补偿回滚：优先放回原位，其次尝试原朝向/自动寻位。
+			if (bHasSourcePlacement && SourceInventory.CanPlaceGridItemInst(ItemInst, SourceTile, bSourceRotated, SourceRegionId, SourcePocketIndex))
 			{
 				SourceInventory.CachedTile.Set(SourceTile);
+				SourceInventory.CachedRegionId.Set(SourceRegionId);
+				SourceInventory.CachedPocketIndex.Set(SourcePocketIndex);
 				SourceInventory.AddItemInstance(ItemInst, RealStackCount);
 			}
-			else if (bHasSourcePlacement && SourceInventory.CanPlaceGridItemInst(ItemInst, SourceTile, false))
+			else if (bHasSourcePlacement && SourceInventory.CanPlaceGridItemInst(ItemInst, SourceTile, false, SourceRegionId, SourcePocketIndex))
 			{
 				SourceInventory.CachedTile.Set(SourceTile);
+				SourceInventory.CachedRegionId.Set(SourceRegionId);
+				SourceInventory.CachedPocketIndex.Set(SourcePocketIndex);
 				SourceInventory.AddItemInstance(ItemInst, RealStackCount);
 			}
 			else
 			{
+				FGameplayTag FallbackRegionId;
+				int32 FallbackPocketIndex = -1;
 				bool bFitRotated = false;
 				FIntPoint FallbackTile;
-				if (SourceInventory.FindFirstFitPosition(ItemInst.ItemRegistryId, FallbackTile, bFitRotated))
+				if (SourceInventory.FindFirstFitPlacementForItemInst(ItemInst, FallbackRegionId, FallbackPocketIndex, FallbackTile, bFitRotated))
 				{
 					SourceInventory.CachedTile.Set(FallbackTile);
+					SourceInventory.CachedRegionId.Set(FallbackRegionId);
+					SourceInventory.CachedPocketIndex.Set(FallbackPocketIndex);
 					SourceInventory.AddItemInstance(ItemInst, RealStackCount);
 				}
 				else
@@ -1097,9 +1494,9 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		OutSummary = "SwapGrid completed.";
 		return true;
 	}
-	void InnerSwapItemPosition(UYcInventoryItemInstance ItemInst, int32 StackCount, FIntPoint Tile, bool bRotated = false)
+	void InnerSwapItemPosition(UYcInventoryItemInstance ItemInst, int32 StackCount, FIntPoint Tile, bool bRotated = false, FGameplayTag RegionId = FGameplayTag(), int32 PocketIndex = -1)
 	{
-		OnGridItemInstanceAdded(ItemInst, StackCount, Tile, bRotated);
+		OnGridItemInstanceAdded(ItemInst, StackCount, Tile, bRotated, RegionId, PocketIndex);
 	}
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool GetItemLeftTopPosition(FYcItemInstanceId ItemID, FIntPoint&out OutPoint)
@@ -1108,31 +1505,43 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		if (!FindItemById(ItemID, ItemEntry))
 			return false;
 
-		for (int32 i = 0; i < InventorySlots.Num(); i++)
+		if (ItemEntry.Instance == nullptr || !ItemInstanceToTileMap.Contains(ItemEntry.Instance))
 		{
-			if (InventorySlots[i].OccupyingItemID.Value == ItemID.Value &&
-				InventorySlots[i].ItemRelativeX == 0 &&
-				InventorySlots[i].ItemRelativeY == 0)
-			{
-				OutPoint = IndexToTile(i);
-				return true;
-			}
+			return false;
 		}
-		return false;
+		OutPoint = ItemInstanceToTileMap[ItemEntry.Instance].TilePos;
+		return true;
 	}
 
 	UFUNCTION()
 	TMap<UYcInventoryItemInstance, FIntPoint> GetGridItemsTileMap()
 	{
 		TMap<UYcInventoryItemInstance, FIntPoint> Items;
-		for (int32 i = 0; i < InventorySlots.Num(); i++)
+		FGameplayTag PrimaryRegionId = GetPrimaryRegionId();
+		int32 PrimaryPocketIndex = GetPrimaryPocketIndex(PrimaryRegionId);
+		for (auto It : ItemInstanceToTileMap)
 		{
-			if (Items.Contains(InventorySlots[i].ItemInstance))
+			if (PrimaryRegionId.IsValid() && (It.Value.RegionId != PrimaryRegionId || It.Value.PocketIndex != PrimaryPocketIndex))
+			{
 				continue;
-			if (!InventorySlots[i].bOccupied)
-				continue;
-			FIntPoint Tile = IndexToTile(i);
-			Items.Add(InventorySlots[i].ItemInstance, Tile);
+			}
+			Items.Add(It.Key, It.Value.TilePos);
+		}
+		return Items;
+	}
+
+	UFUNCTION()
+	TMap<UYcInventoryItemInstance, FIntPoint> GetGridItemsTileMapByRegion(FGameplayTag RegionId, int32 PocketIndex = -1)
+	{
+		TMap<UYcInventoryItemInstance, FIntPoint> Items;
+		for (auto It : ItemInstanceToTileMap)
+		{
+			bool bRegionMatch = !RegionId.IsValid() || It.Value.RegionId == RegionId;
+			bool bPocketMatch = PocketIndex < 0 || It.Value.PocketIndex == PocketIndex;
+			if (bRegionMatch && bPocketMatch)
+			{
+				Items.Add(It.Key, It.Value.TilePos);
+			}
 		}
 		return Items;
 	}
@@ -1141,35 +1550,11 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 	TMap<UYcInventoryItemInstance, bool> GetGridItemRotationMap()
 	{
 		TMap<UYcInventoryItemInstance, bool> Rotations;
-		for (int32 i = 0; i < InventorySlots.Num(); i++)
+		for (auto It : ItemInstanceToTileMap)
 		{
-			auto Slot = InventorySlots[i];
-			if (!Slot.bOccupied || Slot.ItemInstance == nullptr)
-			{
-				continue;
-			}
-
-			if (Rotations.Contains(Slot.ItemInstance))
-			{
-				continue;
-			}
-
-			int32 MaxRelX = 0;
-			int32 MaxRelY = 0;
-			for (int32 j = 0; j < InventorySlots.Num(); j++)
-			{
-				auto Slot2 = InventorySlots[j];
-				if (!Slot2.bOccupied || Slot2.ItemInstance != Slot.ItemInstance)
-				{
-					continue;
-				}
-				MaxRelX = Math::Max(MaxRelX, Slot2.ItemRelativeX);
-				MaxRelY = Math::Max(MaxRelY, Slot2.ItemRelativeY);
-			}
-
-			int32 PlacedWidth = MaxRelX + 1;
-			int32 PlacedHeight = MaxRelY + 1;
-			auto IF_Grid = GetItemFragmentGrid(Slot.ItemInstance.ItemRegistryId);
+			auto IF_Grid = GetItemFragmentGrid(It.Key.ItemRegistryId);
+			int32 PlacedWidth = It.Value.ItemSize.X;
+			int32 PlacedHeight = It.Value.ItemSize.Y;
 
 			bool bRotated = false;
 			if (PlacedWidth == IF_Grid.Dimensions.Y && PlacedHeight == IF_Grid.Dimensions.X &&
@@ -1178,7 +1563,7 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 				bRotated = true;
 			}
 
-			Rotations.Add(Slot.ItemInstance, bRotated);
+			Rotations.Add(It.Key, bRotated);
 		}
 
 		return Rotations;
@@ -1186,12 +1571,85 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool FindFirstFitPosition(FDataRegistryId ItemDefId, FIntPoint&out Tile, bool&out OutRotated)
 	{
-		auto IF_Grid = GetItemFragmentGrid(ItemDefId);
-		for (int32 Y = 0; Y < InventoryRows; Y++)
+		FGameplayTag RegionId;
+		int32 PocketIndex = -1;
+		return FindFirstFitPlacement(ItemDefId, RegionId, PocketIndex, Tile, OutRotated);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	bool FindFirstFitPlacement(FDataRegistryId ItemDefId, FGameplayTag&out OutRegionId, int32&out OutPocketIndex, FIntPoint&out Tile, bool&out OutRotated)
+	{
+		for (int32 i = 0; i < RegionStates.Num(); i++)
 		{
-			for (int32 X = 0; X < InventoryColumns; X++)
+			auto Region = RegionStates[i];
+			if (!Region.bEnabled)
 			{
-				if (CanPlaceGridItem(ItemDefId, FIntPoint(X, Y), false))
+				continue;
+			}
+			if (FindFirstFitPositionInRegion(ItemDefId, Region.RegionId, Region.PocketIndex, Tile, OutRotated))
+			{
+				OutRegionId = Region.RegionId;
+				OutPocketIndex = Region.PocketIndex;
+				return true;
+			}
+		}
+		OutRegionId = FGameplayTag();
+		OutPocketIndex = -1;
+		return false;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	bool FindFirstFitPlacementForItemInst(UYcInventoryItemInstance ItemInst, FGameplayTag&out OutRegionId, int32&out OutPocketIndex, FIntPoint&out Tile, bool&out OutRotated)
+	{
+		if (ItemInst == nullptr)
+		{
+			OutRegionId = FGameplayTag();
+			OutPocketIndex = -1;
+			return false;
+		}
+
+		for (int32 i = 0; i < RegionStates.Num(); i++)
+		{
+			auto Region = RegionStates[i];
+			if (!Region.bEnabled)
+			{
+				continue;
+			}
+			if (FindFirstFitPositionInRegionForItemInst(ItemInst, Region.RegionId, Region.PocketIndex, Tile, OutRotated))
+			{
+				OutRegionId = Region.RegionId;
+				OutPocketIndex = Region.PocketIndex;
+				return true;
+			}
+		}
+		OutRegionId = FGameplayTag();
+		OutPocketIndex = -1;
+		return false;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	bool FindFirstFitPlacementLegacy(FDataRegistryId ItemDefId, FGameplayTag&out OutRegionId, FIntPoint&out Tile, bool&out OutRotated)
+	{
+		int32 OutPocketIndex = -1;
+		return FindFirstFitPlacement(ItemDefId, OutRegionId, OutPocketIndex, Tile, OutRotated);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	bool FindFirstFitPositionInRegion(FDataRegistryId ItemDefId, FGameplayTag RegionId, int32 PocketIndex, FIntPoint&out Tile, bool&out OutRotated)
+	{
+		if (!PassesRegionTagConstraintForItemDef(ItemDefId, RegionId))
+		{
+			return false;
+		}
+
+		auto IF_Grid = GetItemFragmentGrid(ItemDefId);
+		int32 Columns = GetRegionColumns(RegionId, PocketIndex);
+		int32 Rows = GetRegionRows(RegionId, PocketIndex);
+		for (int32 Y = 0; Y < Rows; Y++)
+		{
+			for (int32 X = 0; X < Columns; X++)
+			{
+				if (CanPlaceGridItem(ItemDefId, FIntPoint(X, Y), false, RegionId, PocketIndex))
 				{
 					Tile = FIntPoint(X, Y);
 					OutRotated = false;
@@ -1199,14 +1657,15 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 				}
 			}
 		}
-
 		if (!IF_Grid.bCanRotate)
-			return false;
-		for (int32 Y = 0; Y < InventoryRows; Y++)
 		{
-			for (int32 X = 0; X < InventoryColumns; X++)
+			return false;
+		}
+		for (int32 Y = 0; Y < Rows; Y++)
+		{
+			for (int32 X = 0; X < Columns; X++)
 			{
-				if (CanPlaceGridItem(ItemDefId, FIntPoint(X, Y), true))
+				if (CanPlaceGridItem(ItemDefId, FIntPoint(X, Y), true, RegionId, PocketIndex))
 				{
 					Tile = FIntPoint(X, Y);
 					OutRotated = true;
@@ -1215,23 +1674,61 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 			}
 		}
 		return false;
-	};
-	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	bool CanPlaceGridItem(FDataRegistryId ItemDefId, FIntPoint Tile, bool bRotated = false)
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	bool FindFirstFitPositionInRegionLegacy(FDataRegistryId ItemDefId, FGameplayTag RegionId, FIntPoint&out Tile, bool&out OutRotated)
 	{
-		auto IF_Grid = GetItemFragmentGrid(ItemDefId);
-		int32 ItemWidth = bRotated ? IF_Grid.Dimensions.Y : IF_Grid.Dimensions.X;
-		int32 ItemHeight = bRotated ? IF_Grid.Dimensions.X : IF_Grid.Dimensions.Y;
-		if (Tile.X < 0 || Tile.Y < 0 || Tile.X + ItemWidth > InventoryColumns || Tile.Y + ItemHeight > InventoryRows)
+		int32 PocketIndex = -1;
+		return FindFirstFitPositionInRegion(ItemDefId, RegionId, PocketIndex, Tile, OutRotated);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Rules")
+	bool PassesRegionTagConstraintForItemDef(FDataRegistryId ItemDefId, FGameplayTag RegionId)
+	{
+		FGameplayTag FinalRegionId = ResolvePlacementRegionId(RegionId);
+		FGridRegionTagConstraint Constraint = GetRegionTagConstraint(FinalRegionId);
+		return YcGridInventoryPlacementRule::PassesTagConstraintForItemDef(ItemDefId, Constraint);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Rules")
+	bool PassesRegionTagConstraintForItemInst(UYcInventoryItemInstance ItemInst, FGameplayTag RegionId)
+	{
+		FGameplayTag FinalRegionId = ResolvePlacementRegionId(RegionId);
+		FGridRegionTagConstraint Constraint = GetRegionTagConstraint(FinalRegionId);
+		return YcGridInventoryPlacementRule::PassesTagConstraintForItemInstance(ItemInst, Constraint);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool CanPlaceGridItem(FDataRegistryId ItemDefId, FIntPoint Tile, bool bRotated = false, FGameplayTag RegionId = FGameplayTag(), int32 PocketIndex = -1)
+	{
+		FGameplayTag FinalRegionId = ResolvePlacementRegionId(RegionId);
+		int32 FinalPocketIndex = ResolvePlacementPocketIndex(FinalRegionId, PocketIndex);
+		if (!PassesRegionTagConstraintForItemDef(ItemDefId, FinalRegionId))
 		{
 			return false;
 		}
+
+		auto IF_Grid = GetItemFragmentGrid(ItemDefId);
+		int32 ItemWidth = bRotated ? IF_Grid.Dimensions.Y : IF_Grid.Dimensions.X;
+		int32 ItemHeight = bRotated ? IF_Grid.Dimensions.X : IF_Grid.Dimensions.Y;
+		int32 Columns = GetRegionColumns(FinalRegionId, FinalPocketIndex);
+		int32 Rows = GetRegionRows(FinalRegionId, FinalPocketIndex);
+		if (Tile.X < 0 || Tile.Y < 0 || Tile.X + ItemWidth > Columns || Tile.Y + ItemHeight > Rows)
+		{
+			return false;
+		}
+		auto RegionSlots = GetRegionSlots(FinalRegionId, FinalPocketIndex);
 		for (int32 Y = Tile.Y; Y < Tile.Y + ItemHeight; Y++)
 		{
 			for (int32 X = Tile.X; X < Tile.X + ItemWidth; X++)
 			{
-				int32 Index = TileToIndex(FIntPoint(X, Y));
-				if (InventorySlots[Index].bOccupied)
+				if (!IsRegionCellAvailable(FinalRegionId, FinalPocketIndex, FIntPoint(X, Y)))
+				{
+					return false;
+				}
+				int32 Index = TileToIndexInRegion(FIntPoint(X, Y), Columns);
+				if (RegionSlots[Index].bOccupied)
 					return false;
 			}
 		}
@@ -1239,26 +1736,40 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 	}
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	bool CanPlaceGridItemInst(UYcInventoryItemInstance ItemInst, FIntPoint Tile, bool bRotated = false)
+	bool CanPlaceGridItemInst(UYcInventoryItemInstance ItemInst, FIntPoint Tile, bool bRotated = false, FGameplayTag RegionId = FGameplayTag(), int32 PocketIndex = -1)
 	{
 		if (ItemInst == nullptr)
 		{
 			Warning("ItemInst is nullptr");
 			return false;
 		}
-		auto IF_Grid = GetItemFragmentGrid(ItemInst.ItemRegistryId);
-		int32 ItemWidth = bRotated ? IF_Grid.Dimensions.Y : IF_Grid.Dimensions.X;
-		int32 ItemHeight = bRotated ? IF_Grid.Dimensions.X : IF_Grid.Dimensions.Y;
-		if (Tile.X < 0 || Tile.Y < 0 || Tile.X + ItemWidth > InventoryColumns || Tile.Y + ItemHeight > InventoryRows)
+		FGameplayTag FinalRegionId = ResolvePlacementRegionId(RegionId);
+		int32 FinalPocketIndex = ResolvePlacementPocketIndex(FinalRegionId, PocketIndex);
+		if (!PassesRegionTagConstraintForItemInst(ItemInst, FinalRegionId))
 		{
 			return false;
 		}
+
+		auto IF_Grid = GetItemFragmentGrid(ItemInst.ItemRegistryId);
+		int32 ItemWidth = bRotated ? IF_Grid.Dimensions.Y : IF_Grid.Dimensions.X;
+		int32 ItemHeight = bRotated ? IF_Grid.Dimensions.X : IF_Grid.Dimensions.Y;
+		int32 Columns = GetRegionColumns(FinalRegionId, FinalPocketIndex);
+		int32 Rows = GetRegionRows(FinalRegionId, FinalPocketIndex);
+		if (Tile.X < 0 || Tile.Y < 0 || Tile.X + ItemWidth > Columns || Tile.Y + ItemHeight > Rows)
+		{
+			return false;
+		}
+		auto RegionSlots = GetRegionSlots(FinalRegionId, FinalPocketIndex);
 		for (int32 Y = Tile.Y; Y < Tile.Y + ItemHeight; Y++)
 		{
 			for (int32 X = Tile.X; X < Tile.X + ItemWidth; X++)
 			{
-				int32 Index = TileToIndex(FIntPoint(X, Y));
-				if (InventorySlots[Index].bOccupied && InventorySlots[Index].ItemInstance != ItemInst)
+				if (!IsRegionCellAvailable(FinalRegionId, FinalPocketIndex, FIntPoint(X, Y)))
+				{
+					return false;
+				}
+				int32 Index = TileToIndexInRegion(FIntPoint(X, Y), Columns);
+				if (RegionSlots[Index].bOccupied && RegionSlots[Index].ItemInstance != ItemInst)
 					return false;
 			}
 		}
@@ -1289,9 +1800,948 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 	UFUNCTION(BlueprintPure)
 	int32 TileToIndex(FIntPoint Tile)
 	{
-		int32 Index;
-		Index = Tile.Y * InventoryColumns + Tile.X;
-		return Index;
+		return TileToIndexInRegion(Tile, InventoryColumns);
+	}
+
+	private int32 TileToIndexInRegion(FIntPoint Tile, int32 RegionColumns)
+	{
+		return Tile.Y * RegionColumns + Tile.X;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	FGameplayTag GetPrimaryRegionId() const
+	{
+		for (int32 i = 0; i < RegionStates.Num(); i++)
+		{
+			if (RegionStates[i].bEnabled)
+			{
+				return RegionStates[i].RegionId;
+			}
+		}
+		return FGameplayTag();
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	int32 GetPrimaryPocketIndex(FGameplayTag RegionId) const
+	{
+		for (int32 i = 0; i < RegionStates.Num(); i++)
+		{
+			if (RegionStates[i].bEnabled && RegionStates[i].RegionId == RegionId)
+			{
+				return RegionStates[i].PocketIndex;
+			}
+		}
+		return 0;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	TArray<FGameplayTag> GetEnabledRegionIdsSorted() const
+	{
+		TArray<FGameplayTag> RegionIds;
+		for (int32 i = 0; i < RegionStates.Num(); i++)
+		{
+			if (RegionStates[i].bEnabled)
+			{
+				if (!RegionIds.Contains(RegionStates[i].RegionId))
+				{
+					RegionIds.Add(RegionStates[i].RegionId);
+				}
+			}
+		}
+		return RegionIds;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	TArray<FGridInventoryRegionRuntimeState> GetEnabledPocketStates() const
+	{
+		TArray<FGridInventoryRegionRuntimeState> States;
+		for (int32 i = 0; i < RegionStates.Num(); i++)
+		{
+			if (RegionStates[i].bEnabled)
+			{
+				States.Add(RegionStates[i]);
+			}
+		}
+		return States;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	bool GetItemPlacementRegion(UYcInventoryItemInstance ItemInst, FGameplayTag&out OutRegionId, int32&out OutPocketIndex) const
+	{
+		OutRegionId = FGameplayTag();
+		OutPocketIndex = 0;
+		if (ItemInst == nullptr || !ItemInstanceToTileMap.Contains(ItemInst))
+		{
+			return false;
+		}
+		OutRegionId = ItemInstanceToTileMap[ItemInst].RegionId;
+		OutPocketIndex = ItemInstanceToTileMap[ItemInst].PocketIndex;
+		return true;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	bool GetItemPlacementRegionLegacy(UYcInventoryItemInstance ItemInst, FGameplayTag&out OutRegionId) const
+	{
+		int32 OutPocketIndex = -1;
+		return GetItemPlacementRegion(ItemInst, OutRegionId, OutPocketIndex);
+	}
+
+	private FGameplayTag ResolvePlacementRegionId(FGameplayTag RegionId) const
+	{
+		// 调用方未指定或指定区域不可用时，自动回退到主区域。
+		if (RegionId.IsValid())
+		{
+			for (int32 i = 0; i < RegionStates.Num(); i++)
+			{
+				if (RegionStates[i].RegionId == RegionId && RegionStates[i].bEnabled)
+				{
+					return RegionId;
+				}
+			}
+		}
+		return GetPrimaryRegionId();
+	}
+
+	private int32 ResolvePlacementPocketIndex(FGameplayTag RegionId, int32 PocketIndex) const
+	{
+		// 调用方未指定或指定口袋不可用时，回退到该区域的主口袋。
+		if (PocketIndex >= 0)
+		{
+			for (int32 i = 0; i < RegionStates.Num(); i++)
+			{
+				if (RegionStates[i].RegionId == RegionId && RegionStates[i].PocketIndex == PocketIndex && RegionStates[i].bEnabled)
+				{
+					return PocketIndex;
+				}
+			}
+		}
+		return GetPrimaryPocketIndex(RegionId);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	int32 GetRegionColumns(FGameplayTag RegionId, int32 PocketIndex = -1) const
+	{
+		int32 FinalPocketIndex = ResolvePlacementPocketIndex(RegionId, PocketIndex);
+		for (int32 i = 0; i < RegionStates.Num(); i++)
+		{
+			if (RegionStates[i].RegionId == RegionId && RegionStates[i].PocketIndex == FinalPocketIndex)
+			{
+				return RegionStates[i].Columns;
+			}
+		}
+		return InventoryColumns;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	int32 GetRegionRows(FGameplayTag RegionId, int32 PocketIndex = -1) const
+	{
+		int32 FinalPocketIndex = ResolvePlacementPocketIndex(RegionId, PocketIndex);
+		for (int32 i = 0; i < RegionStates.Num(); i++)
+		{
+			if (RegionStates[i].RegionId == RegionId && RegionStates[i].PocketIndex == FinalPocketIndex)
+			{
+				return RegionStates[i].Rows;
+			}
+		}
+		return InventoryRows;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	int32 GetRegionPriority(FGameplayTag RegionId, int32 PocketIndex = -1) const
+	{
+		int32 FinalPocketIndex = ResolvePlacementPocketIndex(RegionId, PocketIndex);
+		for (int32 i = 0; i < RegionStates.Num(); i++)
+		{
+			if (RegionStates[i].RegionId == RegionId && RegionStates[i].PocketIndex == FinalPocketIndex)
+			{
+				return RegionStates[i].Priority;
+			}
+		}
+		return 9999;
+	}
+
+	private TArray<FGridInventorySlot> GetRegionSlots(FGameplayTag RegionId, int32 PocketIndex = -1)
+	{
+		// 惰性初始化：首次访问该区域口袋时按尺寸创建并清空槽位。
+		int32 FinalPocketIndex = ResolvePlacementPocketIndex(RegionId, PocketIndex);
+		int32 Index = FindRegionSlotsStorageIndex(RegionId, FinalPocketIndex);
+		if (Index == -1)
+		{
+			FGridInventoryRegionSlotsStorage NewStorage;
+			NewStorage.RegionId = RegionId;
+			NewStorage.PocketIndex = FinalPocketIndex;
+			NewStorage.Slots.SetNum(GetRegionColumns(RegionId, FinalPocketIndex) * GetRegionRows(RegionId, FinalPocketIndex));
+			for (int32 i = 0; i < NewStorage.Slots.Num(); i++)
+			{
+				NewStorage.Slots[i].Reset();
+			}
+			RegionSlotsStorage.Add(NewStorage);
+			Index = RegionSlotsStorage.Num() - 1;
+		}
+		return RegionSlotsStorage[Index].Slots;
+	}
+
+	private void SetRegionSlots(FGameplayTag RegionId, int32 PocketIndex, TArray<FGridInventorySlot> InSlots)
+	{
+		int32 FinalPocketIndex = ResolvePlacementPocketIndex(RegionId, PocketIndex);
+		int32 Index = FindRegionSlotsStorageIndex(RegionId, FinalPocketIndex);
+		if (Index == -1)
+		{
+			FGridInventoryRegionSlotsStorage NewStorage;
+			NewStorage.RegionId = RegionId;
+			NewStorage.PocketIndex = FinalPocketIndex;
+			NewStorage.Slots = InSlots;
+			RegionSlotsStorage.Add(NewStorage);
+			return;
+		}
+		RegionSlotsStorage[Index].Slots = InSlots;
+	}
+
+	private int32 FindRegionSlotsStorageIndex(FGameplayTag RegionId, int32 PocketIndex) const
+	{
+		for (int32 i = 0; i < RegionSlotsStorage.Num(); i++)
+		{
+			if (RegionSlotsStorage[i].RegionId == RegionId && RegionSlotsStorage[i].PocketIndex == PocketIndex)
+			{
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private void SetRegionShapeCells(FGameplayTag RegionId, int32 PocketIndex, TArray<FIntPoint> InCells)
+	{
+		int32 FinalPocketIndex = ResolvePlacementPocketIndex(RegionId, PocketIndex);
+		int32 Index = FindRegionShapeStorageIndex(RegionId, FinalPocketIndex);
+		if (Index == -1)
+		{
+			FGridInventoryRegionShapeStorage NewStorage;
+			NewStorage.RegionId = RegionId;
+			NewStorage.PocketIndex = FinalPocketIndex;
+			NewStorage.ShapeCells = InCells;
+			RegionShapeStorage.Add(NewStorage);
+			return;
+		}
+		RegionShapeStorage[Index].ShapeCells = InCells;
+	}
+
+	private int32 FindRegionShapeStorageIndex(FGameplayTag RegionId, int32 PocketIndex) const
+	{
+		for (int32 i = 0; i < RegionShapeStorage.Num(); i++)
+		{
+			if (RegionShapeStorage[i].RegionId == RegionId && RegionShapeStorage[i].PocketIndex == PocketIndex)
+			{
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private void SetRegionTagConstraint(FGameplayTag RegionId, FGridRegionTagConstraint Constraint)
+	{
+		int32 Index = FindRegionTagConstraintStorageIndex(RegionId);
+		if (Index == -1)
+		{
+			FGridInventoryRegionTagConstraintStorage NewStorage;
+			NewStorage.RegionId = RegionId;
+			NewStorage.Constraint = Constraint;
+			RegionTagConstraintStorage.Add(NewStorage);
+			return;
+		}
+		RegionTagConstraintStorage[Index].Constraint = Constraint;
+	}
+
+	private int32 FindRegionTagConstraintStorageIndex(FGameplayTag RegionId) const
+	{
+		for (int32 i = 0; i < RegionTagConstraintStorage.Num(); i++)
+		{
+			if (RegionTagConstraintStorage[i].RegionId == RegionId)
+			{
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private FGridRegionTagConstraint GetRegionTagConstraint(FGameplayTag RegionId) const
+	{
+		int32 Index = FindRegionTagConstraintStorageIndex(RegionId);
+		if (Index == -1)
+		{
+			return FGridRegionTagConstraint();
+		}
+		return RegionTagConstraintStorage[Index].Constraint;
+	}
+
+	private int32 FindEquipmentSlotBindingIndex(FGameplayTag SlotTag) const
+	{
+		for (int32 i = 0; i < EquipmentSlotRegionBindings.Num(); i++)
+		{
+			if (EquipmentSlotRegionBindings[i].SlotTag == SlotTag)
+			{
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private void SetEquipmentSlotRegionBinding(FGameplayTag SlotTag, TArray<FGameplayTag> RegionIds)
+	{
+		int32 Index = FindEquipmentSlotBindingIndex(SlotTag);
+		if (Index == -1)
+		{
+			FEquipmentSlotRegionBinding Binding;
+			Binding.SlotTag = SlotTag;
+			Binding.RegionIds = RegionIds;
+			EquipmentSlotRegionBindings.Add(Binding);
+			return;
+		}
+		EquipmentSlotRegionBindings[Index].RegionIds = RegionIds;
+	}
+
+	private bool IsRegionCellAvailable(FGameplayTag RegionId, int32 PocketIndex, FIntPoint Tile) const
+	{
+		// 未配置 ShapeCells 视为完整矩形可用；配置后仅白名单格子可放置。
+		int32 FinalPocketIndex = ResolvePlacementPocketIndex(RegionId, PocketIndex);
+		int32 Index = FindRegionShapeStorageIndex(RegionId, FinalPocketIndex);
+		if (Index == -1)
+		{
+			return true;
+		}
+		auto Cells = RegionShapeStorage[Index].ShapeCells;
+		for (int32 i = 0; i < Cells.Num(); i++)
+		{
+			if (Cells[i] == Tile)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private void SyncPrimaryRegionToLegacySlots()
+	{
+		FGameplayTag PrimaryRegionId = GetPrimaryRegionId();
+		int32 PrimaryPocketIndex = GetPrimaryPocketIndex(PrimaryRegionId);
+		int32 PrimaryIndex = FindRegionSlotsStorageIndex(PrimaryRegionId, PrimaryPocketIndex);
+		if (!PrimaryRegionId.IsValid() || PrimaryIndex == -1)
+		{
+			return;
+		}
+		auto PrimarySlots = RegionSlotsStorage[PrimaryIndex].Slots;
+		InventoryColumns = GetRegionColumns(PrimaryRegionId, PrimaryPocketIndex);
+		InventoryRows = GetRegionRows(PrimaryRegionId, PrimaryPocketIndex);
+		InventorySlots = PrimarySlots;
+	}
+
+	private void BuildRegionsFromCurrentLoadout()
+	{
+		RegionStates.Empty();
+		RegionShapeStorage.Empty();
+		RegionTagConstraintStorage.Empty();
+		EquipmentSlotRegionBindings.Empty();
+
+		// 1. 创建默认的主区域，其实这个也是可选的
+		FGridInventoryRegionRuntimeState MainRegion;
+		MainRegion.RegionId = GameplayTags::Inventory_Region_Main;
+		MainRegion.DisplayName = FText::FromString("Main");
+		MainRegion.Priority = 0;
+		MainRegion.PocketIndex = 0;
+		MainRegion.Columns = InventoryColumns;
+		MainRegion.Rows = InventoryRows;
+		MainRegion.LayoutOffset = FIntPoint(0, 0);
+		MainRegion.bEnabled = true;
+		RegionStates.Add(MainRegion);
+		SetRegionTagConstraint(MainRegion.RegionId, FGridRegionTagConstraint());
+
+		// 2. 根据基础区域定义创建区域
+		for (int32 i = 0; i < BaseRegionDefinitions.Num(); i++)
+		{
+			auto Def = BaseRegionDefinitions[i];
+			if (!Def.RegionId.IsValid())
+			{
+				continue;
+			}
+
+			// 如果有口袋，就根据口袋配置创建多个区域，否则通过定义的Dimensions创建一个区域
+			if (Def.Pockets.Num() > 0)
+			{
+				for (int32 PocketIndex = 0; PocketIndex < Def.Pockets.Num(); PocketIndex++)
+				{
+					auto PocketDef = Def.Pockets[PocketIndex];
+					int32 ResolvedColumns = Math::Max(1, PocketDef.Dimensions.X);
+					int32 ResolvedRows = Math::Max(1, PocketDef.Dimensions.Y);
+					if (PocketDef.ShapeCells.Num() > 0)
+					{
+						for (int32 CellIndex = 0; CellIndex < PocketDef.ShapeCells.Num(); CellIndex++)
+						{
+							ResolvedColumns = Math::Max(ResolvedColumns, PocketDef.ShapeCells[CellIndex].X + 1);
+							ResolvedRows = Math::Max(ResolvedRows, PocketDef.ShapeCells[CellIndex].Y + 1);
+						}
+					}
+
+					FGridInventoryRegionRuntimeState RuntimeRegion;
+					RuntimeRegion.RegionId = Def.RegionId;
+					RuntimeRegion.PocketIndex = PocketIndex;
+					RuntimeRegion.DisplayName = Def.DisplayName;
+					RuntimeRegion.Priority = Def.Priority + PocketDef.Priority;
+					RuntimeRegion.Columns = ResolvedColumns;
+					RuntimeRegion.Rows = ResolvedRows;
+					RuntimeRegion.LayoutOffset = Def.LayoutOffset + PocketDef.LayoutOffset;
+					RuntimeRegion.bEnabled = true;
+					RegionStates.Add(RuntimeRegion);
+					SetRegionTagConstraint(Def.RegionId, Def.ItemTagConstraint);
+
+					if (PocketDef.ShapeCells.Num() > 0)
+					{
+						TArray<FIntPoint> CellSet;
+						for (int32 CellIndex = 0; CellIndex < PocketDef.ShapeCells.Num(); CellIndex++)
+						{
+							CellSet.Add(PocketDef.ShapeCells[CellIndex].ToPoint());
+						}
+						SetRegionShapeCells(Def.RegionId, PocketIndex, CellSet);
+					}
+				}
+			}
+			else
+			{
+				int32 ResolvedColumns = Math::Max(1, Def.Dimensions.X);
+				int32 ResolvedRows = Math::Max(1, Def.Dimensions.Y);
+				if (Def.ShapeCells.Num() > 0)
+				{
+					for (int32 CellIndex = 0; CellIndex < Def.ShapeCells.Num(); CellIndex++)
+					{
+						ResolvedColumns = Math::Max(ResolvedColumns, Def.ShapeCells[CellIndex].X + 1);
+						ResolvedRows = Math::Max(ResolvedRows, Def.ShapeCells[CellIndex].Y + 1);
+					}
+				}
+				FGridInventoryRegionRuntimeState RuntimeRegion;
+				RuntimeRegion.RegionId = Def.RegionId;
+				RuntimeRegion.PocketIndex = 0;
+				RuntimeRegion.DisplayName = Def.DisplayName;
+				RuntimeRegion.Priority = Def.Priority;
+				RuntimeRegion.Columns = ResolvedColumns;
+				RuntimeRegion.Rows = ResolvedRows;
+				RuntimeRegion.LayoutOffset = Def.LayoutOffset;
+				RuntimeRegion.bEnabled = true;
+				RegionStates.Add(RuntimeRegion);
+				SetRegionTagConstraint(Def.RegionId, Def.ItemTagConstraint);
+
+				if (Def.ShapeCells.Num() > 0)
+				{
+					TArray<FIntPoint> CellSet;
+					for (int32 CellIndex = 0; CellIndex < Def.ShapeCells.Num(); CellIndex++)
+					{
+						CellSet.Add(Def.ShapeCells[CellIndex].ToPoint());
+					}
+					SetRegionShapeCells(Def.RegionId, 0, CellSet);
+				}
+			}
+		}
+
+		// 3. 根据当前装备槽位上装备的配置创建区域
+		auto EquipmentSlotComp = UYcEquipmentSlotComponent::FindEquipmentSlotComponent(GetOwner());
+		if (EquipmentSlotComp != nullptr)
+		{
+			auto EquippedSlots = EquipmentSlotComp.GetSlots();
+			for (int32 SlotIndex = 0; SlotIndex < EquippedSlots.Num(); SlotIndex++)
+			{
+				auto EquippedSlot = EquippedSlots[SlotIndex];
+				if (EquippedSlot.ItemInstance == nullptr)
+				{
+					continue;
+				}
+
+				// 获取装备的区域配置片段
+				FInstancedStruct RegionFragmentResult = EquippedSlot.ItemInstance.FindItemFragment(FItemFragment_GridRegions);
+				if (!RegionFragmentResult.IsValid())
+				{
+					continue;
+				}
+
+				auto RegionFragment = RegionFragmentResult.Get(FItemFragment_GridRegions);
+				TArray<FGameplayTag> ProvidedIds;
+				for (int32 RegionIndex = 0; RegionIndex < RegionFragment.Regions.Num(); RegionIndex++)
+				{
+					auto Def = RegionFragment.Regions[RegionIndex];
+					if (!Def.RegionId.IsValid())
+					{
+						continue;
+					}
+					if (!ProvidedIds.Contains(Def.RegionId))
+					{
+						ProvidedIds.Add(Def.RegionId);
+					}
+
+					if (Def.Pockets.Num() > 0)
+					{
+						for (int32 PocketIndex = 0; PocketIndex < Def.Pockets.Num(); PocketIndex++)
+						{
+							auto PocketDef = Def.Pockets[PocketIndex];
+							int32 ResolvedColumns = Math::Max(1, PocketDef.Dimensions.X);
+							int32 ResolvedRows = Math::Max(1, PocketDef.Dimensions.Y);
+							if (PocketDef.ShapeCells.Num() > 0)
+							{
+								for (int32 CellIndex = 0; CellIndex < PocketDef.ShapeCells.Num(); CellIndex++)
+								{
+									ResolvedColumns = Math::Max(ResolvedColumns, PocketDef.ShapeCells[CellIndex].X + 1);
+									ResolvedRows = Math::Max(ResolvedRows, PocketDef.ShapeCells[CellIndex].Y + 1);
+								}
+							}
+
+							FGridInventoryRegionRuntimeState RuntimeRegion;
+							RuntimeRegion.RegionId = Def.RegionId;
+							RuntimeRegion.PocketIndex = PocketIndex;
+							RuntimeRegion.DisplayName = Def.DisplayName;
+							RuntimeRegion.Priority = Def.Priority + PocketDef.Priority;
+							RuntimeRegion.Columns = ResolvedColumns;
+							RuntimeRegion.Rows = ResolvedRows;
+							RuntimeRegion.LayoutOffset = Def.LayoutOffset + PocketDef.LayoutOffset;
+							RuntimeRegion.bEnabled = true;
+							RegionStates.Add(RuntimeRegion);
+							SetRegionTagConstraint(Def.RegionId, Def.ItemTagConstraint);
+
+							if (PocketDef.ShapeCells.Num() > 0)
+							{
+								TArray<FIntPoint> CellSet;
+								for (int32 CellIndex = 0; CellIndex < PocketDef.ShapeCells.Num(); CellIndex++)
+								{
+									CellSet.Add(PocketDef.ShapeCells[CellIndex].ToPoint());
+								}
+								SetRegionShapeCells(Def.RegionId, PocketIndex, CellSet);
+							}
+						}
+					}
+					else
+					{
+						int32 ResolvedColumns = Math::Max(1, Def.Dimensions.X);
+						int32 ResolvedRows = Math::Max(1, Def.Dimensions.Y);
+						if (Def.ShapeCells.Num() > 0)
+						{
+							for (int32 CellIndex = 0; CellIndex < Def.ShapeCells.Num(); CellIndex++)
+							{
+								ResolvedColumns = Math::Max(ResolvedColumns, Def.ShapeCells[CellIndex].X + 1);
+								ResolvedRows = Math::Max(ResolvedRows, Def.ShapeCells[CellIndex].Y + 1);
+							}
+						}
+
+						FGridInventoryRegionRuntimeState RuntimeRegion;
+						RuntimeRegion.RegionId = Def.RegionId;
+						RuntimeRegion.PocketIndex = 0;
+						RuntimeRegion.DisplayName = Def.DisplayName;
+						RuntimeRegion.Priority = Def.Priority;
+						RuntimeRegion.Columns = ResolvedColumns;
+						RuntimeRegion.Rows = ResolvedRows;
+						RuntimeRegion.LayoutOffset = Def.LayoutOffset;
+						RuntimeRegion.bEnabled = true;
+						RegionStates.Add(RuntimeRegion);
+						SetRegionTagConstraint(Def.RegionId, Def.ItemTagConstraint);
+
+						if (Def.ShapeCells.Num() > 0)
+						{
+							TArray<FIntPoint> CellSet;
+							for (int32 CellIndex = 0; CellIndex < Def.ShapeCells.Num(); CellIndex++)
+							{
+								CellSet.Add(Def.ShapeCells[CellIndex].ToPoint());
+							}
+							SetRegionShapeCells(Def.RegionId, 0, CellSet);
+						}
+					}
+				}
+
+				if (ProvidedIds.Num() > 0 && EquippedSlot.SlotTag.IsValid())
+				{
+					SetEquipmentSlotRegionBinding(EquippedSlot.SlotTag, ProvidedIds);
+				}
+			}
+		}
+
+		// 4. 按优先级排序区域，便于自动放置时根据优先级选择区域放置，目前用的冒泡排序算法实现，@TODO: 后续优化为更高效的排序算法
+		for (int32 i = 0; i < RegionStates.Num(); i++)
+		{
+			for (int32 j = i + 1; j < RegionStates.Num(); j++)
+			{
+				if (RegionStates[j].Priority < RegionStates[i].Priority)
+				{
+					auto Tmp = RegionStates[i];
+					RegionStates[i] = RegionStates[j];
+					RegionStates[j] = Tmp;
+				}
+			}
+		}
+
+		RebuildRegionSlotsFromPlacementMap();
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	bool CanUnequipSlotWithInventoryRegionRelocate(FGameplayTag SlotTag, FString&out OutReason)
+	{
+		OutReason = "";
+		TArray<FUnequipRelocateMove> RelocateMoves;
+		FUnequipRelocateMove EquipMove;
+		bool bCan = TryBuildUnequipRelocationPlan(SlotTag, RelocateMoves, EquipMove, OutReason);
+		if (!bCan)
+		{
+			Warning(f"CanUnequipSlotWithInventoryRegionRelocate failed. Slot={SlotTag.ToString()} Reason={OutReason}");
+		}
+		return bCan;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	bool ApplyPreUnequipRegionRelocation(FGameplayTag SlotTag, FString&out OutReason)
+	{
+		OutReason = "";
+		TArray<FUnequipRelocateMove> RelocateMoves;
+		FUnequipRelocateMove EquipMove;
+		if (!TryBuildUnequipRelocationPlan(SlotTag, RelocateMoves, EquipMove, OutReason))
+		{
+			Warning(f"ApplyPreUnequipRegionRelocation validate failed. Slot={SlotTag.ToString()} Reason={OutReason}");
+			return false;
+		}
+
+		TMap<UYcInventoryItemInstance, FItemGridInfo> ItemMapSnapshot = ItemInstanceToTileMap;
+		TArray<FGridInventoryRegionSlotsStorage> RegionSlotsSnapshot = RegionSlotsStorage;
+		int32 RevisionSnapshot = InventoryGridRevision;
+		// 先做快照，任意一步失败都回滚，保证“卸装前重排”原子性。
+
+		for (int32 i = 0; i < RelocateMoves.Num(); i++)
+		{
+			auto Move = RelocateMoves[i];
+			if (Move.ItemInstance == nullptr)
+			{
+				continue;
+			}
+			int32 StackCount = GetStackCountByItemInstance(Move.ItemInstance);
+			if (StackCount <= 0 || !OnGridItemInstanceAdded(Move.ItemInstance, StackCount, Move.Tile, Move.bRotated, Move.RegionId, Move.PocketIndex))
+			{
+				ItemInstanceToTileMap = ItemMapSnapshot;
+				RegionSlotsStorage = RegionSlotsSnapshot;
+				InventoryGridRevision = RevisionSnapshot;
+				SyncPrimaryRegionToLegacySlots();
+				OnInventoryGridChanged.Broadcast();
+				OutReason = "Unequip relocate apply failed, rolled back.";
+				return false;
+			}
+		}
+
+		CachedTile.Set(EquipMove.Tile);
+		CachedRegionId.Set(EquipMove.RegionId);
+		CachedPocketIndex.Set(EquipMove.PocketIndex);
+		return true;
+	}
+
+	private bool TryGetEquippedItemInSlot(FGameplayTag SlotTag, UYcInventoryItemInstance&out OutItem) const
+	{
+		OutItem = nullptr;
+		auto EquipmentSlotComp = UYcEquipmentSlotComponent::FindEquipmentSlotComponent(GetOwner());
+		if (EquipmentSlotComp == nullptr)
+		{
+			return false;
+		}
+
+		auto Slots = EquipmentSlotComp.GetSlots();
+		for (int32 i = 0; i < Slots.Num(); i++)
+		{
+			if (Slots[i].SlotTag == SlotTag)
+			{
+				OutItem = Slots[i].ItemInstance;
+				return OutItem != nullptr;
+			}
+		}
+		return false;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	bool FindFirstFitPositionInRegionForItemInst(UYcInventoryItemInstance ItemInst, FGameplayTag RegionId, int32 PocketIndex, FIntPoint&out Tile, bool&out OutRotated)
+	{
+		if (ItemInst == nullptr)
+		{
+			return false;
+		}
+
+		if (!PassesRegionTagConstraintForItemInst(ItemInst, RegionId))
+		{
+			return false;
+		}
+
+		auto IF_Grid = GetItemFragmentGrid(ItemInst.ItemRegistryId);
+		int32 Columns = GetRegionColumns(RegionId, PocketIndex);
+		int32 Rows = GetRegionRows(RegionId, PocketIndex);
+		for (int32 Y = 0; Y < Rows; Y++)
+		{
+			for (int32 X = 0; X < Columns; X++)
+			{
+				if (CanPlaceGridItemInst(ItemInst, FIntPoint(X, Y), false, RegionId, PocketIndex))
+				{
+					Tile = FIntPoint(X, Y);
+					OutRotated = false;
+					return true;
+				}
+			}
+		}
+		if (!IF_Grid.bCanRotate)
+		{
+			return false;
+		}
+		for (int32 Y = 0; Y < Rows; Y++)
+		{
+			for (int32 X = 0; X < Columns; X++)
+			{
+				if (CanPlaceGridItemInst(ItemInst, FIntPoint(X, Y), true, RegionId, PocketIndex))
+				{
+					Tile = FIntPoint(X, Y);
+					OutRotated = true;
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private int32 GetGridItemArea(UYcInventoryItemInstance ItemInst)
+	{
+		if (ItemInst == nullptr)
+		{
+			return 0;
+		}
+		auto IF_Grid = GetItemFragmentGrid(ItemInst.ItemRegistryId);
+		return Math::Max(1, IF_Grid.Dimensions.X) * Math::Max(1, IF_Grid.Dimensions.Y);
+	}
+
+	private bool TryFindFitInSimRegion(
+		UYcInventoryItemInstance ItemInst,
+		FGameplayTag TargetRegionId,
+		TArray<FUnequipRegionPocketSimState>&out SimPockets,
+		int32&out OutPocketIndex,
+		FIntPoint&out OutTile,
+		bool&out OutRotated)
+	{
+		OutPocketIndex = -1;
+		OutTile = FIntPoint(0, 0);
+		OutRotated = false;
+		if (ItemInst == nullptr)
+		{
+			return false;
+		}
+
+		auto IF_Grid = GetItemFragmentGrid(ItemInst.ItemRegistryId);
+		for (int32 RotationPass = 0; RotationPass < 2; RotationPass++)
+		{
+			// 先不旋转后旋转，优先保持物品原朝向，减少布局突变。
+			bool bTryRotated = (RotationPass == 1);
+			if (bTryRotated && !IF_Grid.bCanRotate)
+			{
+				continue;
+			}
+			int32 ItemWidth = bTryRotated ? IF_Grid.Dimensions.Y : IF_Grid.Dimensions.X;
+			int32 ItemHeight = bTryRotated ? IF_Grid.Dimensions.X : IF_Grid.Dimensions.Y;
+			for (int32 PocketArrayIndex = 0; PocketArrayIndex < SimPockets.Num(); PocketArrayIndex++)
+			{
+				auto Pocket = SimPockets[PocketArrayIndex];
+				if (!PassesRegionTagConstraintForItemInst(ItemInst, TargetRegionId))
+				{
+					continue;
+				}
+
+				for (int32 Y = 0; Y < Pocket.Rows; Y++)
+				{
+					for (int32 X = 0; X < Pocket.Columns; X++)
+					{
+						if (X + ItemWidth > Pocket.Columns || Y + ItemHeight > Pocket.Rows)
+						{
+							continue;
+						}
+
+						bool bCanPlace = true;
+						for (int32 TestY = Y; TestY < Y + ItemHeight && bCanPlace; TestY++)
+						{
+							for (int32 TestX = X; TestX < X + ItemWidth; TestX++)
+							{
+								if (!IsRegionCellAvailable(TargetRegionId, Pocket.PocketIndex, FIntPoint(TestX, TestY)))
+								{
+									bCanPlace = false;
+									break;
+								}
+								int32 SlotIndex = TileToIndexInRegion(FIntPoint(TestX, TestY), Pocket.Columns);
+								if (!Pocket.Slots.IsValidIndex(SlotIndex) || Pocket.Slots[SlotIndex].bOccupied)
+								{
+									bCanPlace = false;
+									break;
+								}
+							}
+						}
+
+						if (!bCanPlace)
+						{
+							continue;
+						}
+
+						for (int32 FillY = Y; FillY < Y + ItemHeight; FillY++)
+						{
+							for (int32 FillX = X; FillX < X + ItemWidth; FillX++)
+							{
+								int32 SlotIndex = TileToIndexInRegion(FIntPoint(FillX, FillY), Pocket.Columns);
+								Pocket.Slots[SlotIndex].bOccupied = true;
+							}
+						}
+						// 命中后立即把占用写回模拟口袋，后续物品基于新状态继续求解。
+						SimPockets[PocketArrayIndex] = Pocket;
+						OutPocketIndex = Pocket.PocketIndex;
+						OutTile = FIntPoint(X, Y);
+						OutRotated = bTryRotated;
+						return true;
+					}
+				}
+			}
+		}
+
+		return false;
+	}
+
+	private bool TryBuildUnequipRelocationPlan(FGameplayTag SlotTag, TArray<FUnequipRelocateMove>&out OutRelocateMoves, FUnequipRelocateMove&out OutEquipMove, FString&out OutReason)
+	{
+		OutRelocateMoves.Empty();
+		OutEquipMove = FUnequipRelocateMove();
+		OutReason = "";
+
+		int32 BindingIndex = FindEquipmentSlotBindingIndex(SlotTag);
+		if (BindingIndex == -1)
+		{
+			return true;
+		}
+
+		UYcInventoryItemInstance EquippedItem = nullptr;
+		if (!TryGetEquippedItemInSlot(SlotTag, EquippedItem) || EquippedItem == nullptr)
+		{
+			OutReason = "Unequip failed: equipped item not found in slot.";
+			return false;
+		}
+
+		auto RegionIdsToDisable = EquipmentSlotRegionBindings[BindingIndex].RegionIds;
+
+		TArray<UYcInventoryItemInstance> ItemsToRelocate;
+		for (auto Entry : ItemInstanceToTileMap)
+		{
+			if (Entry.Key != nullptr && RegionIdsToDisable.Contains(Entry.Value.RegionId))
+			{
+				ItemsToRelocate.Add(Entry.Key);
+			}
+		}
+
+		for (int32 i = 0; i < ItemsToRelocate.Num(); i++)
+		{
+			for (int32 j = i + 1; j < ItemsToRelocate.Num(); j++)
+			{
+				// 大物品优先排布，能显著降低后续无解概率（贪心启发式）。
+				if (GetGridItemArea(ItemsToRelocate[j]) > GetGridItemArea(ItemsToRelocate[i]))
+				{
+					auto Tmp = ItemsToRelocate[i];
+					ItemsToRelocate[i] = ItemsToRelocate[j];
+					ItemsToRelocate[j] = Tmp;
+				}
+			}
+		}
+
+		TArray<FGameplayTag> CandidateRegionIds;
+		for (int32 i = 0; i < RegionStates.Num(); i++)
+		{
+			auto State = RegionStates[i];
+			if (!State.bEnabled || RegionIdsToDisable.Contains(State.RegionId))
+			{
+				continue;
+			}
+			if (!CandidateRegionIds.Contains(State.RegionId))
+			{
+				CandidateRegionIds.Add(State.RegionId);
+			}
+		}
+
+		for (int32 RegionIdx = 0; RegionIdx < CandidateRegionIds.Num(); RegionIdx++)
+		{
+			FGameplayTag CandidateRegionId = CandidateRegionIds[RegionIdx];
+			TArray<FUnequipRegionPocketSimState> SimPockets;
+			for (int32 i = 0; i < RegionStates.Num(); i++)
+			{
+				auto State = RegionStates[i];
+				if (!State.bEnabled || State.RegionId != CandidateRegionId || RegionIdsToDisable.Contains(State.RegionId))
+				{
+					continue;
+				}
+
+				FUnequipRegionPocketSimState SimState;
+				SimState.PocketIndex = State.PocketIndex;
+				SimState.Priority = State.Priority;
+				SimState.Columns = State.Columns;
+				SimState.Rows = State.Rows;
+				SimState.Slots = GetRegionSlots(State.RegionId, State.PocketIndex);
+				SimPockets.Add(SimState);
+			}
+			if (SimPockets.Num() <= 0)
+			{
+				continue;
+			}
+
+			for (int32 i = 0; i < SimPockets.Num(); i++)
+			{
+				for (int32 j = i + 1; j < SimPockets.Num(); j++)
+				{
+					if (SimPockets[j].Priority < SimPockets[i].Priority)
+					{
+						auto Tmp = SimPockets[i];
+						SimPockets[i] = SimPockets[j];
+						SimPockets[j] = Tmp;
+					}
+				}
+			}
+
+			int32 EquipPocketIndex = -1;
+			FIntPoint EquipTile;
+			bool bEquipRotated = false;
+			if (!TryFindFitInSimRegion(EquippedItem, CandidateRegionId, SimPockets, EquipPocketIndex, EquipTile, bEquipRotated))
+			{
+				// 装备本体都放不下时，当前候选区域直接判失败。
+				continue;
+			}
+
+			TArray<FUnequipRelocateMove> CandidateMoves;
+			bool bPlanValid = true;
+			for (int32 i = 0; i < ItemsToRelocate.Num(); i++)
+			{
+				auto ItemToRelocate = ItemsToRelocate[i];
+				int32 MovePocketIndex = -1;
+				FIntPoint MoveTile;
+				bool bMoveRotated = false;
+				if (!TryFindFitInSimRegion(ItemToRelocate, CandidateRegionId, SimPockets, MovePocketIndex, MoveTile, bMoveRotated))
+				{
+					bPlanValid = false;
+					break;
+				}
+
+				FUnequipRelocateMove Move;
+				Move.ItemInstance = ItemToRelocate;
+				Move.RegionId = CandidateRegionId;
+				Move.PocketIndex = MovePocketIndex;
+				Move.Tile = MoveTile;
+				Move.bRotated = bMoveRotated;
+				CandidateMoves.Add(Move);
+			}
+
+			if (!bPlanValid)
+			{
+				continue;
+			}
+
+			OutRelocateMoves = CandidateMoves;
+			OutEquipMove.ItemInstance = EquippedItem;
+			OutEquipMove.RegionId = CandidateRegionId;
+			OutEquipMove.PocketIndex = EquipPocketIndex;
+			OutEquipMove.Tile = EquipTile;
+			OutEquipMove.bRotated = bEquipRotated;
+			return true;
+		}
+
+		OutReason = "Unequip blocked: target region has no enough free space for equipment item and provided-region items.";
+		return false;
 	}
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
@@ -1318,6 +2768,3 @@ class UGridInventoryManagerComponent : UYcInventoryManagerComponent
 		Log(DebugStr);
 	}
 }
-
-
-

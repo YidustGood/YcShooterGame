@@ -116,6 +116,8 @@ private:
 	bool BuildInventoryRecords(UYcInventoryManagerComponent* Inventory, TArray<FYcMetaInventoryItemRecord>& OutItems, TArray<FYcMetaGridPlacementRecord>& OutPlacements) const;
 	/** 将“物品+网格放置”记录恢复到库存组件。 */
 	bool RestoreInventoryRecords(UYcInventoryManagerComponent* Inventory, const TArray<FYcMetaInventoryItemRecord>& InItems, const TArray<FYcMetaGridPlacementRecord>& InPlacements, TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& OutItemMap);
+	/** 对已恢复的物品映射应用网格放置记录。 */
+	bool ApplyInventoryGridPlacements(UYcInventoryManagerComponent* Inventory, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& ItemMap, const TArray<FYcMetaGridPlacementRecord>& InPlacements) const;
 
 	/** 构建玩家侧快照（背包/装备/快捷栏）。 */
 	bool BuildPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, FYcMetaPlayerSnapshot& OutPlayerSnapshot) const;

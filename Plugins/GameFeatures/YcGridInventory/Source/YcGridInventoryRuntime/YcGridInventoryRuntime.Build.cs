@@ -16,7 +16,8 @@ public class YcGridInventoryRuntime : ModuleRules
 				"Engine",
 				"GameplayTags",
 				"YiChenInventory", 
-				"GameplayAbilities"
+				"GameplayAbilities",
+				"DataRegistry"
 			}
 		);
 

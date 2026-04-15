@@ -1,4 +1,4 @@
-// ¾ÖÍâ²Ö¿âÈİÆ÷£º¸´ÓÃGridItemContainerBaseµÄ½»»¥Óë¿â´æÄÜÁ¦£¬µ«²»×ö¾²Ì¬Ä£°å³õÊ¼»¯
+ï»¿// å±€å¤–ä»“åº“å®¹å™¨ï¼šå¤ç”¨GridItemContainerBaseçš„äº¤äº’ä¸åº“å­˜èƒ½åŠ›ï¼Œä½†ä¸åšé™æ€æ¨¡æ¿åˆå§‹åŒ–
 class AGridStashContainer : AGridItemContainerBase
 {
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MetaInventory")
@@ -9,11 +9,9 @@ class AGridStashContainer : AGridItemContainerBase
 	UFUNCTION(BlueprintOverride)
 	void BeginPlay()
 	{
-		// ¾ÖÍâ²Ö¿â²»ĞèÒªËÑË÷Íæ·¨
+		// å±€å¤–ä»“åº“ä¸éœ€è¦æœç´¢ç©æ³•
 		InventoryManager.bEnableContainerSearch = false;
 		InventoryManager.bAllowDirectContainerInteraction = true;
-		// ²»µ÷ÓÃ¸¸ÀàBeginPlay£¬±ÜÃâ°´¾²Ì¬Ä£°åÏò²Ö¿â¹àÄ¬ÈÏÎïÆ·
+		// ä¸è°ƒç”¨çˆ¶ç±»BeginPlayï¼Œé¿å…æŒ‰é™æ€æ¨¡æ¿å‘ä»“åº“çŒé»˜è®¤ç‰©å“
 	}
 }
-
-

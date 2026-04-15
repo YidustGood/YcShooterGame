@@ -22,6 +22,10 @@ struct YICHENINVENTORY_API FYcInventoryProjectedState
 	UPROPERTY(BlueprintReadOnly, Category = Inventory)
 	TMap<FName, int32> InventoryGridRevision;
 
+	/** 多区域网格预测版本号（Key 建议为 InventoryName.RegionTag）。 */
+	UPROPERTY(BlueprintReadOnly, Category = Inventory)
+	TMap<FName, int32> InventoryRegionRevision;
+
 	/** 预测态装备槽占用。 */
 	UPROPERTY(BlueprintReadOnly, Category = Inventory)
 	TMap<FGameplayTag, TObjectPtr<UYcInventoryItemInstance>> EquipmentSlots;
@@ -130,6 +134,28 @@ struct YICHENINVENTORY_API FYcInventoryOperation
 	/** 网格旋转参数。 */
 	UPROPERTY(BlueprintReadWrite, Category = Inventory)
 	bool bRotated = false;
+
+	/**
+	 * 目标区域标识（多区域网格库存）。
+	 * 为空时按库存默认自动放置策略选择区域。
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = Inventory)
+	FGameplayTag GridRegionId;
+
+	/**
+	 * 源区域标识（多区域网格库存）。
+	 * 用于服务端CAS校验与跨区域拖拽一致性检查。
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = Inventory)
+	FGameplayTag SourceGridRegionId;
+
+	/** 目标分仓索引（同 Region 下独立 Pocket）。-1 表示自动选择。 */
+	UPROPERTY(BlueprintReadWrite, Category = Inventory)
+	int32 GridPocketIndex = -1;
+
+	/** 源分仓索引（用于 CAS 校验）。-1 表示未知。 */
+	UPROPERTY(BlueprintReadWrite, Category = Inventory)
+	int32 SourceGridPocketIndex = -1;
 
 	/** 槽位 Tag 参数（装备类操作）。 */
 	UPROPERTY(BlueprintReadWrite, Category = Inventory)

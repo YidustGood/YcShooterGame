@@ -26,6 +26,11 @@
         "LoadingPhase": "Default"
         },
         {
+        "Name": "YiChenSaveCore",
+        "Type": "Runtime",
+        "LoadingPhase": "Default"
+        },
+        {
         "Name": "YiChenEquipment",
         "Type": "Runtime",
         "LoadingPhase": "Default"

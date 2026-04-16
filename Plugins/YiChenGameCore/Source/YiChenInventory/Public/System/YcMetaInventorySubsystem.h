@@ -5,13 +5,13 @@
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
+#include "System/YcSaveCoreTypes.h"
 #include "System/YcMetaInventoryTypes.h"
 #include "YcMetaInventorySubsystem.generated.h"
 
 struct FGameplayTag;
 struct FYcInventoryOperationStateMessage;
 class UYcInventorySceneContext;
-class UYcInventoryPersistenceProvider;
 class UYcInventoryPersistenceExtensionProvider;
 class UYcInventoryManagerComponent;
 class UYcInventoryItemInstance;
@@ -23,7 +23,7 @@ class UClass;
  * Meta Inventory 子系统（GameInstance 级）。
  * 负责局外库存上下文管理、快照构建/恢复、脏标记与持久化编排。
  */
-UCLASS()
+UCLASS(Config=Game)
 class YICHENINVENTORY_API UYcMetaInventorySubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
@@ -79,10 +79,16 @@ public:
 	/** 快速搭建局外上下文并加载账号存档。 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
 	bool SetupOutOfMatchContextAndLoad(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory);
+	/** 快速搭建局外上下文并加载指定档位。 */
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
+	bool SetupOutOfMatchContextAndLoadWithProfile(const FString& AccountId, const FString& ProfileId, AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory);
 
 	/** 通过账号ID保存对应的局外上下文。 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
 	bool SaveOutOfMatchContext(const FString& AccountId);
+	/** 通过账号+档位保存对应局外上下文。 */
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
+	bool SaveOutOfMatchContextWithProfile(const FString& AccountId, const FString& ProfileId);
 
 	/**
 	 * 从局外持久化档案读取玩家负载，并应用到局内玩家（背包/装备/快捷栏）。
@@ -91,6 +97,9 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
 	bool LoadPlayerLoadoutToInMatch(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory);
+	/** 从指定档位读取玩家负载并恢复到局内。 */
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
+	bool LoadPlayerLoadoutToInMatchWithProfile(const FString& AccountId, const FString& ProfileId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory);
 
 	/**
 	 * 将局内玩家当前负载回写到局外档案（按是否成功撤离执行不同策略）。
@@ -101,19 +110,23 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
 	bool CommitInMatchPlayerLoadoutToProfile(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory, bool bExtractionSucceeded = true);
+	/** 将局内玩家负载回写到指定档位。 */
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
+	bool CommitInMatchPlayerLoadoutToProfileWithProfile(const FString& AccountId, const FString& ProfileId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory, bool bExtractionSucceeded = true);
 
 private:
 	/** 校验局外上下文是否允许执行档案读写。 */
 	bool ValidateOutOfMatchContext(const UYcInventorySceneContext* Context, const TCHAR* Caller) const;
 
 	/** 校验局内负载接口入参。 */
-	bool ValidateInMatchLoadoutRequest(const FString& AccountId, const AActor* ContextOwner, const UYcInventoryManagerComponent* InMatchPlayerInventory, bool bRequireRuntimeObjects, const TCHAR* Caller) const;
+	bool ValidateInMatchLoadoutRequest(const FString& AccountId, const FString& ProfileId, const AActor* ContextOwner, const UYcInventoryManagerComponent* InMatchPlayerInventory, bool bRequireRuntimeObjects, const TCHAR* Caller) const;
+	FString ResolveProfileId(const FString& ProfileId) const;
+	class UYcProfileSaveSubsystem* GetProfileSaveSubsystem() const;
+	void RegisterContextProfileKey(UYcInventorySceneContext* Context);
+	void UnregisterContextProfileKey(UYcInventorySceneContext* Context);
 
 	/** 监听操作状态消息，在 Ack 后给相关账号打脏标。 */
 	void OnOperationStateChanged(FGameplayTag ActualTag, const FYcInventoryOperationStateMessage& Message);
-	/** 确保持久化提供者已创建。 */
-	void EnsurePersistenceProvider();
-
 	/** 从某个库存组件构建“物品+扩展载荷”记录。 */
 	bool BuildInventoryRecords(UYcInventoryManagerComponent* Inventory, TArray<FYcMetaInventoryItemRecord>& OutItems, TArray<FYcMetaInventoryExtensionPayload>& OutExtensions) const;
 	/** 将“物品+扩展载荷”记录恢复到库存组件。 */
@@ -148,21 +161,21 @@ private:
 	static UActorComponent* FindComponentAcrossOwnerChainByInterface(const AActor* Owner, const UClass* InterfaceClass);
 
 private:
-	/** 当前使用的持久化提供者。 */
-	UPROPERTY(Transient)
-	TObjectPtr<UYcInventoryPersistenceProvider> PersistenceProvider = nullptr;
-
 	/** 已注册的场景上下文列表。 */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UYcInventorySceneContext>> SceneContexts;
 
-	/** 账号ID到上下文对象的快速映射。 */
+	/** 档位键到上下文对象的快速映射。 */
 	UPROPERTY(Transient)
-	TMap<FString, TObjectPtr<UYcInventorySceneContext>> ContextByAccountId;
+	TMap<FYcProfileKey, TObjectPtr<UYcInventorySceneContext>> ContextByProfileKey;
 
-	/** 脏账号集合。 */
+	/** 脏档位集合。 */
 	UPROPERTY(Transient)
-	TSet<FString> DirtyProfiles;
+	TSet<FYcProfileKey> DirtyProfiles;
+
+	/** 旧 API 未显式传档位时使用的默认档位。 */
+	UPROPERTY(Config)
+	FString DefaultProfileId = TEXT("Slot01");
 
 	/** 未识别扩展载荷透传缓存（Key=ItemInstId，运行时缓存，非反射字段）。 */
 	TMap<FYcItemInstanceId, TArray<FYcMetaItemExtensionPayload>> UnknownItemExtensionPayloads;

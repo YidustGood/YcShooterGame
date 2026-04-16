@@ -27,6 +27,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	FString AccountId;
 
+	/** 档位ID（例如 Slot01）。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	FString ProfileId = TEXT("Slot01");
+
 	/** 上下文拥有者（通常是角色/控制器）。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	TObjectPtr<AActor> ContextOwner = nullptr;

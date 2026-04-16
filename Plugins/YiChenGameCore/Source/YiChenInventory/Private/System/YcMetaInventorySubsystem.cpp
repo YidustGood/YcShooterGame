@@ -2,11 +2,11 @@
 
 #include "System/YcMetaInventorySubsystem.h"
 
+#include "System/YcProfileSaveSubsystem.h"
 #include "System/YcInventoryPersistenceExtensionProvider.h"
 #include "System/YcInventoryPersistenceExtensionRegistry.h"
 #include "System/YcMetaInventoryBridgeInterfaces.h"
-#include "System/YcInventoryPersistenceProvider.h"
-#include "System/YcInventoryPersistenceProvider_LocalSave.h"
+#include "System/YcInventorySaveDomainProvider.h"
 #include "System/YcMetaInventoryItemRecordCodec.h"
 #include "System/YcInventorySceneContext.h"
 #include "System/YcMetaInventoryVersion.h"
@@ -19,6 +19,9 @@
 #include "GameFramework/PlayerState.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Serialization/MemoryReader.h"
+#include "Serialization/MemoryWriter.h"
+#include "Serialization/ObjectAndNameAsStringProxyArchive.h"
 #include "YiChenInventory.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcMetaInventorySubsystem)
@@ -26,6 +29,25 @@
 namespace
 {
 	static const FName OperationStateChangedTagName(TEXT("Yc.Inventory.Message.Operation.StateChanged"));
+
+	static bool SerializeInventorySnapshotToBytes(const FYcMetaInventoryRootSnapshot& Snapshot, TArray<uint8>& OutBytes)
+	{
+		OutBytes.Reset();
+		FMemoryWriter MemWriter(OutBytes, true);
+		FObjectAndNameAsStringProxyArchive ArWriter(MemWriter, false);
+		FYcMetaInventoryRootSnapshot SnapshotCopy = Snapshot;
+		FYcMetaInventoryRootSnapshot::StaticStruct()->SerializeItem(ArWriter, &SnapshotCopy, nullptr);
+		return !ArWriter.IsError();
+	}
+
+	static bool DeserializeInventorySnapshotFromBytes(const TArray<uint8>& InBytes, FYcMetaInventoryRootSnapshot& OutSnapshot)
+	{
+		TArray<uint8> Buffer = InBytes;
+		FMemoryReader MemReader(Buffer, true);
+		FObjectAndNameAsStringProxyArchive ArReader(MemReader, true);
+		FYcMetaInventoryRootSnapshot::StaticStruct()->SerializeItem(ArReader, &OutSnapshot, nullptr);
+		return !ArReader.IsError();
+	}
 }
 
 UYcMetaInventorySubsystem* UYcMetaInventorySubsystem::Get(const UObject* WorldContextObject)
@@ -58,8 +80,6 @@ void UYcMetaInventorySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 			this,
 			&ThisClass::OnOperationStateChanged);
 	}
-
-	EnsurePersistenceProvider();
 }
 
 void UYcMetaInventorySubsystem::Deinitialize()
@@ -69,8 +89,7 @@ void UYcMetaInventorySubsystem::Deinitialize()
 	DirtyProfiles.Empty();
 	UnknownItemExtensionPayloads.Empty();
 	SceneContexts.Empty();
-	ContextByAccountId.Empty();
-	PersistenceProvider = nullptr;
+	ContextByProfileKey.Empty();
 
 	Super::Deinitialize();
 }
@@ -97,10 +116,7 @@ void UYcMetaInventorySubsystem::RegisterSceneContext(UYcInventorySceneContext* C
 
 	SceneContexts.Remove(Context);
 	SceneContexts.Add(Context);
-	if (!Context->AccountId.IsEmpty())
-	{
-		ContextByAccountId.Add(Context->AccountId, Context);
-	}
+	RegisterContextProfileKey(Context);
 }
 
 void UYcMetaInventorySubsystem::UnregisterSceneContext(UYcInventorySceneContext* Context)
@@ -111,16 +127,7 @@ void UYcMetaInventorySubsystem::UnregisterSceneContext(UYcInventorySceneContext*
 	}
 
 	SceneContexts.Remove(Context);
-	if (!Context->AccountId.IsEmpty())
-	{
-		if (const TObjectPtr<UYcInventorySceneContext>* Existing = ContextByAccountId.Find(Context->AccountId))
-		{
-			if (Existing->Get() == Context)
-			{
-				ContextByAccountId.Remove(Context->AccountId);
-			}
-		}
-	}
+	UnregisterContextProfileKey(Context);
 }
 
 bool UYcMetaInventorySubsystem::ValidateOutOfMatchContext(const UYcInventorySceneContext* Context, const TCHAR* Caller) const
@@ -141,11 +148,16 @@ bool UYcMetaInventorySubsystem::ValidateOutOfMatchContext(const UYcInventoryScen
 	return true;
 }
 
-bool UYcMetaInventorySubsystem::ValidateInMatchLoadoutRequest(const FString& AccountId, const AActor* ContextOwner, const UYcInventoryManagerComponent* InMatchPlayerInventory, const bool bRequireRuntimeObjects, const TCHAR* Caller) const
+bool UYcMetaInventorySubsystem::ValidateInMatchLoadoutRequest(const FString& AccountId, const FString& ProfileId, const AActor* ContextOwner, const UYcInventoryManagerComponent* InMatchPlayerInventory, const bool bRequireRuntimeObjects, const TCHAR* Caller) const
 {
 	if (AccountId.IsEmpty())
 	{
 		UE_LOG(LogYcInventory, Warning, TEXT("%s: invalid account id."), Caller);
+		return false;
+	}
+	if (ResolveProfileId(ProfileId).IsEmpty())
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("%s: invalid profile id."), Caller);
 		return false;
 	}
 
@@ -158,6 +170,58 @@ bool UYcMetaInventorySubsystem::ValidateInMatchLoadoutRequest(const FString& Acc
 	return true;
 }
 
+FString UYcMetaInventorySubsystem::ResolveProfileId(const FString& ProfileId) const
+{
+	return ProfileId.IsEmpty() ? DefaultProfileId : ProfileId;
+}
+
+UYcProfileSaveSubsystem* UYcMetaInventorySubsystem::GetProfileSaveSubsystem() const
+{
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		return GameInstance->GetSubsystem<UYcProfileSaveSubsystem>();
+	}
+	return nullptr;
+}
+
+void UYcMetaInventorySubsystem::RegisterContextProfileKey(UYcInventorySceneContext* Context)
+{
+	if (!IsValid(Context) || Context->AccountId.IsEmpty())
+	{
+		return;
+	}
+
+	const FYcProfileKey ProfileKey = FYcProfileKey(Context->AccountId, ResolveProfileId(Context->ProfileId));
+	ContextByProfileKey.Add(ProfileKey, Context);
+
+	if (UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem())
+	{
+		SaveSubsystem->RegisterProfileContext(ProfileKey, Context);
+	}
+}
+
+void UYcMetaInventorySubsystem::UnregisterContextProfileKey(UYcInventorySceneContext* Context)
+{
+	if (!IsValid(Context) || Context->AccountId.IsEmpty())
+	{
+		return;
+	}
+
+	const FYcProfileKey ProfileKey = FYcProfileKey(Context->AccountId, ResolveProfileId(Context->ProfileId));
+	if (const TObjectPtr<UYcInventorySceneContext>* Existing = ContextByProfileKey.Find(ProfileKey))
+	{
+		if (Existing->Get() == Context)
+		{
+			ContextByProfileKey.Remove(ProfileKey);
+		}
+	}
+
+	if (UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem())
+	{
+		SaveSubsystem->UnregisterProfileContext(ProfileKey, Context);
+	}
+}
+
 bool UYcMetaInventorySubsystem::LoadOrInitializeProfile(UYcInventorySceneContext* Context)
 {
 	if (!ValidateOutOfMatchContext(Context, TEXT("LoadOrInitializeProfile")))
@@ -165,41 +229,49 @@ bool UYcMetaInventorySubsystem::LoadOrInitializeProfile(UYcInventorySceneContext
 		return false;
 	}
 
-	EnsurePersistenceProvider();
-	if (!PersistenceProvider)
+	RegisterContextProfileKey(Context);
+
+	UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem();
+	if (!SaveSubsystem)
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadOrInitializeProfile: UYcProfileSaveSubsystem not found."));
+		return false;
+	}
+
+	const FYcProfileKey ProfileKey = FYcProfileKey(Context->AccountId, ResolveProfileId(Context->ProfileId));
+	FString Reason;
+	if (SaveSubsystem->LoadProfileSync(ProfileKey, Reason))
+	{
+		DirtyProfiles.Remove(ProfileKey);
+		SaveSubsystem->ClearProfileDirty(ProfileKey);
+		return true;
+	}
+
+	if (Reason != TEXT("Profile not found."))
+	{
+		const bool bIsLegacyPayloadError =
+			Reason.Contains(TEXT("deserialize snapshot bytes failed"), ESearchCase::IgnoreCase) ||
+			Reason.Contains(TEXT("serialize snapshot bytes failed"), ESearchCase::IgnoreCase) ||
+			Reason.Contains(TEXT("version mismatch"), ESearchCase::IgnoreCase);
+		if (!bIsLegacyPayloadError)
+		{
+			UE_LOG(LogYcInventory, Warning, TEXT("LoadOrInitializeProfile: load failed. profile='%s', reason='%s'"), *ProfileKey.ToDebugString(), *Reason);
+			return false;
+		}
+
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadOrInitializeProfile: detected legacy/incompatible payload. Reinitializing profile='%s'. reason='%s'"),
+			*ProfileKey.ToDebugString(),
+			*Reason);
+	}
+
+	FYcMetaInventoryRootSnapshot NewSnapshot = YcMetaInventoryVersion::MakeEmptySnapshot(Context->AccountId);
+	if (!ApplySnapshotToContext(Context, NewSnapshot))
 	{
 		return false;
 	}
 
-	FYcMetaInventoryRootSnapshot Snapshot;
-	if (!PersistenceProvider->LoadSnapshot(Context->AccountId, Snapshot))
-	{
-		Snapshot = YcMetaInventoryVersion::MakeEmptySnapshot(Context->AccountId);
-		if (!ApplySnapshotToContext(Context, Snapshot))
-		{
-			return false;
-		}
-		return SaveProfile(Context);
-	}
-
-	if (!YcMetaInventoryVersion::IsSupportedVersion(Snapshot.SnapshotVersion))
-	{
-		UE_LOG(LogYcInventory, Warning, TEXT("LoadOrInitializeProfile: snapshot version %d is deprecated, reinitializing new profile."), Snapshot.SnapshotVersion);
-		FYcMetaInventoryRootSnapshot NewSnapshot = YcMetaInventoryVersion::MakeEmptySnapshot(Context->AccountId);
-		if (!ApplySnapshotToContext(Context, NewSnapshot))
-		{
-			return false;
-		}
-		return SaveProfile(Context);
-	}
-
-	if (!ApplySnapshotToContext(Context, Snapshot))
-	{
-		return false;
-	}
-
-	ClearProfileDirty(Context->AccountId);
-	return true;
+	// 新档初始化后立即落盘，确保后续局内读档可见。
+	return SaveProfile(Context);
 }
 
 bool UYcMetaInventorySubsystem::SaveProfile(UYcInventorySceneContext* Context)
@@ -209,49 +281,50 @@ bool UYcMetaInventorySubsystem::SaveProfile(UYcInventorySceneContext* Context)
 		return false;
 	}
 
-	EnsurePersistenceProvider();
-	if (!PersistenceProvider)
+	RegisterContextProfileKey(Context);
+	UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem();
+	if (!SaveSubsystem)
 	{
+		UE_LOG(LogYcInventory, Warning, TEXT("SaveProfile: UYcProfileSaveSubsystem not found."));
 		return false;
 	}
 
-	FYcMetaInventoryRootSnapshot Snapshot;
-	if (!BuildSnapshotFromContext(Context, Snapshot))
+	const FYcProfileKey ProfileKey = FYcProfileKey(Context->AccountId, ResolveProfileId(Context->ProfileId));
+	FString Reason;
+	const bool bSaved = SaveSubsystem->SaveProfileSync(ProfileKey, Reason);
+	if (!bSaved)
 	{
+		UE_LOG(LogYcInventory, Warning, TEXT("SaveProfile: save failed. profile='%s', reason='%s'"), *ProfileKey.ToDebugString(), *Reason);
 		return false;
 	}
 
-	YcMetaInventoryVersion::PrepareSnapshotForSave(Context->AccountId, Snapshot);
-
-	const bool bSaved = PersistenceProvider->SaveSnapshot(Context->AccountId, Snapshot);
-	if (bSaved)
-	{
-		ClearProfileDirty(Context->AccountId);
-	}
-	return bSaved;
+	DirtyProfiles.Remove(ProfileKey);
+	SaveSubsystem->ClearProfileDirty(ProfileKey);
+	return true;
 }
 
 bool UYcMetaInventorySubsystem::SaveDirtyProfiles()
 {
-	bool bAllSucceeded = true;
-
-	for (int32 Index = SceneContexts.Num() - 1; Index >= 0; --Index)
+	UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem();
+	if (!SaveSubsystem)
 	{
-		UYcInventorySceneContext* Context = SceneContexts[Index];
-		if (!IsValid(Context))
-		{
-			SceneContexts.RemoveAtSwap(Index);
-			continue;
-		}
+		UE_LOG(LogYcInventory, Warning, TEXT("SaveDirtyProfiles: UYcProfileSaveSubsystem not found."));
+		return false;
+	}
 
-		if (!Context->IsValidForOutOfMatchPersistence() || !DirtyProfiles.Contains(Context->AccountId))
-		{
-			continue;
-		}
-
-		if (!SaveProfile(Context))
+	bool bAllSucceeded = true;
+	const TArray<FYcProfileKey> DirtyKeys = DirtyProfiles.Array();
+	for (const FYcProfileKey& ProfileKey : DirtyKeys)
+	{
+		FString Reason;
+		if (!SaveSubsystem->SaveProfileSync(ProfileKey, Reason))
 		{
 			bAllSucceeded = false;
+			UE_LOG(LogYcInventory, Warning, TEXT("SaveDirtyProfiles: save failed. profile='%s', reason='%s'"), *ProfileKey.ToDebugString(), *Reason);
+		}
+		else
+		{
+			DirtyProfiles.Remove(ProfileKey);
 		}
 	}
 
@@ -260,13 +333,19 @@ bool UYcMetaInventorySubsystem::SaveDirtyProfiles()
 
 bool UYcMetaInventorySubsystem::SetupOutOfMatchContextAndLoad(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory)
 {
+	return SetupOutOfMatchContextAndLoadWithProfile(AccountId, FString(), ContextOwner, PlayerInventory, StashInventory);
+}
+
+bool UYcMetaInventorySubsystem::SetupOutOfMatchContextAndLoadWithProfile(const FString& AccountId, const FString& ProfileId, AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory)
+{
 	if (AccountId.IsEmpty() || !IsValid(ContextOwner) || !IsValid(PlayerInventory) || !IsValid(StashInventory))
 	{
 		return false;
 	}
 
+	const FYcProfileKey ProfileKey = FYcProfileKey(AccountId, ResolveProfileId(ProfileId));
 	UYcInventorySceneContext* Context = nullptr;
-	if (TObjectPtr<UYcInventorySceneContext>* Existing = ContextByAccountId.Find(AccountId))
+	if (TObjectPtr<UYcInventorySceneContext>* Existing = ContextByProfileKey.Find(ProfileKey))
 	{
 		Context = Existing->Get();
 	}
@@ -277,24 +356,30 @@ bool UYcMetaInventorySubsystem::SetupOutOfMatchContextAndLoad(const FString& Acc
 
 	Context->SceneType = EYcInventorySceneType::OutOfMatch;
 	Context->AccountId = AccountId;
+	Context->ProfileId = ProfileKey.ProfileId;
 	Context->ContextOwner = ContextOwner;
 	Context->PlayerInventoryRef = PlayerInventory;
 	Context->ContainerInventoryRef = StashInventory;
 	Context->bRequirePersistenceCommit = true;
 
 	RegisterSceneContext(Context);
-	ContextByAccountId.Add(AccountId, Context);
 	return LoadOrInitializeProfile(Context);
 }
 
 bool UYcMetaInventorySubsystem::SaveOutOfMatchContext(const FString& AccountId)
+{
+	return SaveOutOfMatchContextWithProfile(AccountId, FString());
+}
+
+bool UYcMetaInventorySubsystem::SaveOutOfMatchContextWithProfile(const FString& AccountId, const FString& ProfileId)
 {
 	if (AccountId.IsEmpty())
 	{
 		return false;
 	}
 
-	TObjectPtr<UYcInventorySceneContext>* FoundContext = ContextByAccountId.Find(AccountId);
+	const FYcProfileKey ProfileKey = FYcProfileKey(AccountId, ResolveProfileId(ProfileId));
+	TObjectPtr<UYcInventorySceneContext>* FoundContext = ContextByProfileKey.Find(ProfileKey);
 	if (!FoundContext || !IsValid(*FoundContext))
 	{
 		return false;
@@ -304,26 +389,52 @@ bool UYcMetaInventorySubsystem::SaveOutOfMatchContext(const FString& AccountId)
 
 bool UYcMetaInventorySubsystem::LoadPlayerLoadoutToInMatch(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory)
 {
-	if (!ValidateInMatchLoadoutRequest(AccountId, ContextOwner, InMatchPlayerInventory, true, TEXT("LoadPlayerLoadoutToInMatch")))
+	return LoadPlayerLoadoutToInMatchWithProfile(AccountId, FString(), ContextOwner, InMatchPlayerInventory);
+}
+
+bool UYcMetaInventorySubsystem::LoadPlayerLoadoutToInMatchWithProfile(const FString& AccountId, const FString& ProfileId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory)
+{
+	if (!ValidateInMatchLoadoutRequest(AccountId, ProfileId, ContextOwner, InMatchPlayerInventory, true, TEXT("LoadPlayerLoadoutToInMatchWithProfile")))
 	{
 		return false;
 	}
 
-	EnsurePersistenceProvider();
-	if (!PersistenceProvider)
+	UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem();
+	if (!SaveSubsystem)
 	{
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatchWithProfile: UYcProfileSaveSubsystem not found."));
+		return false;
+	}
+
+	const FYcProfileKey ProfileKey = FYcProfileKey(AccountId, ResolveProfileId(ProfileId));
+	FYcProfileSaveRoot Root;
+	FString Reason;
+	const EYcSaveBackendResult LoadResult = SaveSubsystem->LoadProfileRootSync(ProfileKey, Root, Reason);
+	if (LoadResult != EYcSaveBackendResult::Success)
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatchWithProfile: load failed. profile='%s', reason='%s'"), *ProfileKey.ToDebugString(), *Reason);
+		return false;
+	}
+
+	const FYcProfileDomainPayload* InventoryPayload = Root.Domains.FindByPredicate([](const FYcProfileDomainPayload& Payload)
+	{
+		return Payload.DomainKey == UYcInventorySaveDomainProvider::DomainKey;
+	});
+	if (!InventoryPayload)
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatchWithProfile: inventory domain payload missing. profile='%s'"), *ProfileKey.ToDebugString());
 		return false;
 	}
 
 	FYcMetaInventoryRootSnapshot Snapshot;
-	if (!PersistenceProvider->LoadSnapshot(AccountId, Snapshot))
+	if (!DeserializeInventorySnapshotFromBytes(InventoryPayload->PayloadBytes, Snapshot))
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatch: snapshot not found for account=%s"), *AccountId);
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatchWithProfile: deserialize snapshot bytes failed."));
 		return false;
 	}
 	if (!YcMetaInventoryVersion::IsSupportedVersion(Snapshot.SnapshotVersion))
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatch: unsupported snapshot version=%d"), Snapshot.SnapshotVersion);
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatchWithProfile: unsupported snapshot version=%d"), Snapshot.SnapshotVersion);
 		return false;
 	}
 
@@ -332,19 +443,53 @@ bool UYcMetaInventorySubsystem::LoadPlayerLoadoutToInMatch(const FString& Accoun
 
 bool UYcMetaInventorySubsystem::CommitInMatchPlayerLoadoutToProfile(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory, const bool bExtractionSucceeded)
 {
-	if (!ValidateInMatchLoadoutRequest(AccountId, ContextOwner, InMatchPlayerInventory, bExtractionSucceeded, TEXT("CommitInMatchPlayerLoadoutToProfile")))
+	return CommitInMatchPlayerLoadoutToProfileWithProfile(AccountId, FString(), ContextOwner, InMatchPlayerInventory, bExtractionSucceeded);
+}
+
+bool UYcMetaInventorySubsystem::CommitInMatchPlayerLoadoutToProfileWithProfile(const FString& AccountId, const FString& ProfileId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory, const bool bExtractionSucceeded)
+{
+	if (!ValidateInMatchLoadoutRequest(AccountId, ProfileId, ContextOwner, InMatchPlayerInventory, bExtractionSucceeded, TEXT("CommitInMatchPlayerLoadoutToProfileWithProfile")))
 	{
 		return false;
 	}
 
-	EnsurePersistenceProvider();
-	if (!PersistenceProvider)
+	UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem();
+	if (!SaveSubsystem)
 	{
+		UE_LOG(LogYcInventory, Warning, TEXT("CommitInMatchPlayerLoadoutToProfileWithProfile: UYcProfileSaveSubsystem not found."));
 		return false;
+	}
+
+	const FYcProfileKey ProfileKey = FYcProfileKey(AccountId, ResolveProfileId(ProfileId));
+	FYcProfileSaveRoot Root;
+	FString Reason;
+	const EYcSaveBackendResult LoadResult = SaveSubsystem->LoadProfileRootSync(ProfileKey, Root, Reason);
+	if (LoadResult != EYcSaveBackendResult::Success)
+	{
+		Root = FYcProfileSaveRoot();
+		Root.AccountId = ProfileKey.AccountId;
+		Root.ProfileId = ProfileKey.ProfileId;
 	}
 
 	FYcMetaInventoryRootSnapshot Snapshot;
-	if (!PersistenceProvider->LoadSnapshot(AccountId, Snapshot) || !YcMetaInventoryVersion::IsSupportedVersion(Snapshot.SnapshotVersion))
+	const FYcProfileDomainPayload* InventoryPayload = Root.Domains.FindByPredicate([](const FYcProfileDomainPayload& Payload)
+	{
+		return Payload.DomainKey == UYcInventorySaveDomainProvider::DomainKey;
+	});
+	if (InventoryPayload)
+	{
+		if (!DeserializeInventorySnapshotFromBytes(InventoryPayload->PayloadBytes, Snapshot))
+		{
+			UE_LOG(LogYcInventory, Warning, TEXT("CommitInMatchPlayerLoadoutToProfileWithProfile: deserialize snapshot bytes failed, reinit profile snapshot."));
+			Snapshot = YcMetaInventoryVersion::MakeEmptySnapshot(AccountId);
+		}
+	}
+	else
+	{
+		Snapshot = YcMetaInventoryVersion::MakeEmptySnapshot(AccountId);
+	}
+
+	if (!YcMetaInventoryVersion::IsSupportedVersion(Snapshot.SnapshotVersion))
 	{
 		Snapshot = YcMetaInventoryVersion::MakeEmptySnapshot(AccountId);
 	}
@@ -354,30 +499,77 @@ bool UYcMetaInventorySubsystem::CommitInMatchPlayerLoadoutToProfile(const FStrin
 		// 撤离失败：清空玩家侧持久化负载，仓库(Stash)保持不变。
 		Snapshot.Player = FYcMetaPlayerSnapshot();
 		YcMetaInventoryVersion::PrepareSnapshotForSave(AccountId, Snapshot);
-		return PersistenceProvider->SaveSnapshot(AccountId, Snapshot);
+	}
+	else
+	{
+		FYcMetaPlayerSnapshot PlayerSnapshot;
+		if (!BuildPlayerSnapshot(ContextOwner, InMatchPlayerInventory, nullptr, PlayerSnapshot))
+		{
+			return false;
+		}
+		Snapshot.Player = MoveTemp(PlayerSnapshot);
+		YcMetaInventoryVersion::PrepareSnapshotForSave(AccountId, Snapshot);
 	}
 
-	FYcMetaPlayerSnapshot PlayerSnapshot;
-	if (!BuildPlayerSnapshot(ContextOwner, InMatchPlayerInventory, nullptr, PlayerSnapshot))
+	TArray<uint8> SerializedSnapshot;
+	if (!SerializeInventorySnapshotToBytes(Snapshot, SerializedSnapshot))
 	{
+		UE_LOG(LogYcInventory, Warning, TEXT("CommitInMatchPlayerLoadoutToProfileWithProfile: serialize snapshot bytes failed."));
 		return false;
 	}
 
-	Snapshot.Player = MoveTemp(PlayerSnapshot);
-	YcMetaInventoryVersion::PrepareSnapshotForSave(AccountId, Snapshot);
-	return PersistenceProvider->SaveSnapshot(AccountId, Snapshot);
+	const int32 ExistingIndex = Root.Domains.IndexOfByPredicate([](const FYcProfileDomainPayload& Payload)
+	{
+		return Payload.DomainKey == UYcInventorySaveDomainProvider::DomainKey;
+	});
+	FYcProfileDomainPayload DomainPayload;
+	DomainPayload.DomainKey = UYcInventorySaveDomainProvider::DomainKey;
+	DomainPayload.Version = 1;
+	DomainPayload.PayloadBytes = MoveTemp(SerializedSnapshot);
+	if (ExistingIndex != INDEX_NONE)
+	{
+		Root.Domains[ExistingIndex] = MoveTemp(DomainPayload);
+	}
+	else
+	{
+		Root.Domains.Add(MoveTemp(DomainPayload));
+	}
+
+	Root.AccountId = ProfileKey.AccountId;
+	Root.ProfileId = ProfileKey.ProfileId;
+	Root.SnapshotVersion = FMath::Max(Root.SnapshotVersion, 1);
+	Root.LastSavedUnixTime = FDateTime::UtcNow().ToUnixTimestamp();
+
+	if (!SaveSubsystem->SaveProfileRootSync(ProfileKey, Root, Reason))
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("CommitInMatchPlayerLoadoutToProfileWithProfile: save failed. profile='%s', reason='%s'"), *ProfileKey.ToDebugString(), *Reason);
+		return false;
+	}
+	return true;
 }
 
 bool UYcMetaInventorySubsystem::IsProfileDirty(const FString& AccountId) const
 {
-	return DirtyProfiles.Contains(AccountId);
+	for (const FYcProfileKey& ProfileKey : DirtyProfiles)
+	{
+		if (ProfileKey.AccountId == AccountId)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void UYcMetaInventorySubsystem::MarkProfileDirty(const FString& AccountId)
 {
 	if (!AccountId.IsEmpty())
 	{
-		DirtyProfiles.Add(AccountId);
+		const FYcProfileKey ProfileKey = FYcProfileKey(AccountId, ResolveProfileId(FString()));
+		DirtyProfiles.Add(ProfileKey);
+		if (UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem())
+		{
+			SaveSubsystem->MarkProfileDirty(ProfileKey);
+		}
 	}
 }
 
@@ -385,7 +577,25 @@ void UYcMetaInventorySubsystem::ClearProfileDirty(const FString& AccountId)
 {
 	if (!AccountId.IsEmpty())
 	{
-		DirtyProfiles.Remove(AccountId);
+		TArray<FYcProfileKey> ToClear;
+		for (const FYcProfileKey& ProfileKey : DirtyProfiles)
+		{
+			if (ProfileKey.AccountId == AccountId)
+			{
+				ToClear.Add(ProfileKey);
+			}
+		}
+		for (const FYcProfileKey& ProfileKey : ToClear)
+		{
+			DirtyProfiles.Remove(ProfileKey);
+		}
+		if (UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem())
+		{
+			for (const FYcProfileKey& ProfileKey : ToClear)
+			{
+				SaveSubsystem->ClearProfileDirty(ProfileKey);
+			}
+		}
 	}
 }
 
@@ -631,16 +841,13 @@ void UYcMetaInventorySubsystem::OnOperationStateChanged(FGameplayTag ActualTag, 
 		const bool bTouchesContainer = (Message.Operation.SourceInventory == Context->ContainerInventoryRef || Message.Operation.TargetInventory == Context->ContainerInventoryRef);
 		if (bTouchesPlayer || bTouchesContainer)
 		{
-			MarkProfileDirty(Context->AccountId);
+			const FYcProfileKey ProfileKey = FYcProfileKey(Context->AccountId, ResolveProfileId(Context->ProfileId));
+			DirtyProfiles.Add(ProfileKey);
+			if (UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem())
+			{
+				SaveSubsystem->MarkProfileDirty(ProfileKey);
+			}
 		}
-	}
-}
-
-void UYcMetaInventorySubsystem::EnsurePersistenceProvider()
-{
-	if (!PersistenceProvider)
-	{
-		PersistenceProvider = NewObject<UYcInventoryPersistenceProvider_LocalSave>(this);
 	}
 }
 

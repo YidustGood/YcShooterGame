@@ -201,11 +201,47 @@ bool UYcEquipmentSlotComponent::ValidateUnequipOperation(const FYcInventoryOpera
 		OutReason = TEXT("Equipment.Unequip missing SlotTag.");
 		return false;
 	}
+
+	if (UYcInventoryManagerComponent* InventoryManager = GetInventoryManager())
+	{
+		if (UYcInventoryItemInstance* EquippedItem = GetItemInSlot(Operation.SlotTag))
+		{
+			FYcInventoryRelocationRequest RelocationRequest;
+			FYcInventoryRelocationPayload_ItemScope Payload;
+			Payload.AnchorItem = EquippedItem;
+			RelocationRequest.Payload.InitializeAs<FYcInventoryRelocationPayload_ItemScope>(Payload);
+			if (!InventoryManager->CanApplyInventoryRelocation(RelocationRequest, OutReason))
+			{
+				if (OutReason.IsEmpty())
+				{
+					OutReason = TEXT("Equipment.Unequip blocked by inventory relocation check.");
+				}
+				return false;
+			}
+		}
+	}
 	return true;
 }
 
 bool UYcEquipmentSlotComponent::ExecuteUnequipOperation(const FYcInventoryOperation& Operation, FString& OutReason)
 {
+	if (UYcInventoryManagerComponent* InventoryManager = GetInventoryManager())
+	{
+		FString RelocateReason;
+		if (UYcInventoryItemInstance* EquippedItem = GetItemInSlot(Operation.SlotTag))
+		{
+			FYcInventoryRelocationRequest RelocationRequest;
+			FYcInventoryRelocationPayload_ItemScope Payload;
+			Payload.AnchorItem = EquippedItem;
+			RelocationRequest.Payload.InitializeAs<FYcInventoryRelocationPayload_ItemScope>(Payload);
+			if (!InventoryManager->ApplyInventoryRelocation(RelocationRequest, RelocateReason))
+			{
+				OutReason = RelocateReason.IsEmpty() ? TEXT("Equipment.Unequip relocation apply failed.") : RelocateReason;
+				return false;
+			}
+		}
+	}
+
 	if (!UnequipSlot(Operation.SlotTag))
 	{
 		OutReason = TEXT("UnequipSlot failed.");
@@ -290,7 +326,11 @@ bool UYcEquipmentSlotComponent::EquipItem(UYcInventoryItemInstance* ItemInstance
 	if (Slots[SlotIndex].ItemInstance != nullptr)
 	{
 		// 槽位已被占用，先卸下旧装备
-		UnequipSlot(TargetSlotTag);
+		if (!UnequipSlot(TargetSlotTag))
+		{
+			UE_LOG(LogYcEquipment, Warning, TEXT("EquipItem: Failed to unequip existing item from slot '%s'"), *TargetSlotTag.ToString());
+			return false;
+		}
 	}
 
 	// 从 Inventory 移出物品
@@ -395,7 +435,33 @@ UYcInventoryItemInstance* UYcEquipmentSlotComponent::UnequipSlot(FGameplayTag Sl
 	UYcInventoryManagerComponent* InventoryManager = GetInventoryManager();
 	if (InventoryManager)
 	{
-		InventoryManager->AddItemInstance(ItemInstance, 1);
+		if (!InventoryManager->AddItemInstance(ItemInstance, 1))
+		{
+			// 回包失败时回滚槽位与装备实例，避免物品脱离系统。
+			UE_LOG(LogYcEquipment, Warning, TEXT("UnequipSlot rollback: AddItemInstance failed for slot '%s'"), *SlotTag.ToString());
+			SetSlotItem_Internal(SlotIndex, ItemInstance);
+			if (EquipmentManager)
+			{
+				if (UYcEquipmentInstance* Restored = EquipmentManager->CreateEquipment(ItemInstance))
+				{
+					EquipmentManager->EquipItem(Restored);
+				}
+			}
+			return nullptr;
+		}
+	}
+	else
+	{
+		UE_LOG(LogYcEquipment, Warning, TEXT("UnequipSlot rollback: Owner inventory missing for slot '%s'"), *SlotTag.ToString());
+		SetSlotItem_Internal(SlotIndex, ItemInstance);
+		if (EquipmentManager)
+		{
+			if (UYcEquipmentInstance* Restored = EquipmentManager->CreateEquipment(ItemInstance))
+			{
+				EquipmentManager->EquipItem(Restored);
+			}
+		}
+		return nullptr;
 	}
 
 	// 广播消息
@@ -414,18 +480,25 @@ UYcInventoryItemInstance* UYcEquipmentSlotComponent::UnequipSlot(FGameplayTag Sl
 
 void UYcEquipmentSlotComponent::ServerEquipItem_Implementation(UYcInventoryItemInstance* ItemInstance)
 {
-	if (UYcInventoryManagerComponent* InventoryManager = GetInventoryManager())
+	UYcInventoryManagerComponent* OwnerInventory = GetInventoryManager();
+	UYcInventoryManagerComponent* SourceInventory = UYcInventoryManagerComponent::FindInventoryManagerByItem(ItemInstance);
+	if (!SourceInventory)
+	{
+		SourceInventory = OwnerInventory;
+	}
+
+	if (UYcInventoryManagerComponent* CallingInventory = OwnerInventory ? OwnerInventory : SourceInventory)
 	{
 		FYcInventoryOperation Op;
 		Op.OpType = FName(TEXT("Equipment.Equip"));
 		Op.ItemInstance = ItemInstance;
 		Op.SlotTag = GetEquipmentSlotTag(ItemInstance);
 		Op.RequestActor = GetOwner();
-		Op.SourceInventory = InventoryManager;
-		Op.TargetInventory = InventoryManager;
+		Op.SourceInventory = SourceInventory;
+		Op.TargetInventory = OwnerInventory ? OwnerInventory : SourceInventory;
 		if (UYcInventoryOperationRouterComponent* Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwner()))
 		{
-			Router->SubmitInventoryOperation(InventoryManager, Op, false);
+			Router->SubmitInventoryOperation(CallingInventory, Op, false);
 			return;
 		}
 

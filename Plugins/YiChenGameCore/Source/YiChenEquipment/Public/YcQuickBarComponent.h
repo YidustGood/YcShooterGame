@@ -289,6 +289,10 @@ private:
 	void BuildQuickBarRemoveOperationDelta(const FYcInventoryOperation& Operation, bool bSuccess, FYcInventoryOperationDelta& OutDelta) const;
 	/** QuickBar.Remove 预测态投影。 */
 	void ProjectQuickBarRemoveOperationState(const FYcInventoryOperation& Operation, FYcInventoryProjectedState& InOutProjectedState) const;
+	/** 当前槽位移除后是否需要回归OwnerInventory */
+	bool ShouldReturnSlotItemToInventory(int32 SlotIndex) const;
+	/** 校验目标库存是否可接收该物品（由库存组件能力函数决定）。 */
+	bool CanReturnItemToOwnerInventory(UYcInventoryItemInstance* Item, FString& OutReason) const;
 	/** 是否已经成功向 Router 注册操作处理器。 */
 	bool bOperationHandlersRegistered = false;
 	

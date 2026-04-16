@@ -9,6 +9,7 @@ class AGridStashContainer : AGridItemContainerBase
 	UFUNCTION(BlueprintOverride)
 	void BeginPlay()
 	{
+		Super::BeginPlay();
 		// 局外仓库不需要搜索玩法
 		InventoryManager.bEnableContainerSearch = false;
 		InventoryManager.bAllowDirectContainerInteraction = true;

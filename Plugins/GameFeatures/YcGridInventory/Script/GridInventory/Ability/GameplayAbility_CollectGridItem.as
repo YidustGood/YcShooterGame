@@ -42,7 +42,7 @@
 			bool bRotated;
 			if (Inventory.FindFirstFitPosition(ItemTemp.ItemRegistryId, Tile, bRotated))
 			{
-				if (Inventory.TryAddGridItemByDefinition(ItemTemp.ItemRegistryId, ItemTemp.StackCount, Tile, bRotated))
+				if (Inventory.TryAddGridItemByDefinition(ItemTemp.ItemRegistryId, ItemTemp.StackCount, Tile, bRotated, FGameplayTag(), -1))
 				{
 					Log(f"位置{Tile}添加物品成功:{ItemTemp.ItemRegistryId.ItemName}");
 				}

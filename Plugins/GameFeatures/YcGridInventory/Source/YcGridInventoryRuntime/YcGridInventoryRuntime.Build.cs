@@ -17,13 +17,16 @@ public class YcGridInventoryRuntime : ModuleRules
 				"GameplayTags",
 				"YiChenInventory", 
 				"GameplayAbilities",
-				"DataRegistry"
+				"DataRegistry",
+				"YiChenEquipment",
+				"GameplayMessageRuntime",
 			}
 		);
 
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
+				
 			}
 		);
 	}

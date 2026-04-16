@@ -3,6 +3,8 @@
 #pragma once
 
 #include "DataRegistryId.h"
+#include "GameplayTagContainer.h"
+#include "StructUtils/InstancedStruct.h"
 #include "Components/ActorComponent.h"
 #include "Net/Serialization/FastArraySerializer.h"
 #include "YcItemInstanceId.h"
@@ -13,6 +15,34 @@ struct FYcInventoryItemDefinition;
 class UYcInventoryItemInstance;
 struct FYcInventoryItemList;
 class AActor;
+
+/**
+ * 库存重排请求参数。
+ * 由外部系统传入实例化负载，库存实现自行解释其含义。
+ */
+USTRUCT(BlueprintType)
+struct YICHENINVENTORY_API FYcInventoryRelocationRequest
+{
+	GENERATED_BODY()
+
+	/** 请求负载（推荐使用InstancedStruct承载具体上下文）。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Inventory)
+	FInstancedStruct Payload;
+};
+
+/**
+ * 物品锚点驱动的库存重排负载。
+ * 由调用方提供一个“锚点物品实例”，库存实现按该锚点解释重排语义。
+ */
+USTRUCT(BlueprintType)
+struct YICHENINVENTORY_API FYcInventoryRelocationPayload_ItemScope
+{
+	GENERATED_BODY()
+
+	/** 重排锚点物品实例。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Inventory)
+	TObjectPtr<UYcInventoryItemInstance> AnchorItem = nullptr;
+};
 
 /**
  * 库存物品变化消息结构体
@@ -326,6 +356,27 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = Inventory, BlueprintPure)
 	bool FindItemById(const FYcItemInstanceId& ItemId, FYcInventoryItemEntry& OutItemEntry);
+
+	/**
+	 * 校验库存是否可接收“回归”物品（如QuickBar移除、系统归还）。
+	 * 默认实现返回true，具体库存类型可重写（如网格库存容量校验）。
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = Inventory)
+	bool CanAcceptItemForReturn(UYcInventoryItemInstance* ItemInstance, FString& OutReason);
+
+	/**
+	 * 库存重排可行性校验。
+	 * 默认实现返回true，具体库存类型可重写。
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = Inventory)
+	bool CanApplyInventoryRelocation(const FYcInventoryRelocationRequest& Request, FString& OutReason);
+
+	/**
+	 * 执行库存重排准备。
+	 * 默认实现返回true，具体库存类型可重写。
+	 */
+	UFUNCTION(BlueprintNativeEvent, BlueprintAuthorityOnly, Category = Inventory)
+	bool ApplyInventoryRelocation(const FYcInventoryRelocationRequest& Request, FString& OutReason);
 	
 private:
 	/** 基于FastArray进行网络复制的库存物品列表 */

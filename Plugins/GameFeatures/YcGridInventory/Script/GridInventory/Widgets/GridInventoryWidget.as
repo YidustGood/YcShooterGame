@@ -151,8 +151,8 @@ class UGridInventoryWidget : UUserWidget
 				return;
 			}
 
-			float Progress01;
-			float RemainingSeconds;
+			float32 Progress01;
+			float32 RemainingSeconds;
 			int32 RevealedCount;
 			int32 TotalCount;
 			if (PlayerInventory.GetCurrentSearchProgress(Progress01, RemainingSeconds, RevealedCount, TotalCount))

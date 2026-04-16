@@ -588,6 +588,31 @@ bool UYcInventoryManagerComponent::FindItemById(const FYcItemInstanceId& ItemId,
 	return ItemList.FindItemById(ItemId, OutItemEntry);
 }
 
+bool UYcInventoryManagerComponent::CanAcceptItemForReturn_Implementation(UYcInventoryItemInstance* ItemInstance, FString& OutReason)
+{
+	OutReason.Empty();
+	if (!IsValid(ItemInstance))
+	{
+		OutReason = TEXT("Inventory return item is null.");
+		return false;
+	}
+	return true;
+}
+
+bool UYcInventoryManagerComponent::CanApplyInventoryRelocation_Implementation(const FYcInventoryRelocationRequest& Request, FString& OutReason)
+{
+	OutReason.Empty();
+	(void)Request;
+	return true;
+}
+
+bool UYcInventoryManagerComponent::ApplyInventoryRelocation_Implementation(const FYcInventoryRelocationRequest& Request, FString& OutReason)
+{
+	OutReason.Empty();
+	(void)Request;
+	return true;
+}
+
 bool UYcInventoryManagerComponent::ConsumeItemsByDefinition(const FYcInventoryItemDefinition& ItemDef, const int32 NumToConsume)
 {
 	AActor* OwningActor = GetOwner();

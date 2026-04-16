@@ -14,7 +14,7 @@ struct FYcInventoryOperationDelta;
 struct FYcInventoryProjectedState;
 
 /**
- * 装备栏槽位数据。
+ * 装备槽位数据。
  */
 USTRUCT(BlueprintType)
 struct FYcEquipmentSlot
@@ -25,13 +25,13 @@ struct FYcEquipmentSlot
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment")
 	FGameplayTag SlotTag;
 
-	/** 当前槽位中持有的物品实例。 */
+	/** 当前槽位中的物品实例。 */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Equipment")
 	TObjectPtr<UYcInventoryItemInstance> ItemInstance = nullptr;
 };
 
 /**
- * 装备栏组件：负责槽位占用与装备/卸下流程。
+ * 装备槽组件：负责槽位占用、装备与卸下流程。
  */
 UCLASS(ClassGroup=(YiChenGameCore), Blueprintable, meta=(BlueprintSpawnableComponent))
 class YICHENEQUIPMENT_API UYcEquipmentSlotComponent : public UPawnComponent
@@ -59,7 +59,7 @@ public:
 	/**
 	 * 卸下指定槽位的装备。
 	 * @param SlotTag 槽位标签。
-	 * @return 被卸下的物品，失败返回 `nullptr`。
+	 * @return 卸下的物品，失败返回 `nullptr`。
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Equipment")
 	UYcInventoryItemInstance* UnequipSlot(FGameplayTag SlotTag);
@@ -99,7 +99,6 @@ public:
 	bool GetSlotConfig(FGameplayTag SlotTag, FYcEquipmentSlot& OutSlotConfig) const;
 
 	// 静态查找
-
 	/** 从 Actor 上查找 `UYcEquipmentSlotComponent`。 */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Equipment", meta = (DefaultToSelf = "Actor"))
 	static UYcEquipmentSlotComponent* FindEquipmentSlotComponent(const AActor* Actor);
@@ -160,7 +159,7 @@ private:
 };
 
 /**
- * 装备栏槽位变化消息（用于 GameplayMessageSubsystem）。
+ * 装备槽位变化消息（用于 GameplayMessageSubsystem）。
  */
 USTRUCT(BlueprintType)
 struct FYcEquipmentSlotChangedMessage
@@ -176,3 +175,4 @@ struct FYcEquipmentSlotChangedMessage
 	UPROPERTY(BlueprintReadOnly, Category = "Equipment")
 	TObjectPtr<UYcInventoryItemInstance> ItemInstance = nullptr;
 };
+

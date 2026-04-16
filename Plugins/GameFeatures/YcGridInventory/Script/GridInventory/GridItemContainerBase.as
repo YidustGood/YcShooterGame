@@ -41,11 +41,8 @@ class AGridItemContainerBase : AActor
 			bool bRotated;
 			if (InventoryManager.FindFirstFitPosition(ItemDef.ItemRegistryId, Tile, bRotated))
 			{
-				InventoryManager.TryAddGridItemByDefinition(ItemDef.ItemRegistryId, ItemDef.StackCount, Tile, bRotated);
+				InventoryManager.TryAddGridItemByDefinition(ItemDef.ItemRegistryId, ItemDef.StackCount, Tile, bRotated, FGameplayTag(), -1);
 			}
 		}
 	}
 }
-
-
-

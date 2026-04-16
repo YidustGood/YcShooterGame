@@ -25,7 +25,6 @@
 #include "YcInventoryManagerComponent.h"
 #include "YcInventoryOperationRouterComponent.h"
 #include "YiChenEquipment.h"
-#include "Fragments/InventoryFragment_Equippable.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
@@ -222,6 +221,22 @@ bool UYcQuickBarComponent::ValidateQuickBarRemoveOperation(const FYcInventoryOpe
 	{
 		OutReason = TEXT("QuickBar.Remove missing slot index.");
 		return false;
+	}
+	if (!Slots.IsValidIndex(Operation.SlotIndex) || !Slots[Operation.SlotIndex])
+	{
+		OutReason = TEXT("QuickBar.Remove slot is empty.");
+		return false;
+	}
+	if (ShouldReturnSlotItemToInventory(Operation.SlotIndex))
+	{
+		if (!CanReturnItemToOwnerInventory(Slots[Operation.SlotIndex], OutReason))
+		{
+			if (OutReason.IsEmpty())
+			{
+				OutReason = TEXT("QuickBar.Remove target inventory cannot accept this item.");
+			}
+			return false;
+		}
 	}
 	return true;
 }
@@ -551,6 +566,20 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 	{
 		return nullptr;
 	}
+
+	const bool bNeedReturnToInventory = ShouldReturnSlotItemToInventory(SlotIndex);
+	const bool bWasManagedByQuickBar = bSlotItemManagedByQuickBar.IsValidIndex(SlotIndex) ? bSlotItemManagedByQuickBar[SlotIndex] : false;
+	const bool bWasActiveSlot = (ActiveSlotIndex == SlotIndex);
+
+	if (bNeedReturnToInventory)
+	{
+		FString OutReason;
+		if (!CanReturnItemToOwnerInventory(RemovedItem, OutReason))
+		{
+			UE_LOG(LogYcEquipment, Warning, TEXT("RemoveItemFromSlot rejected: %s"), *OutReason);
+			return nullptr;
+		}
+	}
 	
 	// 如果是当前激活的插槽，先停用
 	if (ActiveSlotIndex == SlotIndex)
@@ -565,7 +594,6 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 	// 清除插槽
 	SetSlotItem_Internal(SlotIndex, nullptr);
 	
-	const bool bNeedReturnToInventory = bItemsLeaveInventory || (bSlotItemManagedByQuickBar.IsValidIndex(SlotIndex) && bSlotItemManagedByQuickBar[SlotIndex]);
 	if (bSlotItemManagedByQuickBar.IsValidIndex(SlotIndex))
 	{
 		bSlotItemManagedByQuickBar[SlotIndex] = false;
@@ -576,7 +604,40 @@ UYcInventoryItemInstance* UYcQuickBarComponent::RemoveItemFromSlot(int32 SlotInd
 	{
 		if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryManagerComponent::FindInventoryManager(GetOwner()))
 		{
-			InventoryManager->AddItemInstance(RemovedItem, 1);
+			if (!InventoryManager->AddItemInstance(RemovedItem, 1))
+			{
+				UE_LOG(LogYcEquipment, Warning, TEXT("RemoveItemFromSlot rollback: AddItemInstance failed, restoring quickbar slot."));
+				SetSlotItem_Internal(SlotIndex, RemovedItem);
+				if (!bSlotItemManagedByQuickBar.IsValidIndex(SlotIndex))
+				{
+					bSlotItemManagedByQuickBar.SetNumZeroed(NumSlots);
+				}
+				bSlotItemManagedByQuickBar[SlotIndex] = bWasManagedByQuickBar;
+				CreateSlotEquipment(SlotIndex);
+				if (bWasActiveSlot)
+				{
+					SetActiveSlotIndex_Internal(SlotIndex);
+					ActivateSlotEquipment(SlotIndex);
+				}
+				return nullptr;
+			}
+		}
+		else
+		{
+			UE_LOG(LogYcEquipment, Warning, TEXT("RemoveItemFromSlot rollback: Owner inventory missing, restoring quickbar slot."));
+			SetSlotItem_Internal(SlotIndex, RemovedItem);
+			if (!bSlotItemManagedByQuickBar.IsValidIndex(SlotIndex))
+			{
+				bSlotItemManagedByQuickBar.SetNumZeroed(NumSlots);
+			}
+			bSlotItemManagedByQuickBar[SlotIndex] = bWasManagedByQuickBar;
+			CreateSlotEquipment(SlotIndex);
+			if (bWasActiveSlot)
+			{
+				SetActiveSlotIndex_Internal(SlotIndex);
+				ActivateSlotEquipment(SlotIndex);
+			}
+			return nullptr;
 		}
 	}
 	
@@ -618,6 +679,29 @@ void UYcQuickBarComponent::ServerAddItemToSlot_Implementation(int32 SlotIndex, U
 	AddItemToSlot(SlotIndex, Item);
 }
 
+bool UYcQuickBarComponent::ShouldReturnSlotItemToInventory(int32 SlotIndex) const
+{
+	return bItemsLeaveInventory || (bSlotItemManagedByQuickBar.IsValidIndex(SlotIndex) && bSlotItemManagedByQuickBar[SlotIndex]);
+}
+
+bool UYcQuickBarComponent::CanReturnItemToOwnerInventory(UYcInventoryItemInstance* Item, FString& OutReason) const
+{
+	OutReason.Empty();
+	if (!Item)
+	{
+		OutReason = TEXT("QuickBar.Remove item is null.");
+		return false;
+	}
+
+	UYcInventoryManagerComponent* InventoryManager = UYcInventoryManagerComponent::FindInventoryManager(GetOwner());
+	if (!InventoryManager)
+	{
+		OutReason = TEXT("QuickBar.Remove owner inventory missing.");
+		return false;
+	}
+	return InventoryManager->CanAcceptItemForReturn(Item, OutReason);
+}
+
 void UYcQuickBarComponent::ServerRemoveItemFromSlot_Implementation(int32 SlotIndex)
 {
 	if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryManagerComponent::FindInventoryManager(GetOwner()))
@@ -648,13 +732,13 @@ void UYcQuickBarComponent::ServerRemoveItemFromSlot_Implementation(int32 SlotInd
 void UYcQuickBarComponent::ExecuteLocalPrediction(const int32 NewIndex)
 {
 	UE_LOG(LogYcEquipment, Verbose, TEXT("ExecuteLocalPrediction: %d -> %d"), GetActiveSlotIndex(), NewIndex);
-	
-	// 设置预测状态
+
+	// 先记录旧索引，再写入预测目标，避免 OldIndex 被覆盖成 NewIndex。
+	const int32 CurrentIndex = GetActiveSlotIndex();
 	bHasPendingSlotChange = true;
 	PendingSlotIndex = NewIndex;
-	
+
 	// 处理装备切换
-	const int32 CurrentIndex = bHasPendingSlotChange ? PendingSlotIndex : ActiveSlotIndex;
 	ExecuteEquipmentChange(CurrentIndex, NewIndex);
 }
 

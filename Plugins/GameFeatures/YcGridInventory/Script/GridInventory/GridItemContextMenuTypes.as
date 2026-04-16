@@ -27,22 +27,3 @@ struct FGridItemContextMenuCloseMessage
 	UPROPERTY()
 	bool bForceClose = true;
 }
-
-USTRUCT()
-struct FGridItemContextActionRequest
-{
-	UPROPERTY()
-	AActor Player;
-
-	UPROPERTY()
-	UYcInventoryItemInstance ItemInst;
-
-	UPROPERTY()
-	FGameplayTag ActionTag;
-
-	UPROPERTY()
-	FGameplayTag ExecutorTag;
-
-	UPROPERTY()
-	FGameplayTag EventTag;
-}

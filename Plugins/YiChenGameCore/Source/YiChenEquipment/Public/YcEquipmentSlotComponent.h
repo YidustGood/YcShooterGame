@@ -4,6 +4,7 @@
 
 #include "GameplayTagContainer.h"
 #include "Components/PawnComponent.h"
+#include "System/YcMetaInventoryBridgeInterfaces.h"
 #include "YcEquipmentSlotComponent.generated.h"
 
 class UYcInventoryItemInstance;
@@ -34,7 +35,7 @@ struct FYcEquipmentSlot
  * 装备槽组件：负责槽位占用、装备与卸下流程。
  */
 UCLASS(ClassGroup=(YiChenGameCore), Blueprintable, meta=(BlueprintSpawnableComponent))
-class YICHENEQUIPMENT_API UYcEquipmentSlotComponent : public UPawnComponent
+class YICHENEQUIPMENT_API UYcEquipmentSlotComponent : public UPawnComponent, public IYcMetaInventoryEquipmentBridge
 {
 	GENERATED_BODY()
 
@@ -102,6 +103,13 @@ public:
 	/** 从 Actor 上查找 `UYcEquipmentSlotComponent`。 */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Equipment", meta = (DefaultToSelf = "Actor"))
 	static UYcEquipmentSlotComponent* FindEquipmentSlotComponent(const AActor* Actor);
+
+	// MetaInventory 桥接接口实现
+	virtual void GetMetaOccupiedSlots_Implementation(TArray<FGameplayTag>& OutSlots) const override;
+	virtual UYcInventoryItemInstance* GetMetaItemInSlot_Implementation(FGameplayTag SlotTag) const override;
+	virtual UYcInventoryItemInstance* MetaUnequipSlot_Implementation(FGameplayTag SlotTag) override;
+	virtual bool MetaEquipItem_Implementation(UYcInventoryItemInstance* ItemInstance) override;
+	virtual void MetaNotifySlotsUpdated_Implementation() override;
 
 protected:
 	/** 槽位配置列表。 */
@@ -175,4 +183,3 @@ struct FYcEquipmentSlotChangedMessage
 	UPROPERTY(BlueprintReadOnly, Category = "Equipment")
 	TObjectPtr<UYcInventoryItemInstance> ItemInstance = nullptr;
 };
-

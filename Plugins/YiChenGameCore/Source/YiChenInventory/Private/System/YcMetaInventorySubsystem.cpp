@@ -2,6 +2,9 @@
 
 #include "System/YcMetaInventorySubsystem.h"
 
+#include "System/YcInventoryPersistenceExtensionProvider.h"
+#include "System/YcInventoryPersistenceExtensionRegistry.h"
+#include "System/YcMetaInventoryBridgeInterfaces.h"
 #include "System/YcInventoryPersistenceProvider.h"
 #include "System/YcInventoryPersistenceProvider_LocalSave.h"
 #include "System/YcMetaInventoryItemRecordCodec.h"
@@ -22,27 +25,6 @@
 
 namespace
 {
-	static const FName EquipmentSlotComponentClassName(TEXT("YcEquipmentSlotComponent"));
-	static const FName QuickBarComponentClassName(TEXT("YcQuickBarComponent"));
-
-	static const FName Fn_GetOccupiedSlots(TEXT("GetOccupiedSlots"));
-	static const FName Fn_GetItemInSlot(TEXT("GetItemInSlot"));
-	static const FName Fn_UnequipSlot(TEXT("UnequipSlot"));
-	static const FName Fn_EquipItem(TEXT("EquipItem"));
-
-	static const FName Fn_GetSlots(TEXT("GetSlots"));
-	static const FName Fn_RemoveItemFromSlot(TEXT("RemoveItemFromSlot"));
-	static const FName Fn_AddItemToSlot(TEXT("AddItemToSlot"));
-	static const FName Fn_OnRep_Slots(TEXT("OnRep_Slots"));
-	static const FName Fn_GetGridItemsTileMap(TEXT("GetGridItemsTileMap"));
-	static const FName Fn_GetGridItemsTileMapByRegion(TEXT("GetGridItemsTileMapByRegion"));
-	static const FName Fn_GetGridItemRotationMap(TEXT("GetGridItemRotationMap"));
-	static const FName Fn_GetItemPlacementRegion(TEXT("GetItemPlacementRegion"));
-	static const FName Fn_OnRemoveGridItem(TEXT("OnRemoveGridItem"));
-	static const FName Fn_OnGridItemInstanceAdded(TEXT("OnGridItemInstanceAdded"));
-	static const FName Fn_FindFirstFitPosition(TEXT("FindFirstFitPosition"));
-	static const FName Fn_FindFirstFitPlacement(TEXT("FindFirstFitPlacement"));
-
 	static const FName OperationStateChangedTagName(TEXT("Yc.Inventory.Message.Operation.StateChanged"));
 }
 
@@ -345,7 +327,7 @@ bool UYcMetaInventorySubsystem::LoadPlayerLoadoutToInMatch(const FString& Accoun
 		return false;
 	}
 
-	return ApplyPlayerSnapshot(ContextOwner, InMatchPlayerInventory, Snapshot.Player);
+	return ApplyPlayerSnapshot(ContextOwner, InMatchPlayerInventory, nullptr, Snapshot.Player);
 }
 
 bool UYcMetaInventorySubsystem::CommitInMatchPlayerLoadoutToProfile(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory, const bool bExtractionSucceeded)
@@ -376,7 +358,7 @@ bool UYcMetaInventorySubsystem::CommitInMatchPlayerLoadoutToProfile(const FStrin
 	}
 
 	FYcMetaPlayerSnapshot PlayerSnapshot;
-	if (!BuildPlayerSnapshot(ContextOwner, InMatchPlayerInventory, PlayerSnapshot))
+	if (!BuildPlayerSnapshot(ContextOwner, InMatchPlayerInventory, nullptr, PlayerSnapshot))
 	{
 		return false;
 	}
@@ -416,11 +398,11 @@ bool UYcMetaInventorySubsystem::BuildSnapshotFromContext(UYcInventorySceneContex
 
 	OutSnapshot = YcMetaInventoryVersion::MakeEmptySnapshot(Context->AccountId);
 
-	if (!BuildPlayerSnapshot(Context->ContextOwner, Context->PlayerInventoryRef, OutSnapshot.Player))
+	if (!BuildPlayerSnapshot(Context->ContextOwner, Context->PlayerInventoryRef, Context->ContainerInventoryRef, OutSnapshot.Player))
 	{
 		return false;
 	}
-	if (!BuildInventoryRecords(Context->ContainerInventoryRef, OutSnapshot.Stash.InventoryItems, OutSnapshot.Stash.InventoryGridPlacements))
+	if (!BuildInventoryRecords(Context->ContainerInventoryRef, OutSnapshot.Stash.InventoryItems, OutSnapshot.Stash.InventoryExtensions))
 	{
 		return false;
 	}
@@ -435,13 +417,13 @@ bool UYcMetaInventorySubsystem::ApplySnapshotToContext(UYcInventorySceneContext*
 		return false;
 	}
 
-	if (!ApplyPlayerSnapshot(Context->ContextOwner, Context->PlayerInventoryRef, Snapshot.Player))
+	TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>> StashItemMap;
+	if (!RestoreInventoryRecords(Context->ContainerInventoryRef, Snapshot.Stash.InventoryItems, Snapshot.Stash.InventoryExtensions, StashItemMap))
 	{
 		return false;
 	}
 
-	TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>> StashItemMap;
-	if (!RestoreInventoryRecords(Context->ContainerInventoryRef, Snapshot.Stash.InventoryItems, Snapshot.Stash.InventoryGridPlacements, StashItemMap))
+	if (!ApplyPlayerSnapshot(Context->ContextOwner, Context->PlayerInventoryRef, &StashItemMap, Snapshot.Player))
 	{
 		return false;
 	}
@@ -449,7 +431,7 @@ bool UYcMetaInventorySubsystem::ApplySnapshotToContext(UYcInventorySceneContext*
 	return true;
 }
 
-bool UYcMetaInventorySubsystem::BuildPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, FYcMetaPlayerSnapshot& OutPlayerSnapshot) const
+bool UYcMetaInventorySubsystem::BuildPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, FYcMetaPlayerSnapshot& OutPlayerSnapshot) const
 {
 	if (!IsValid(PlayerInventory))
 	{
@@ -457,13 +439,13 @@ bool UYcMetaInventorySubsystem::BuildPlayerSnapshot(const AActor* ContextOwner, 
 	}
 
 	OutPlayerSnapshot = FYcMetaPlayerSnapshot();
-	if (!BuildInventoryRecords(PlayerInventory, OutPlayerSnapshot.InventoryItems, OutPlayerSnapshot.InventoryGridPlacements))
+	if (!BuildInventoryRecords(PlayerInventory, OutPlayerSnapshot.InventoryItems, OutPlayerSnapshot.InventoryExtensions))
 	{
 		return false;
 	}
 
-	BuildEquipmentRecords(ContextOwner, PlayerInventory, nullptr, OutPlayerSnapshot.EquipmentSlots);
-	BuildQuickBarRecords(ContextOwner, PlayerInventory, nullptr, OutPlayerSnapshot.QuickBarSlots);
+	BuildEquipmentRecords(ContextOwner, PlayerInventory, StashInventory, OutPlayerSnapshot.EquipmentSlots);
+	BuildQuickBarRecords(ContextOwner, PlayerInventory, StashInventory, OutPlayerSnapshot.QuickBarSlots);
 
 	// 兜底：装备槽/快捷栏中可能存在不在PlayerInventory中的托管物品。
 	TSet<FYcItemInstanceId> PlayerItemIds;
@@ -525,64 +507,47 @@ bool UYcMetaInventorySubsystem::BuildPlayerSnapshot(const AActor* ContextOwner, 
 		PlayerItemIds.Add(SavedItemInstId);
 	};
 
-	if (UActorComponent* EquipmentComp = FindComponentAcrossOwnerChain(ContextOwner, EquipmentSlotComponentClassName))
+	if (UActorComponent* EquipmentComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryEquipmentBridge::StaticClass()))
 	{
-		if (UFunction* GetOccupiedSlotsFn = EquipmentComp->FindFunction(Fn_GetOccupiedSlots))
+		TArray<FGameplayTag> OccupiedSlots;
+		IYcMetaInventoryEquipmentBridge::Execute_GetMetaOccupiedSlots(EquipmentComp, OccupiedSlots);
+		for (const FGameplayTag& SlotTag : OccupiedSlots)
 		{
-			if (UFunction* GetItemInSlotFn = EquipmentComp->FindFunction(Fn_GetItemInSlot))
-			{
-				struct FGetOccupiedSlotsParams { TArray<FGameplayTag> ReturnValue; };
-				struct FGetItemInSlotParams { FGameplayTag SlotTag; UYcInventoryItemInstance* ReturnValue; };
-
-				FGetOccupiedSlotsParams OccupiedParams;
-				EquipmentComp->ProcessEvent(GetOccupiedSlotsFn, &OccupiedParams);
-				for (const FGameplayTag& SlotTag : OccupiedParams.ReturnValue)
+			UYcInventoryItemInstance* SlotItem = IYcMetaInventoryEquipmentBridge::Execute_GetMetaItemInSlot(EquipmentComp, SlotTag);
+			const FGameplayTag LocalSlotTag = SlotTag;
+			TryAddDetachedPlayerOwnedItem(SlotItem,
+				[&](const FYcItemInstanceId& OldId, const FYcItemInstanceId& NewId)
 				{
-					FGetItemInSlotParams ItemParams;
-					ItemParams.SlotTag = SlotTag;
-					ItemParams.ReturnValue = nullptr;
-					EquipmentComp->ProcessEvent(GetItemInSlotFn, &ItemParams);
-					const FGameplayTag LocalSlotTag = SlotTag;
-					TryAddDetachedPlayerOwnedItem(ItemParams.ReturnValue,
-						[&](const FYcItemInstanceId& OldId, const FYcItemInstanceId& NewId)
+					for (FYcMetaEquipmentSlotRecord& SlotRecord : OutPlayerSnapshot.EquipmentSlots)
+					{
+						if (SlotRecord.SlotTag == LocalSlotTag && SlotRecord.ItemInstId == OldId)
 						{
-							for (FYcMetaEquipmentSlotRecord& SlotRecord : OutPlayerSnapshot.EquipmentSlots)
-							{
-								if (SlotRecord.SlotTag == LocalSlotTag && SlotRecord.ItemInstId == OldId)
-								{
-									SlotRecord.ItemInstId = NewId;
-								}
-							}
-						});
-				}
-			}
+							SlotRecord.ItemInstId = NewId;
+						}
+					}
+				});
 		}
 	}
 
-	if (UActorComponent* QuickBarComp = FindComponentAcrossOwnerChain(ContextOwner, QuickBarComponentClassName))
+	if (UActorComponent* QuickBarComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryQuickBarBridge::StaticClass()))
 	{
-		if (UFunction* GetSlotsFn = QuickBarComp->FindFunction(Fn_GetSlots))
+		TArray<UYcInventoryItemInstance*> Slots;
+		IYcMetaInventoryQuickBarBridge::Execute_GetMetaQuickBarSlots(QuickBarComp, Slots);
+		for (int32 SlotIndex = 0; SlotIndex < Slots.Num(); ++SlotIndex)
 		{
-			struct FGetQuickBarSlotsParams { TArray<TObjectPtr<UYcInventoryItemInstance>> ReturnValue; };
-
-			FGetQuickBarSlotsParams SlotsParams;
-			QuickBarComp->ProcessEvent(GetSlotsFn, &SlotsParams);
-			for (int32 SlotIndex = 0; SlotIndex < SlotsParams.ReturnValue.Num(); ++SlotIndex)
-			{
-				UYcInventoryItemInstance* SlotItem = SlotsParams.ReturnValue[SlotIndex];
-				const int32 LocalSlotIndex = SlotIndex;
-				TryAddDetachedPlayerOwnedItem(SlotItem,
-					[&](const FYcItemInstanceId& OldId, const FYcItemInstanceId& NewId)
+			UYcInventoryItemInstance* SlotItem = Slots[SlotIndex];
+			const int32 LocalSlotIndex = SlotIndex;
+			TryAddDetachedPlayerOwnedItem(SlotItem,
+				[&](const FYcItemInstanceId& OldId, const FYcItemInstanceId& NewId)
+				{
+					for (FYcMetaQuickBarSlotRecord& SlotRecord : OutPlayerSnapshot.QuickBarSlots)
 					{
-						for (FYcMetaQuickBarSlotRecord& SlotRecord : OutPlayerSnapshot.QuickBarSlots)
+						if (SlotRecord.SlotIndex == LocalSlotIndex && SlotRecord.ItemInstId == OldId)
 						{
-							if (SlotRecord.SlotIndex == LocalSlotIndex && SlotRecord.ItemInstId == OldId)
-							{
-								SlotRecord.ItemInstId = NewId;
-							}
+							SlotRecord.ItemInstId = NewId;
 						}
-					});
-			}
+					}
+				});
 		}
 	}
 
@@ -594,7 +559,7 @@ bool UYcMetaInventorySubsystem::BuildPlayerSnapshot(const AActor* ContextOwner, 
 	return true;
 }
 
-bool UYcMetaInventorySubsystem::ApplyPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, const FYcMetaPlayerSnapshot& PlayerSnapshot)
+bool UYcMetaInventorySubsystem::ApplyPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>* StashItemMap, const FYcMetaPlayerSnapshot& PlayerSnapshot)
 {
 	if (!IsValid(PlayerInventory))
 	{
@@ -605,33 +570,35 @@ bool UYcMetaInventorySubsystem::ApplyPlayerSnapshot(const AActor* ContextOwner, 
 	ClearQuickBar(ContextOwner);
 
 	TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>> PlayerItemMap;
-	if (!RestoreInventoryRecords(PlayerInventory, PlayerSnapshot.InventoryItems, TArray<FYcMetaGridPlacementRecord>(), PlayerItemMap))
+	// 玩家库存恢复时，先只恢复物品本体；网格扩展落位需要等装备恢复后（装备可能提供额外区域）。
+	if (!RestoreInventoryRecords(PlayerInventory, PlayerSnapshot.InventoryItems, TArray<FYcMetaInventoryExtensionPayload>(), PlayerItemMap))
 	{
 		return false;
 	}
 
-	TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>> EmptyStashMap;
-	RestoreEquipment(ContextOwner, PlayerSnapshot.EquipmentSlots, PlayerItemMap, EmptyStashMap);
-	RestoreQuickBar(ContextOwner, PlayerSnapshot.QuickBarSlots, PlayerItemMap, EmptyStashMap);
-	if (!ApplyInventoryGridPlacements(PlayerInventory, PlayerItemMap, PlayerSnapshot.InventoryGridPlacements))
+	const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>> EmptyStashMap;
+	const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& EffectiveStashItemMap = StashItemMap ? *StashItemMap : EmptyStashMap;
+	if (!RestoreEquipment(ContextOwner, PlayerSnapshot.EquipmentSlots, PlayerItemMap, EffectiveStashItemMap))
+	{
+		return false;
+	}
+	if (!RestoreQuickBar(ContextOwner, PlayerSnapshot.QuickBarSlots, PlayerItemMap, EffectiveStashItemMap))
+	{
+		return false;
+	}
+	if (!ApplyInventoryExtensions(PlayerInventory, PlayerItemMap, PlayerSnapshot.InventoryExtensions))
 	{
 		return false;
 	}
 
 	// 强制广播一次当前槽位状态，确保跨场景持久化UI能立即刷新图标。
-	if (UActorComponent* EquipmentComp = FindComponentAcrossOwnerChain(ContextOwner, EquipmentSlotComponentClassName))
+	if (UActorComponent* EquipmentComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryEquipmentBridge::StaticClass()))
 	{
-		if (UFunction* OnRepSlotsFn = EquipmentComp->FindFunction(Fn_OnRep_Slots))
-		{
-			EquipmentComp->ProcessEvent(OnRepSlotsFn, nullptr);
-		}
+		IYcMetaInventoryEquipmentBridge::Execute_MetaNotifySlotsUpdated(EquipmentComp);
 	}
-	if (UActorComponent* QuickBarComp = FindComponentAcrossOwnerChain(ContextOwner, QuickBarComponentClassName))
+	if (UActorComponent* QuickBarComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryQuickBarBridge::StaticClass()))
 	{
-		if (UFunction* OnRepSlotsFn = QuickBarComp->FindFunction(Fn_OnRep_Slots))
-		{
-			QuickBarComp->ProcessEvent(OnRepSlotsFn, nullptr);
-		}
+		IYcMetaInventoryQuickBarBridge::Execute_MetaNotifyQuickBarSlotsUpdated(QuickBarComp);
 	}
 
 	return true;
@@ -677,7 +644,27 @@ void UYcMetaInventorySubsystem::EnsurePersistenceProvider()
 	}
 }
 
-bool UYcMetaInventorySubsystem::BuildInventoryRecords(UYcInventoryManagerComponent* Inventory, TArray<FYcMetaInventoryItemRecord>& OutItems, TArray<FYcMetaGridPlacementRecord>& OutPlacements) const
+void UYcMetaInventorySubsystem::GatherPersistenceExtensionProviders(TArray<const UYcInventoryPersistenceExtensionProvider*>& OutProviders) const
+{
+	OutProviders.Empty();
+
+	// 从全局注册表取出所有 Provider 类型，并转为 CDO 供只读调用。
+	const TArray<TSubclassOf<UYcInventoryPersistenceExtensionProvider>> ProviderClasses = YcInventoryPersistenceExtensionRegistry::GetRegisteredProviderClasses();
+	for (const TSubclassOf<UYcInventoryPersistenceExtensionProvider> ProviderClass : ProviderClasses)
+	{
+		if (!ProviderClass)
+		{
+			continue;
+		}
+
+		if (const UYcInventoryPersistenceExtensionProvider* ProviderCDO = Cast<UYcInventoryPersistenceExtensionProvider>(ProviderClass->GetDefaultObject()))
+		{
+			OutProviders.Add(ProviderCDO);
+		}
+	}
+}
+
+bool UYcMetaInventorySubsystem::BuildInventoryRecords(UYcInventoryManagerComponent* Inventory, TArray<FYcMetaInventoryItemRecord>& OutItems, TArray<FYcMetaInventoryExtensionPayload>& OutExtensions) const
 {
 	if (!IsValid(Inventory))
 	{
@@ -685,7 +672,7 @@ bool UYcMetaInventorySubsystem::BuildInventoryRecords(UYcInventoryManagerCompone
 	}
 
 	OutItems.Empty();
-	OutPlacements.Empty();
+	OutExtensions.Empty();
 	const TArray<UYcInventoryItemInstance*> Items = Inventory->GetAllItemInstance();
 	for (UYcInventoryItemInstance* Item : Items)
 	{
@@ -709,100 +696,55 @@ bool UYcMetaInventorySubsystem::BuildInventoryRecords(UYcInventoryManagerCompone
 		return A.ItemInstId.ToString() < B.ItemInstId.ToString();
 	});
 
-	UFunction* TileMapFn = Inventory->FindFunction(Fn_GetGridItemsTileMapByRegion);
-	const bool bUseByRegionTileMap = (TileMapFn != nullptr);
-	if (!TileMapFn)
+	return BuildInventoryExtensions(Inventory, OutExtensions);
+}
+
+bool UYcMetaInventorySubsystem::BuildInventoryExtensions(const UYcInventoryManagerComponent* Inventory, TArray<FYcMetaInventoryExtensionPayload>& OutExtensions) const
+{
+	OutExtensions.Empty();
+	if (!IsValid(Inventory))
 	{
-		TileMapFn = Inventory->FindFunction(Fn_GetGridItemsTileMap);
+		return false;
 	}
-	if (TileMapFn)
+
+	TArray<const UYcInventoryPersistenceExtensionProvider*> Providers;
+	GatherPersistenceExtensionProviders(Providers);
+	for (const UYcInventoryPersistenceExtensionProvider* Provider : Providers)
 	{
-		TMap<TObjectPtr<UYcInventoryItemInstance>, FIntPoint> TileMap;
-		if (bUseByRegionTileMap)
+		// 仅让能够处理该库存类型的 Provider 参与构建。
+		if (!Provider || !Provider->CanHandleInventory(Inventory))
 		{
-			struct FGetGridItemsTileMapByRegionParams
-			{
-				FGameplayTag RegionId;
-				int32 PocketIndex = -1;
-				TMap<TObjectPtr<UYcInventoryItemInstance>, FIntPoint> ReturnValue;
-			};
-			FGetGridItemsTileMapByRegionParams TileMapParams;
-			TileMapParams.RegionId = FGameplayTag();
-			TileMapParams.PocketIndex = -1;
-			Inventory->ProcessEvent(TileMapFn, &TileMapParams);
-			TileMap = MoveTemp(TileMapParams.ReturnValue);
-		}
-		else
-		{
-			struct FGetGridItemsTileMapParams
-			{
-				TMap<TObjectPtr<UYcInventoryItemInstance>, FIntPoint> ReturnValue;
-			};
-			FGetGridItemsTileMapParams TileMapParams;
-			Inventory->ProcessEvent(TileMapFn, &TileMapParams);
-			TileMap = MoveTemp(TileMapParams.ReturnValue);
+			continue;
 		}
 
-		TMap<TObjectPtr<UYcInventoryItemInstance>, bool> RotationMap;
-		UFunction* RotationMapFn = Inventory->FindFunction(Fn_GetGridItemRotationMap);
-		if (RotationMapFn)
+		FInstancedStruct Payload;
+		FString Reason;
+		if (!Provider->BuildInventoryExtensionPayload(Inventory, Payload, Reason))
 		{
-			struct FGetGridItemRotationMapParams
-			{
-				TMap<TObjectPtr<UYcInventoryItemInstance>, bool> ReturnValue;
-			};
-			FGetGridItemRotationMapParams RotationMapParams;
-			Inventory->ProcessEvent(RotationMapFn, &RotationMapParams);
-			RotationMap = MoveTemp(RotationMapParams.ReturnValue);
+			UE_LOG(LogYcInventory, Warning, TEXT("BuildInventoryExtensions: provider '%s' failed for inventory '%s', reason='%s'."),
+				*Provider->GetExtensionKey().ToString(),
+				*GetNameSafe(Inventory),
+				*Reason);
+			return false;
 		}
 
-		for (const TPair<TObjectPtr<UYcInventoryItemInstance>, FIntPoint>& Pair : TileMap)
-		{
-			if (!IsValid(Pair.Key))
-			{
-				continue;
-			}
-
-			FYcMetaGridPlacementRecord Placement;
-			Placement.ItemInstId = Pair.Key->GetItemInstId();
-			Placement.GridTile = Pair.Value;
-			if (const bool* FoundRotated = RotationMap.Find(Pair.Key))
-			{
-				Placement.bRotated = *FoundRotated;
-			}
-
-			if (UFunction* GetPlacementRegionFn = Inventory->FindFunction(Fn_GetItemPlacementRegion))
-			{
-				struct FGetItemPlacementRegionParams
-				{
-					UYcInventoryItemInstance* ItemInst = nullptr;
-					FGameplayTag OutRegionId;
-					int32 OutPocketIndex = -1;
-					bool ReturnValue = false;
-				};
-				FGetItemPlacementRegionParams RegionParams;
-				RegionParams.ItemInst = Pair.Key;
-				Inventory->ProcessEvent(GetPlacementRegionFn, &RegionParams);
-				if (RegionParams.ReturnValue)
-				{
-					Placement.GridRegionId = RegionParams.OutRegionId;
-					Placement.GridPocketIndex = RegionParams.OutPocketIndex;
-				}
-			}
-
-			OutPlacements.Add(Placement);
-		}
-
-		OutPlacements.Sort([](const FYcMetaGridPlacementRecord& A, const FYcMetaGridPlacementRecord& B)
-		{
-			return A.ItemInstId.ToString() < B.ItemInstId.ToString();
-		});
+		FYcMetaInventoryExtensionPayload Extension;
+		Extension.ExtensionKey = Provider->GetExtensionKey();
+		Extension.Version = Provider->GetExtensionVersion();
+		Extension.Payload = MoveTemp(Payload);
+		OutExtensions.Add(MoveTemp(Extension));
 	}
+
+	// 固定顺序，避免快照输出顺序抖动。
+	OutExtensions.Sort([](const FYcMetaInventoryExtensionPayload& A, const FYcMetaInventoryExtensionPayload& B)
+	{
+		return A.ExtensionKey.LexicalLess(B.ExtensionKey);
+	});
 
 	return true;
 }
 
-bool UYcMetaInventorySubsystem::RestoreInventoryRecords(UYcInventoryManagerComponent* Inventory, const TArray<FYcMetaInventoryItemRecord>& InItems, const TArray<FYcMetaGridPlacementRecord>& InPlacements, TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& OutItemMap)
+bool UYcMetaInventorySubsystem::RestoreInventoryRecords(UYcInventoryManagerComponent* Inventory, const TArray<FYcMetaInventoryItemRecord>& InItems, const TArray<FYcMetaInventoryExtensionPayload>& InExtensions, TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& OutItemMap)
 {
 	if (!IsValid(Inventory))
 	{
@@ -811,6 +753,7 @@ bool UYcMetaInventorySubsystem::RestoreInventoryRecords(UYcInventoryManagerCompo
 
 	OutItemMap.Empty();
 
+	// 先清空已有物品，再按快照重建实例。
 	const TArray<UYcInventoryItemInstance*> Existing = Inventory->GetAllItemInstance();
 	for (UYcInventoryItemInstance* Item : Existing)
 	{
@@ -849,188 +792,84 @@ bool UYcMetaInventorySubsystem::RestoreInventoryRecords(UYcInventoryManagerCompo
 		OutItemMap.Add(Record.ItemInstId, CreatedItem);
 	}
 
-	if (!InPlacements.IsEmpty())
-	{
-		ApplyInventoryGridPlacements(Inventory, OutItemMap, InPlacements);
-	}
-
-	return true;
+	return ApplyInventoryExtensions(Inventory, OutItemMap, InExtensions);
 }
 
-bool UYcMetaInventorySubsystem::ApplyInventoryGridPlacements(UYcInventoryManagerComponent* Inventory, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& ItemMap, const TArray<FYcMetaGridPlacementRecord>& InPlacements) const
+bool UYcMetaInventorySubsystem::ApplyInventoryExtensions(UYcInventoryManagerComponent* Inventory, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& ItemMap, const TArray<FYcMetaInventoryExtensionPayload>& InExtensions) const
 {
-	if (!IsValid(Inventory) || InPlacements.IsEmpty())
+	if (!IsValid(Inventory))
 	{
-		return IsValid(Inventory);
+		return false;
 	}
 
-	UFunction* RemoveGridFn = Inventory->FindFunction(Fn_OnRemoveGridItem);
-	UFunction* AddGridFn = Inventory->FindFunction(Fn_OnGridItemInstanceAdded);
-	if (!RemoveGridFn || !AddGridFn)
+	if (InExtensions.IsEmpty())
 	{
 		return true;
 	}
 
-	struct FRemoveGridParams
-	{
-		UYcInventoryItemInstance* ItemInst = nullptr;
-	};
+	TArray<const UYcInventoryPersistenceExtensionProvider*> Providers;
+	GatherPersistenceExtensionProviders(Providers);
 
-	for (const TPair<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& Pair : ItemMap)
+	TMap<FName, const UYcInventoryPersistenceExtensionProvider*> ProviderByKey;
+	for (const UYcInventoryPersistenceExtensionProvider* Provider : Providers)
 	{
-		if (!IsValid(Pair.Value))
+		// 建立扩展键到 Provider 的路由表。
+		if (!Provider || !Provider->CanHandleInventory(Inventory))
 		{
 			continue;
 		}
-		FRemoveGridParams RemoveParams;
-		RemoveParams.ItemInst = Pair.Value;
-		Inventory->ProcessEvent(RemoveGridFn, &RemoveParams);
+
+		ProviderByKey.Add(Provider->GetExtensionKey(), Provider);
 	}
 
-	struct FAddGridParams
+	for (const FYcMetaInventoryExtensionPayload& Extension : InExtensions)
 	{
-		UYcInventoryItemInstance* ItemInst = nullptr;
-		int32 StackCount = 0;
-		FIntPoint Tile = FIntPoint::ZeroValue;
-		bool bRotated = false;
-		FGameplayTag RegionId;
-		int32 PocketIndex = -1;
-		bool ReturnValue = false;
-	};
-
-	UFunction* FindFirstFitFn = Inventory->FindFunction(Fn_FindFirstFitPosition);
-	struct FFindFirstFitParams
-	{
-		FDataRegistryId ItemDefId;
-		FIntPoint Tile = FIntPoint::ZeroValue;
-		bool OutRotated = false;
-		bool ReturnValue = false;
-	};
-
-	for (const FYcMetaGridPlacementRecord& Placement : InPlacements)
-	{
-		const TObjectPtr<UYcInventoryItemInstance>* FoundItem = ItemMap.Find(Placement.ItemInstId);
-		if (!FoundItem || !IsValid(*FoundItem))
+		// 按扩展键把载荷分发给对应 Provider。
+		if (const UYcInventoryPersistenceExtensionProvider* const* ProviderPtr = ProviderByKey.Find(Extension.ExtensionKey))
 		{
-			continue;
+			FString Reason;
+			if (!(*ProviderPtr)->ApplyInventoryExtensionPayload(Inventory, Extension.Payload, ItemMap, Reason))
+			{
+				UE_LOG(LogYcInventory, Warning, TEXT("ApplyInventoryExtensions: provider '%s' failed for inventory '%s', reason='%s'."),
+					*Extension.ExtensionKey.ToString(),
+					*GetNameSafe(Inventory),
+					*Reason);
+				return false;
+			}
 		}
-
-		FAddGridParams AddParams;
-		AddParams.ItemInst = *FoundItem;
-		AddParams.StackCount = FMath::Max(1, Inventory->GetStackCountByItemInstance(*FoundItem));
-		AddParams.Tile = Placement.GridTile;
-		AddParams.bRotated = Placement.bRotated;
-		AddParams.RegionId = Placement.GridRegionId;
-		AddParams.PocketIndex = Placement.GridPocketIndex;
-		AddParams.ReturnValue = false;
-		Inventory->ProcessEvent(AddGridFn, &AddParams);
-
-		if (!AddParams.ReturnValue)
+		else
 		{
-			bool bFallbackPlaced = false;
-			if (UFunction* FindFirstFitPlacementFn = Inventory->FindFunction(Fn_FindFirstFitPlacement))
-			{
-				struct FFindFirstFitPlacementParams
-				{
-					FDataRegistryId ItemDefId;
-					FGameplayTag OutRegionId;
-					int32 OutPocketIndex = -1;
-					FIntPoint Tile = FIntPoint::ZeroValue;
-					bool OutRotated = false;
-					bool ReturnValue = false;
-				};
-
-				FFindFirstFitPlacementParams FitPlacementParams;
-				FitPlacementParams.ItemDefId = (*FoundItem)->GetItemRegistryId();
-				Inventory->ProcessEvent(FindFirstFitPlacementFn, &FitPlacementParams);
-				if (FitPlacementParams.ReturnValue)
-				{
-					FAddGridParams FallbackAddParams;
-					FallbackAddParams.ItemInst = *FoundItem;
-					FallbackAddParams.StackCount = FMath::Max(1, Inventory->GetStackCountByItemInstance(*FoundItem));
-					FallbackAddParams.Tile = FitPlacementParams.Tile;
-					FallbackAddParams.bRotated = FitPlacementParams.OutRotated;
-					FallbackAddParams.RegionId = FitPlacementParams.OutRegionId;
-					FallbackAddParams.PocketIndex = FitPlacementParams.OutPocketIndex;
-					FallbackAddParams.ReturnValue = false;
-					Inventory->ProcessEvent(AddGridFn, &FallbackAddParams);
-					bFallbackPlaced = FallbackAddParams.ReturnValue;
-				}
-			}
-
-			if (!bFallbackPlaced && FindFirstFitFn)
-			{
-				FFindFirstFitParams FitParams;
-				FitParams.ItemDefId = (*FoundItem)->GetItemRegistryId();
-				FitParams.Tile = FIntPoint::ZeroValue;
-				FitParams.OutRotated = false;
-				FitParams.ReturnValue = false;
-				Inventory->ProcessEvent(FindFirstFitFn, &FitParams);
-
-				if (FitParams.ReturnValue)
-				{
-					FAddGridParams FallbackAddParams;
-					FallbackAddParams.ItemInst = *FoundItem;
-					FallbackAddParams.StackCount = FMath::Max(1, Inventory->GetStackCountByItemInstance(*FoundItem));
-					FallbackAddParams.Tile = FitParams.Tile;
-					FallbackAddParams.bRotated = FitParams.OutRotated;
-					FallbackAddParams.RegionId = FGameplayTag();
-					FallbackAddParams.PocketIndex = -1;
-					FallbackAddParams.ReturnValue = false;
-					Inventory->ProcessEvent(AddGridFn, &FallbackAddParams);
-				}
-			}
+			UE_LOG(LogYcInventory, Verbose, TEXT("ApplyInventoryExtensions: missing provider for extension '%s' on inventory '%s'."),
+				*Extension.ExtensionKey.ToString(),
+				*GetNameSafe(Inventory));
 		}
 	}
 
 	return true;
 }
 
-bool UYcMetaInventorySubsystem::BuildEquipmentRecords(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, TArray<FYcMetaEquipmentSlotRecord>& OutSlots) const
+void UYcMetaInventorySubsystem::BuildEquipmentRecords(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, TArray<FYcMetaEquipmentSlotRecord>& OutSlots) const
 {
 	OutSlots.Empty();
-	UActorComponent* EquipmentComp = FindComponentAcrossOwnerChain(ContextOwner, EquipmentSlotComponentClassName);
+	UActorComponent* EquipmentComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryEquipmentBridge::StaticClass());
 	if (!EquipmentComp)
 	{
-		return false;
+		return;
 	}
 
-	UFunction* GetOccupiedSlotsFn = EquipmentComp->FindFunction(Fn_GetOccupiedSlots);
-	UFunction* GetItemInSlotFn = EquipmentComp->FindFunction(Fn_GetItemInSlot);
-	if (!GetOccupiedSlotsFn || !GetItemInSlotFn)
+	TArray<FGameplayTag> OccupiedSlots;
+	IYcMetaInventoryEquipmentBridge::Execute_GetMetaOccupiedSlots(EquipmentComp, OccupiedSlots);
+	for (const FGameplayTag& SlotTag : OccupiedSlots)
 	{
-		return false;
-	}
-
-	struct FGetOccupiedSlotsParams
-	{
-		TArray<FGameplayTag> ReturnValue;
-	};
-
-	FGetOccupiedSlotsParams OccupiedParams;
-	EquipmentComp->ProcessEvent(GetOccupiedSlotsFn, &OccupiedParams);
-
-	struct FGetItemInSlotParams
-	{
-		FGameplayTag SlotTag;
-		UYcInventoryItemInstance* ReturnValue;
-	};
-
-	for (const FGameplayTag& SlotTag : OccupiedParams.ReturnValue)
-	{
-		FGetItemInSlotParams ItemParams;
-		ItemParams.SlotTag = SlotTag;
-		ItemParams.ReturnValue = nullptr;
-		EquipmentComp->ProcessEvent(GetItemInSlotFn, &ItemParams);
-
-		if (!IsValid(ItemParams.ReturnValue))
+		UYcInventoryItemInstance* SlotItem = IYcMetaInventoryEquipmentBridge::Execute_GetMetaItemInSlot(EquipmentComp, SlotTag);
+		if (!IsValid(SlotItem))
 		{
 			continue;
 		}
 		FYcMetaEquipmentSlotRecord SlotRecord;
 		SlotRecord.SlotTag = SlotTag;
-		SlotRecord.ItemInstId = ItemParams.ReturnValue->GetItemInstId();
-		const UYcInventoryManagerComponent* ItemOwnerInventory = UYcInventoryManagerComponent::FindInventoryManagerByItem(ItemParams.ReturnValue);
+		SlotRecord.ItemInstId = SlotItem->GetItemInstId();
+		const UYcInventoryManagerComponent* ItemOwnerInventory = UYcInventoryManagerComponent::FindInventoryManagerByItem(SlotItem);
 		if (ItemOwnerInventory == StashInventory)
 		{
 			SlotRecord.SourceScope = EYcMetaItemSourceScope::StashInventory;
@@ -1045,36 +884,22 @@ bool UYcMetaInventorySubsystem::BuildEquipmentRecords(const AActor* ContextOwner
 		}
 		OutSlots.Add(SlotRecord);
 	}
-
-	return true;
 }
 
-bool UYcMetaInventorySubsystem::BuildQuickBarRecords(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, TArray<FYcMetaQuickBarSlotRecord>& OutSlots) const
+void UYcMetaInventorySubsystem::BuildQuickBarRecords(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, TArray<FYcMetaQuickBarSlotRecord>& OutSlots) const
 {
 	OutSlots.Empty();
-	UActorComponent* QuickBarComp = FindComponentAcrossOwnerChain(ContextOwner, QuickBarComponentClassName);
+	UActorComponent* QuickBarComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryQuickBarBridge::StaticClass());
 	if (!QuickBarComp)
 	{
-		return false;
+		return;
 	}
 
-	UFunction* GetSlotsFn = QuickBarComp->FindFunction(Fn_GetSlots);
-	if (!GetSlotsFn)
+	TArray<UYcInventoryItemInstance*> Slots;
+	IYcMetaInventoryQuickBarBridge::Execute_GetMetaQuickBarSlots(QuickBarComp, Slots);
+	for (int32 SlotIndex = 0; SlotIndex < Slots.Num(); ++SlotIndex)
 	{
-		return false;
-	}
-
-	struct FGetQuickBarSlotsParams
-	{
-		TArray<TObjectPtr<UYcInventoryItemInstance>> ReturnValue;
-	};
-
-	FGetQuickBarSlotsParams SlotsParams;
-	QuickBarComp->ProcessEvent(GetSlotsFn, &SlotsParams);
-
-	for (int32 SlotIndex = 0; SlotIndex < SlotsParams.ReturnValue.Num(); ++SlotIndex)
-	{
-		UYcInventoryItemInstance* SlotItem = SlotsParams.ReturnValue[SlotIndex];
+		UYcInventoryItemInstance* SlotItem = Slots[SlotIndex];
 		if (!IsValid(SlotItem))
 		{
 			continue;
@@ -1097,108 +922,53 @@ bool UYcMetaInventorySubsystem::BuildQuickBarRecords(const AActor* ContextOwner,
 		}
 		OutSlots.Add(SlotRecord);
 	}
-
-	return true;
 }
 
 void UYcMetaInventorySubsystem::ClearEquipment(const AActor* ContextOwner) const
 {
-	UActorComponent* EquipmentComp = FindComponentAcrossOwnerChain(ContextOwner, EquipmentSlotComponentClassName);
+	UActorComponent* EquipmentComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryEquipmentBridge::StaticClass());
 	if (!EquipmentComp)
 	{
 		return;
 	}
 
-	UFunction* GetOccupiedSlotsFn = EquipmentComp->FindFunction(Fn_GetOccupiedSlots);
-	UFunction* UnequipFn = EquipmentComp->FindFunction(Fn_UnequipSlot);
-	if (!GetOccupiedSlotsFn || !UnequipFn)
+	TArray<FGameplayTag> OccupiedSlots;
+	IYcMetaInventoryEquipmentBridge::Execute_GetMetaOccupiedSlots(EquipmentComp, OccupiedSlots);
+	for (const FGameplayTag& SlotTag : OccupiedSlots)
 	{
-		return;
-	}
-
-	struct FGetOccupiedSlotsParams
-	{
-		TArray<FGameplayTag> ReturnValue;
-	};
-	FGetOccupiedSlotsParams OccupiedParams;
-	EquipmentComp->ProcessEvent(GetOccupiedSlotsFn, &OccupiedParams);
-
-	struct FUnequipParams
-	{
-		FGameplayTag SlotTag;
-		UYcInventoryItemInstance* ReturnValue;
-	};
-
-	for (const FGameplayTag& SlotTag : OccupiedParams.ReturnValue)
-	{
-		FUnequipParams UnequipParams;
-		UnequipParams.SlotTag = SlotTag;
-		UnequipParams.ReturnValue = nullptr;
-		EquipmentComp->ProcessEvent(UnequipFn, &UnequipParams);
+		IYcMetaInventoryEquipmentBridge::Execute_MetaUnequipSlot(EquipmentComp, SlotTag);
 	}
 }
 
 void UYcMetaInventorySubsystem::ClearQuickBar(const AActor* ContextOwner) const
 {
-	UActorComponent* QuickBarComp = FindComponentAcrossOwnerChain(ContextOwner, QuickBarComponentClassName);
+	UActorComponent* QuickBarComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryQuickBarBridge::StaticClass());
 	if (!QuickBarComp)
 	{
 		return;
 	}
 
-	UFunction* GetSlotsFn = QuickBarComp->FindFunction(Fn_GetSlots);
-	UFunction* RemoveFn = QuickBarComp->FindFunction(Fn_RemoveItemFromSlot);
-	if (!GetSlotsFn || !RemoveFn)
+	TArray<UYcInventoryItemInstance*> Slots;
+	IYcMetaInventoryQuickBarBridge::Execute_GetMetaQuickBarSlots(QuickBarComp, Slots);
+	for (int32 SlotIndex = 0; SlotIndex < Slots.Num(); ++SlotIndex)
 	{
-		return;
-	}
-
-	struct FGetQuickBarSlotsParams
-	{
-		TArray<TObjectPtr<UYcInventoryItemInstance>> ReturnValue;
-	};
-	FGetQuickBarSlotsParams SlotsParams;
-	QuickBarComp->ProcessEvent(GetSlotsFn, &SlotsParams);
-
-	struct FRemoveParams
-	{
-		int32 SlotIndex;
-		UYcInventoryItemInstance* ReturnValue;
-	};
-
-	for (int32 SlotIndex = 0; SlotIndex < SlotsParams.ReturnValue.Num(); ++SlotIndex)
-	{
-		if (SlotsParams.ReturnValue[SlotIndex] == nullptr)
+		if (Slots[SlotIndex] == nullptr)
 		{
 			continue;
 		}
-
-		FRemoveParams RemoveParams;
-		RemoveParams.SlotIndex = SlotIndex;
-		RemoveParams.ReturnValue = nullptr;
-		QuickBarComp->ProcessEvent(RemoveFn, &RemoveParams);
+		IYcMetaInventoryQuickBarBridge::Execute_MetaRemoveQuickBarSlot(QuickBarComp, SlotIndex);
 	}
 }
 
-void UYcMetaInventorySubsystem::RestoreEquipment(const AActor* ContextOwner, const TArray<FYcMetaEquipmentSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const
+bool UYcMetaInventorySubsystem::RestoreEquipment(const AActor* ContextOwner, const TArray<FYcMetaEquipmentSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const
 {
-	UActorComponent* EquipmentComp = FindComponentAcrossOwnerChain(ContextOwner, EquipmentSlotComponentClassName);
+	UActorComponent* EquipmentComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryEquipmentBridge::StaticClass());
 	if (!EquipmentComp)
 	{
-		return;
+		return true;
 	}
 
-	UFunction* EquipFn = EquipmentComp->FindFunction(Fn_EquipItem);
-	if (!EquipFn)
-	{
-		return;
-	}
-
-	struct FEquipParams
-	{
-		UYcInventoryItemInstance* ItemInstance;
-		bool ReturnValue;
-	};
+	bool bAllSucceeded = true;
 
 	for (const FYcMetaEquipmentSlotRecord& Slot : InSlots)
 	{
@@ -1222,36 +992,32 @@ void UYcMetaInventorySubsystem::RestoreEquipment(const AActor* ContextOwner, con
 		}
 		if (!FoundItem || !IsValid(*FoundItem))
 		{
+			bAllSucceeded = false;
+			UE_LOG(LogYcInventory, Warning, TEXT("RestoreEquipment: item not found for slot '%s', sourceScope=%d, itemId=%s"),
+				*Slot.SlotTag.ToString(), static_cast<int32>(Slot.SourceScope), *Slot.ItemInstId.ToString());
 			continue;
 		}
 
-		FEquipParams EquipParams;
-		EquipParams.ItemInstance = *FoundItem;
-		EquipParams.ReturnValue = false;
-		EquipmentComp->ProcessEvent(EquipFn, &EquipParams);
+		if (!IYcMetaInventoryEquipmentBridge::Execute_MetaEquipItem(EquipmentComp, *FoundItem))
+		{
+			bAllSucceeded = false;
+			UE_LOG(LogYcInventory, Warning, TEXT("RestoreEquipment: bridge equip failed for slot '%s', itemId=%s"),
+				*Slot.SlotTag.ToString(), *Slot.ItemInstId.ToString());
+		}
 	}
+
+	return bAllSucceeded;
 }
 
-void UYcMetaInventorySubsystem::RestoreQuickBar(const AActor* ContextOwner, const TArray<FYcMetaQuickBarSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const
+bool UYcMetaInventorySubsystem::RestoreQuickBar(const AActor* ContextOwner, const TArray<FYcMetaQuickBarSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const
 {
-	UActorComponent* QuickBarComp = FindComponentAcrossOwnerChain(ContextOwner, QuickBarComponentClassName);
+	UActorComponent* QuickBarComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryQuickBarBridge::StaticClass());
 	if (!QuickBarComp)
 	{
-		return;
+		return true;
 	}
 
-	UFunction* AddFn = QuickBarComp->FindFunction(Fn_AddItemToSlot);
-	if (!AddFn)
-	{
-		return;
-	}
-
-	struct FAddParams
-	{
-		int32 SlotIndex;
-		UYcInventoryItemInstance* Item;
-		bool ReturnValue;
-	};
+	bool bAllSucceeded = true;
 
 	for (const FYcMetaQuickBarSlotRecord& Slot : InSlots)
 	{
@@ -1275,25 +1041,31 @@ void UYcMetaInventorySubsystem::RestoreQuickBar(const AActor* ContextOwner, cons
 		}
 		if (!FoundItem || !IsValid(*FoundItem))
 		{
+			bAllSucceeded = false;
+			UE_LOG(LogYcInventory, Warning, TEXT("RestoreQuickBar: item not found for slotIndex=%d, sourceScope=%d, itemId=%s"),
+				Slot.SlotIndex, static_cast<int32>(Slot.SourceScope), *Slot.ItemInstId.ToString());
 			continue;
 		}
 
-		FAddParams Params;
-		Params.SlotIndex = Slot.SlotIndex;
-		Params.Item = *FoundItem;
-		Params.ReturnValue = false;
-		QuickBarComp->ProcessEvent(AddFn, &Params);
+		if (!IYcMetaInventoryQuickBarBridge::Execute_MetaAddQuickBarSlot(QuickBarComp, Slot.SlotIndex, *FoundItem))
+		{
+			bAllSucceeded = false;
+			UE_LOG(LogYcInventory, Warning, TEXT("RestoreQuickBar: bridge add failed for slotIndex=%d, itemId=%s"),
+				Slot.SlotIndex, *Slot.ItemInstId.ToString());
+		}
 	}
+
+	return bAllSucceeded;
 }
 
-UActorComponent* UYcMetaInventorySubsystem::FindComponentAcrossOwnerChain(const AActor* Owner, const FName ClassName)
+UActorComponent* UYcMetaInventorySubsystem::FindComponentAcrossOwnerChainByInterface(const AActor* Owner, const UClass* InterfaceClass)
 {
-	if (!Owner)
+	if (!Owner || !InterfaceClass)
 	{
 		return nullptr;
 	}
 
-	auto FindByName = [ClassName](const AActor* Actor) -> UActorComponent*
+	auto FindByInterface = [InterfaceClass](const AActor* Actor) -> UActorComponent*
 	{
 		if (!Actor)
 		{
@@ -1304,7 +1076,7 @@ UActorComponent* UYcMetaInventorySubsystem::FindComponentAcrossOwnerChain(const 
 		Actor->GetComponents(Components);
 		for (UActorComponent* Component : Components)
 		{
-			if (Component && Component->GetClass() && Component->GetClass()->GetFName() == ClassName)
+			if (Component && Component->GetClass() && Component->GetClass()->ImplementsInterface(InterfaceClass))
 			{
 				return Component;
 			}
@@ -1312,18 +1084,18 @@ UActorComponent* UYcMetaInventorySubsystem::FindComponentAcrossOwnerChain(const 
 		return nullptr;
 	};
 
-	if (UActorComponent* Found = FindByName(Owner))
+	if (UActorComponent* Found = FindByInterface(Owner))
 	{
 		return Found;
 	}
 
 	if (const APawn* Pawn = Cast<APawn>(Owner))
 	{
-		if (UActorComponent* Found = FindByName(Pawn->GetController()))
+		if (UActorComponent* Found = FindByInterface(Pawn->GetController()))
 		{
 			return Found;
 		}
-		if (UActorComponent* Found = FindByName(Pawn->GetPlayerState()))
+		if (UActorComponent* Found = FindByInterface(Pawn->GetPlayerState()))
 		{
 			return Found;
 		}
@@ -1331,11 +1103,11 @@ UActorComponent* UYcMetaInventorySubsystem::FindComponentAcrossOwnerChain(const 
 
 	if (const AController* Controller = Cast<AController>(Owner))
 	{
-		if (UActorComponent* Found = FindByName(Controller->GetPawn()))
+		if (UActorComponent* Found = FindByInterface(Controller->GetPawn()))
 		{
 			return Found;
 		}
-		if (UActorComponent* Found = FindByName(Controller->PlayerState))
+		if (UActorComponent* Found = FindByInterface(Controller->PlayerState))
 		{
 			return Found;
 		}
@@ -1343,11 +1115,11 @@ UActorComponent* UYcMetaInventorySubsystem::FindComponentAcrossOwnerChain(const 
 
 	if (const APlayerState* PlayerState = Cast<APlayerState>(Owner))
 	{
-		if (UActorComponent* Found = FindByName(PlayerState->GetPawn()))
+		if (UActorComponent* Found = FindByInterface(PlayerState->GetPawn()))
 		{
 			return Found;
 		}
-		if (UActorComponent* Found = FindByName(Cast<AController>(PlayerState->GetOwner())))
+		if (UActorComponent* Found = FindByInterface(Cast<AController>(PlayerState->GetOwner())))
 		{
 			return Found;
 		}

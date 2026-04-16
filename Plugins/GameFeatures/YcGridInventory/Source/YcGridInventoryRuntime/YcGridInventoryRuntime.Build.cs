@@ -20,6 +20,7 @@ public class YcGridInventoryRuntime : ModuleRules
 				"DataRegistry",
 				"YiChenEquipment",
 				"GameplayMessageRuntime",
+				"StructUtils",
 			}
 		);
 

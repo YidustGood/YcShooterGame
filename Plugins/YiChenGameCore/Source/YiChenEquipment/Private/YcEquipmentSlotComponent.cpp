@@ -698,3 +698,28 @@ FGameplayTag UYcEquipmentSlotComponent::GetEquipmentSlotTag(UYcInventoryItemInst
 
 	return FGameplayTag();
 }
+
+void UYcEquipmentSlotComponent::GetMetaOccupiedSlots_Implementation(TArray<FGameplayTag>& OutSlots) const
+{
+	OutSlots = GetOccupiedSlots();
+}
+
+UYcInventoryItemInstance* UYcEquipmentSlotComponent::GetMetaItemInSlot_Implementation(const FGameplayTag SlotTag) const
+{
+	return GetItemInSlot(SlotTag);
+}
+
+UYcInventoryItemInstance* UYcEquipmentSlotComponent::MetaUnequipSlot_Implementation(const FGameplayTag SlotTag)
+{
+	return UnequipSlot(SlotTag);
+}
+
+bool UYcEquipmentSlotComponent::MetaEquipItem_Implementation(UYcInventoryItemInstance* ItemInstance)
+{
+	return EquipItem(ItemInstance);
+}
+
+void UYcEquipmentSlotComponent::MetaNotifySlotsUpdated_Implementation()
+{
+	OnRep_Slots();
+}

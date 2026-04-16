@@ -8,7 +8,7 @@
 namespace YcMetaInventoryVersion
 {
 	/** 快照协议当前版本（单一来源）。 */
-	inline constexpr int32 CurrentSnapshotVersion = 3;
+	inline constexpr int32 CurrentSnapshotVersion = 4;
 
 	/** 判断版本是否受支持。当前策略：仅支持当前版本。 */
 	YICHENINVENTORY_API bool IsSupportedVersion(int32 Version);

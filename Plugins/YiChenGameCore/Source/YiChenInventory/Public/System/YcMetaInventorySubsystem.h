@@ -12,10 +12,12 @@ struct FGameplayTag;
 struct FYcInventoryOperationStateMessage;
 class UYcInventorySceneContext;
 class UYcInventoryPersistenceProvider;
+class UYcInventoryPersistenceExtensionProvider;
 class UYcInventoryManagerComponent;
 class UYcInventoryItemInstance;
 class AActor;
 class UObject;
+class UClass;
 
 /**
  * Meta Inventory 子系统（GameInstance 级）。
@@ -112,34 +114,38 @@ private:
 	/** 确保持久化提供者已创建。 */
 	void EnsurePersistenceProvider();
 
-	/** 从某个库存组件构建“物品+网格放置”记录。 */
-	bool BuildInventoryRecords(UYcInventoryManagerComponent* Inventory, TArray<FYcMetaInventoryItemRecord>& OutItems, TArray<FYcMetaGridPlacementRecord>& OutPlacements) const;
-	/** 将“物品+网格放置”记录恢复到库存组件。 */
-	bool RestoreInventoryRecords(UYcInventoryManagerComponent* Inventory, const TArray<FYcMetaInventoryItemRecord>& InItems, const TArray<FYcMetaGridPlacementRecord>& InPlacements, TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& OutItemMap);
-	/** 对已恢复的物品映射应用网格放置记录。 */
-	bool ApplyInventoryGridPlacements(UYcInventoryManagerComponent* Inventory, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& ItemMap, const TArray<FYcMetaGridPlacementRecord>& InPlacements) const;
+	/** 从某个库存组件构建“物品+扩展载荷”记录。 */
+	bool BuildInventoryRecords(UYcInventoryManagerComponent* Inventory, TArray<FYcMetaInventoryItemRecord>& OutItems, TArray<FYcMetaInventoryExtensionPayload>& OutExtensions) const;
+	/** 将“物品+扩展载荷”记录恢复到库存组件。 */
+	bool RestoreInventoryRecords(UYcInventoryManagerComponent* Inventory, const TArray<FYcMetaInventoryItemRecord>& InItems, const TArray<FYcMetaInventoryExtensionPayload>& InExtensions, TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& OutItemMap);
+	/** 构建库存扩展载荷。 */
+	bool BuildInventoryExtensions(const UYcInventoryManagerComponent* Inventory, TArray<FYcMetaInventoryExtensionPayload>& OutExtensions) const;
+	/** 应用库存扩展载荷。 */
+	bool ApplyInventoryExtensions(UYcInventoryManagerComponent* Inventory, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& ItemMap, const TArray<FYcMetaInventoryExtensionPayload>& InExtensions) const;
+	/** 收集当前可用的扩展 Provider 实例。 */
+	void GatherPersistenceExtensionProviders(TArray<const UYcInventoryPersistenceExtensionProvider*>& OutProviders) const;
 
 	/** 构建玩家侧快照（背包/装备/快捷栏）。 */
-	bool BuildPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, FYcMetaPlayerSnapshot& OutPlayerSnapshot) const;
+	bool BuildPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, FYcMetaPlayerSnapshot& OutPlayerSnapshot) const;
 	/** 将玩家侧快照应用到运行时（背包/装备/快捷栏）。 */
-	bool ApplyPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, const FYcMetaPlayerSnapshot& PlayerSnapshot);
+	bool ApplyPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>* StashItemMap, const FYcMetaPlayerSnapshot& PlayerSnapshot);
 
 	/** 构建装备槽记录。 */
-	bool BuildEquipmentRecords(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, TArray<FYcMetaEquipmentSlotRecord>& OutSlots) const;
+	void BuildEquipmentRecords(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, TArray<FYcMetaEquipmentSlotRecord>& OutSlots) const;
 	/** 构建快捷栏记录。 */
-	bool BuildQuickBarRecords(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, TArray<FYcMetaQuickBarSlotRecord>& OutSlots) const;
+	void BuildQuickBarRecords(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, TArray<FYcMetaQuickBarSlotRecord>& OutSlots) const;
 
 	/** 清空当前装备槽状态。 */
 	void ClearEquipment(const AActor* ContextOwner) const;
 	/** 清空当前快捷栏状态。 */
 	void ClearQuickBar(const AActor* ContextOwner) const;
 	/** 根据快照恢复装备槽。 */
-	void RestoreEquipment(const AActor* ContextOwner, const TArray<FYcMetaEquipmentSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const;
+	bool RestoreEquipment(const AActor* ContextOwner, const TArray<FYcMetaEquipmentSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const;
 	/** 根据快照恢复快捷栏。 */
-	void RestoreQuickBar(const AActor* ContextOwner, const TArray<FYcMetaQuickBarSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const;
+	bool RestoreQuickBar(const AActor* ContextOwner, const TArray<FYcMetaQuickBarSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const;
 
-	/** 在 Owner/Controller/PlayerState 链上查找指定组件类型。 */
-	static UActorComponent* FindComponentAcrossOwnerChain(const AActor* Owner, const FName ClassName);
+	/** 在 Owner/Controller/PlayerState 链上查找实现指定接口的组件。 */
+	static UActorComponent* FindComponentAcrossOwnerChainByInterface(const AActor* Owner, const UClass* InterfaceClass);
 
 private:
 	/** 当前使用的持久化提供者。 */

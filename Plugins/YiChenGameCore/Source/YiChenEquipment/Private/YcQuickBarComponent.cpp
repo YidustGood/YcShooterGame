@@ -1181,3 +1181,28 @@ UYcQuickBarComponent* UYcQuickBarComponent::FindQuickBarComponent(const AActor* 
 	
 	return nullptr;
 }
+
+void UYcQuickBarComponent::GetMetaQuickBarSlots_Implementation(TArray<UYcInventoryItemInstance*>& OutSlots) const
+{
+	OutSlots.Empty();
+	OutSlots.Reserve(Slots.Num());
+	for (UYcInventoryItemInstance* Item : Slots)
+	{
+		OutSlots.Add(Item);
+	}
+}
+
+UYcInventoryItemInstance* UYcQuickBarComponent::MetaRemoveQuickBarSlot_Implementation(const int32 SlotIndex)
+{
+	return RemoveItemFromSlot(SlotIndex);
+}
+
+bool UYcQuickBarComponent::MetaAddQuickBarSlot_Implementation(const int32 SlotIndex, UYcInventoryItemInstance* Item)
+{
+	return AddItemToSlot(SlotIndex, Item);
+}
+
+void UYcQuickBarComponent::MetaNotifyQuickBarSlotsUpdated_Implementation()
+{
+	OnRep_Slots();
+}

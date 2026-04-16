@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Components/ControllerComponent.h"
+#include "System/YcMetaInventoryBridgeInterfaces.h"
 #include "YcQuickBarComponent.generated.h"
 
 class UYcInventoryItemInstance;
@@ -56,7 +57,7 @@ struct FYcInventoryProjectedState;
  * ============================================================================
  */
 UCLASS(ClassGroup=(YiChenGameCore), Blueprintable, meta=(BlueprintSpawnableComponent))
-class YICHENEQUIPMENT_API UYcQuickBarComponent : public UControllerComponent
+class YICHENEQUIPMENT_API UYcQuickBarComponent : public UControllerComponent, public IYcMetaInventoryQuickBarBridge
 {
 	GENERATED_BODY()
 
@@ -343,6 +344,12 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "QuickBar", meta = (DefaultToSelf = "Actor"))
 	static UYcQuickBarComponent* FindQuickBarComponent(const AActor* Actor);
+
+	// MetaInventory 桥接接口实现
+	virtual void GetMetaQuickBarSlots_Implementation(TArray<UYcInventoryItemInstance*>& OutSlots) const override;
+	virtual UYcInventoryItemInstance* MetaRemoveQuickBarSlot_Implementation(int32 SlotIndex) override;
+	virtual bool MetaAddQuickBarSlot_Implementation(int32 SlotIndex, UYcInventoryItemInstance* Item) override;
+	virtual void MetaNotifyQuickBarSlotsUpdated_Implementation() override;
 };
 
 // ============================================================================

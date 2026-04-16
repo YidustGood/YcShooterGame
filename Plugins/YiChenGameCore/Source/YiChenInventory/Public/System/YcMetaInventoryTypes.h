@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "DataRegistryId.h"
 #include "GameplayTagContainer.h"
+#include "StructUtils/InstancedStruct.h"
 #include "System/YcInventorySceneTypes.h"
 #include "YcItemInstanceId.h"
 #include "YcMetaInventoryTypes.generated.h"
@@ -89,31 +90,23 @@ struct YICHENINVENTORY_API FYcMetaInventoryItemRecord
 	TArray<FYcMetaItemExtensionPayload> ExtensionPayloads;
 };
 
-/** 网格放置记录（位置+朝向）。 */
+/** 库存级扩展载荷（由功能插件扩展库存快照）。 */
 USTRUCT(BlueprintType)
-struct YICHENINVENTORY_API FYcMetaGridPlacementRecord
+struct YICHENINVENTORY_API FYcMetaInventoryExtensionPayload
 {
 	GENERATED_BODY()
 
-	/** 对应物品实例ID。 */
+	/** 扩展键（模块唯一）。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	FYcItemInstanceId ItemInstId;
+	FName ExtensionKey = NAME_None;
 
-	/** 左上角格子坐标。 */
+	/** 扩展数据版本号。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	FIntPoint GridTile = FIntPoint::ZeroValue;
+	int32 Version = 1;
 
-	/** 是否旋转放置。 */
+	/** 扩展结构化载荷。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	bool bRotated = false;
-
-	/** 所在网格区域（多区域库存）。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	FGameplayTag GridRegionId;
-
-	/** 所在分区索引（同一区域下的Pocket索引）。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	int32 GridPocketIndex = -1;
+	FInstancedStruct Payload;
 };
 
 UENUM(BlueprintType)
@@ -175,9 +168,9 @@ struct YICHENINVENTORY_API FYcMetaPlayerSnapshot
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	TArray<FYcMetaInventoryItemRecord> InventoryItems;
 
-	/** 玩家库存网格放置记录。 */
+	/** 玩家库存扩展载荷。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	TArray<FYcMetaGridPlacementRecord> InventoryGridPlacements;
+	TArray<FYcMetaInventoryExtensionPayload> InventoryExtensions;
 
 	/** 玩家装备槽位记录。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
@@ -198,9 +191,9 @@ struct YICHENINVENTORY_API FYcMetaStashSnapshot
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	TArray<FYcMetaInventoryItemRecord> InventoryItems;
 
-	/** 仓库网格放置记录。 */
+	/** 仓库库存扩展载荷。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	TArray<FYcMetaGridPlacementRecord> InventoryGridPlacements;
+	TArray<FYcMetaInventoryExtensionPayload> InventoryExtensions;
 };
 
 /** 账号级库存根快照。 */

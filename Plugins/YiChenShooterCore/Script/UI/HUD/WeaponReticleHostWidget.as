@@ -45,10 +45,10 @@ class UWeaponReticleHostWidget : UCommonUserWidget
 	private void OnQuickBarActiveIndexChanged(FGameplayTag ActualTag, FYcQuickBarActiveIndexChangedMessage Data)
 	{
 		// 只关注自己的切换消息
-		if (Data.Owner != GetOwningPlayerPawn())
+		if (Data.Owner != GetOwningPlayer())
 			return;
 
-		auto QuickBar = UYcQuickBarComponent::FindQuickBarComponent(GetOwningPlayerPawn());
+		auto QuickBar = UYcQuickBarComponent::FindQuickBarComponent(GetOwningPlayer());
 		if (QuickBar == nullptr)
 			return;
 

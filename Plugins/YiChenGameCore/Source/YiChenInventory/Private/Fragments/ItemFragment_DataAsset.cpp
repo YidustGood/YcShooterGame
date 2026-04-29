@@ -110,18 +110,21 @@ void FItemFragment_DataAsset::LoadAllDataAssetAsync(UObject* InRelatedObject) co
 		{
 			const FGameplayTag AssetTag = Pair.Key;
 			const FPrimaryAssetId AssetId = Entry.DataAssetId;
+			const TWeakObjectPtr<UObject> WeakRelatedObject(InRelatedObject);
 			
 			FStreamableDelegate OnLoadCompleted;
-			OnLoadCompleted.BindLambda([InRelatedObject, AssetTag, AssetId]()
+			OnLoadCompleted.BindLambda([WeakRelatedObject, AssetTag, AssetId]()
 			{
+				UObject* RelatedObject = WeakRelatedObject.Get();
+
 				// 安全检查：确保相关对象和世界仍然有效（PIE 快速退出时可能已销毁）
-				if (!IsValid(InRelatedObject))
+				if (!IsValid(RelatedObject))
 				{
 					UE_LOG(LogYcInventory, Warning, TEXT("FItemFragment_DataAsset: InRelatedObject is invalid, skipping message broadcast for %s"), *AssetTag.ToString());
 					return;
 				}
 				
-				UWorld* World = InRelatedObject->GetWorld();
+				UWorld* World = RelatedObject->GetWorld();
 				if (!World || !World->IsGameWorld())
 				{
 					UE_LOG(LogYcInventory, Warning, TEXT("FItemFragment_DataAsset: World is invalid or not a game world, skipping message broadcast for %s"), *AssetTag.ToString());
@@ -129,12 +132,12 @@ void FItemFragment_DataAsset::LoadAllDataAssetAsync(UObject* InRelatedObject) co
 				}
 				
 				// 加载完成后广播全局消息
-				UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(InRelatedObject);
+				UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(World);
 				
 				FYcDataAssetLifecycleMessage Message;
 				Message.LoadedDataAsset = Cast<UPrimaryDataAsset>(UAssetManager::Get().GetPrimaryAssetObject(AssetId));
 				Message.AssetTag = AssetTag;
-				Message.RelatedObject = InRelatedObject;
+				Message.RelatedObject = RelatedObject;
 				Message.bIsLoaded = true;
 				
 				MessageSubsystem.BroadcastMessage(AssetTag, Message);

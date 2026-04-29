@@ -138,6 +138,98 @@ void UGridInventoryManagerComponent::InitializeInventory()
 	SyncPrimaryRegionToLegacySlots();
 }
 
+void UGridInventoryManagerComponent::OnRep_InventorySlots()
+{
+	HandleReplicatedGridStateChanged();
+}
+
+void UGridInventoryManagerComponent::OnRep_InventoryGridRevision()
+{
+	HandleReplicatedGridStateChanged();
+}
+
+void UGridInventoryManagerComponent::OnRep_RegionStates()
+{
+	HandleReplicatedGridStateChanged();
+}
+
+void UGridInventoryManagerComponent::HandleReplicatedGridStateChanged()
+{
+	AActor* OwnerActor = GetOwner();
+	if (!OwnerActor || OwnerActor->HasAuthority())
+	{
+		return;
+	}
+
+	RebuildPrimaryPlacementCacheFromLegacySlots();
+	if (LastObservedClientGridRevision != InventoryGridRevision)
+	{
+		LastObservedClientGridRevision = InventoryGridRevision;
+		OnInventoryGridChanged.Broadcast();
+	}
+}
+
+void UGridInventoryManagerComponent::RebuildPrimaryPlacementCacheFromLegacySlots()
+{
+	const FGameplayTag PrimaryRegionId = GetPrimaryRegionId();
+	const int32 PrimaryPocketIndex = GetPrimaryPocketIndex(PrimaryRegionId);
+	if (!PrimaryRegionId.IsValid() || InventorySlots.Num() <= 0)
+	{
+		return;
+	}
+
+	for (auto It = ItemInstanceToTileMap.CreateIterator(); It; ++It)
+	{
+		if (It.Value().RegionId == PrimaryRegionId && It.Value().PocketIndex == PrimaryPocketIndex)
+		{
+			It.RemoveCurrent();
+		}
+	}
+
+	struct FPrimarySlotRebuildInfo
+	{
+		FIntPoint TopLeft = FIntPoint::ZeroValue;
+		FIntPoint MaxRelative = FIntPoint::ZeroValue;
+		bool bHasTopLeft = false;
+	};
+
+	TMap<TObjectPtr<UYcInventoryItemInstance>, FPrimarySlotRebuildInfo> RebuildMap;
+	for (int32 Index = 0; Index < InventorySlots.Num(); ++Index)
+	{
+		const FGridInventorySlot& Slot = InventorySlots[Index];
+		if (!Slot.bOccupied || !IsValid(Slot.ItemInstance))
+		{
+			continue;
+		}
+
+		FPrimarySlotRebuildInfo& Info = RebuildMap.FindOrAdd(Slot.ItemInstance);
+		Info.MaxRelative.X = FMath::Max(Info.MaxRelative.X, Slot.ItemRelativeX);
+		Info.MaxRelative.Y = FMath::Max(Info.MaxRelative.Y, Slot.ItemRelativeY);
+		if (Slot.ItemRelativeX == 0 && Slot.ItemRelativeY == 0)
+		{
+			Info.TopLeft = IndexToTile(Index);
+			Info.bHasTopLeft = true;
+		}
+	}
+
+	for (const TPair<TObjectPtr<UYcInventoryItemInstance>, FPrimarySlotRebuildInfo>& Pair : RebuildMap)
+	{
+		if (!Pair.Value.bHasTopLeft || !IsValid(Pair.Key))
+		{
+			continue;
+		}
+
+		FItemGridInfo ItemInfo;
+		ItemInfo.TilePos = Pair.Value.TopLeft;
+		ItemInfo.ItemSize = FIntPoint(
+			FMath::Max(1, Pair.Value.MaxRelative.X + 1),
+			FMath::Max(1, Pair.Value.MaxRelative.Y + 1));
+		ItemInfo.RegionId = PrimaryRegionId;
+		ItemInfo.PocketIndex = PrimaryPocketIndex;
+		ItemInstanceToTileMap.Add(Pair.Key, ItemInfo);
+	}
+}
+
 void UGridInventoryManagerComponent::OnEquipmentSlotChanged(const FGameplayTag ActualTag, const FYcEquipmentSlotChangedMessage& Data)
 {
 	if (!IsOwnerActorMatched(Data.Owner, GetOwner()))
@@ -371,6 +463,11 @@ bool UGridInventoryManagerComponent::TryGetItemPlacementInfo(UYcInventoryItemIns
 
 bool UGridInventoryManagerComponent::TryGetItemPlacementInfoWithRegion(UYcInventoryItemInstance* ItemInst, FGameplayTag& OutRegionId, int32& OutPocketIndex, FIntPoint& OutTile, bool& bOutRotated) const
 {
+	if ((!GetOwner() || !GetOwner()->HasAuthority()) && ItemInstanceToTileMap.Num() == 0 && InventorySlots.Num() > 0)
+	{
+		const_cast<UGridInventoryManagerComponent*>(this)->RebuildPrimaryPlacementCacheFromLegacySlots();
+	}
+
 	OutRegionId = FGameplayTag();
 	OutPocketIndex = -1;
 	const FItemGridInfo* ItemGridInfo = ItemInstanceToTileMap.Find(ItemInst);
@@ -1273,6 +1370,11 @@ void UGridInventoryManagerComponent::InnerSwapItemPosition(UYcInventoryItemInsta
 
 bool UGridInventoryManagerComponent::GetItemLeftTopPosition(const FYcItemInstanceId ItemID, FIntPoint& OutPoint)
 {
+	if ((!GetOwner() || !GetOwner()->HasAuthority()) && ItemInstanceToTileMap.Num() == 0 && InventorySlots.Num() > 0)
+	{
+		RebuildPrimaryPlacementCacheFromLegacySlots();
+	}
+
 	for (const TPair<TObjectPtr<UYcInventoryItemInstance>, FItemGridInfo>& Entry : ItemInstanceToTileMap)
 	{
 		if (Entry.Key && Entry.Key->GetItemInstId() == ItemID)
@@ -1287,6 +1389,11 @@ bool UGridInventoryManagerComponent::GetItemLeftTopPosition(const FYcItemInstanc
 
 TMap<UYcInventoryItemInstance*, FIntPoint> UGridInventoryManagerComponent::GetGridItemsTileMap()
 {
+	if ((!GetOwner() || !GetOwner()->HasAuthority()) && ItemInstanceToTileMap.Num() == 0 && InventorySlots.Num() > 0)
+	{
+		RebuildPrimaryPlacementCacheFromLegacySlots();
+	}
+
 	TMap<UYcInventoryItemInstance*, FIntPoint> Items;
 	const FGameplayTag PrimaryRegionId = GetPrimaryRegionId();
 	const int32 PrimaryPocketIndex = GetPrimaryPocketIndex(PrimaryRegionId);
@@ -1303,6 +1410,17 @@ TMap<UYcInventoryItemInstance*, FIntPoint> UGridInventoryManagerComponent::GetGr
 
 TMap<UYcInventoryItemInstance*, FIntPoint> UGridInventoryManagerComponent::GetGridItemsTileMapByRegion(const FGameplayTag RegionId, const int32 PocketIndex)
 {
+	if ((!GetOwner() || !GetOwner()->HasAuthority()) && ItemInstanceToTileMap.Num() == 0 && InventorySlots.Num() > 0)
+	{
+		const FGameplayTag PrimaryRegionId = GetPrimaryRegionId();
+		const int32 PrimaryPocketIndex = GetPrimaryPocketIndex(PrimaryRegionId);
+		const bool bHitsPrimaryRegion = (!RegionId.IsValid() || RegionId == PrimaryRegionId) && (PocketIndex < 0 || PocketIndex == PrimaryPocketIndex);
+		if (bHitsPrimaryRegion)
+		{
+			RebuildPrimaryPlacementCacheFromLegacySlots();
+		}
+	}
+
 	TMap<UYcInventoryItemInstance*, FIntPoint> Items;
 	for (const TPair<TObjectPtr<UYcInventoryItemInstance>, FItemGridInfo>& It : ItemInstanceToTileMap)
 	{
@@ -1318,6 +1436,11 @@ TMap<UYcInventoryItemInstance*, FIntPoint> UGridInventoryManagerComponent::GetGr
 
 TMap<UYcInventoryItemInstance*, bool> UGridInventoryManagerComponent::GetGridItemRotationMap()
 {
+	if ((!GetOwner() || !GetOwner()->HasAuthority()) && ItemInstanceToTileMap.Num() == 0 && InventorySlots.Num() > 0)
+	{
+		RebuildPrimaryPlacementCacheFromLegacySlots();
+	}
+
 	TMap<UYcInventoryItemInstance*, bool> Rotations;
 	for (const TPair<TObjectPtr<UYcInventoryItemInstance>, FItemGridInfo>& It : ItemInstanceToTileMap)
 	{

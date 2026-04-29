@@ -268,15 +268,15 @@ public:
 	bool bAllowDirectContainerInteraction = false;
 
 	/** 旧接口兼容槽位视图（主区域镜像）。/ Legacy-compatible slot view mirrored from primary region. */
-	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadWrite, Category = "Inventory")
+	UPROPERTY(ReplicatedUsing = OnRep_InventorySlots, VisibleAnywhere, BlueprintReadWrite, Category = "Inventory")
 	TArray<FGridInventorySlot> InventorySlots;
 
 	/** 网格版本号（用于UI增量刷新）。/ Grid revision for UI incremental refresh. */
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Inventory")
+	UPROPERTY(ReplicatedUsing = OnRep_InventoryGridRevision, BlueprintReadOnly, Category = "Inventory")
 	int32 InventoryGridRevision = 0;
 
 	/** 启用中的区域口袋状态。/ Enabled runtime region-pocket states. */
-	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "Inventory|Regions")
+	UPROPERTY(ReplicatedUsing = OnRep_RegionStates, VisibleAnywhere, BlueprintReadOnly, Category = "Inventory|Regions")
 	TArray<FGridInventoryRegionRuntimeState> RegionStates;
 
 	/** 网格变化广播（UI订阅）。/ Grid changed event for UI observers. */
@@ -488,6 +488,17 @@ public:
 	void DebugPrintSlots();
 
 private:
+	UFUNCTION()
+	void OnRep_InventorySlots();
+	UFUNCTION()
+	void OnRep_InventoryGridRevision();
+	UFUNCTION()
+	void OnRep_RegionStates();
+	// 客户端复制更新后的统一处理（重建主区域缓存并触发UI刷新）。
+	void HandleReplicatedGridStateChanged();
+	// 从复制到客户端的主区域槽位重建本地落位缓存（供蓝图查询函数使用）。
+	void RebuildPrimaryPlacementCacheFromLegacySlots();
+
 	// 处理库存物品变更消息。
 	void OnInventoryChanged(FGameplayTag ActualTag, const FYcInventoryItemChangeMessage& Data);
 	// 处理装备槽位变更消息。
@@ -668,6 +679,8 @@ private:
 	bool bOperationHandlersRegistered = false;
 	// 最近一次重排计划缓存。
 	FRelocationPlanCache CachedRelocationPlan;
+	// 客户端已处理的网格修订号，用于避免同一修订重复广播刷新。
+	int32 LastObservedClientGridRevision = INDEX_NONE;
 };
 
 

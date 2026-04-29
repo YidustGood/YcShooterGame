@@ -32,7 +32,7 @@ AYcGameMode::AYcGameMode(const FObjectInitializer& ObjectInitializer)
 	GameStateClass = AYcGameState::StaticClass();
 	GameSessionClass = AYcGameSession::StaticClass();
 	DefaultPawnClass = AYcCharacter::StaticClass();
-	PlayerStateClass = AYcPlayerController::StaticClass();
+	PlayerStateClass = AYcPlayerState::StaticClass();
 	PlayerControllerClass = AYcPlayerController::StaticClass();
 }
 

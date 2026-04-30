@@ -30,8 +30,9 @@ void UAsyncAction_PawnExtensionReady::Activate()
 	{
 		if (PawnExt->IsExtensionReady())
 		{
-			OnReady.Broadcast();
-		}else
+			BroadcastReady();
+		}
+		else
 		{
 			PawnExt->OnExtensionReady.AddDynamic(this, &ThisClass::BroadcastReady);
 		}
@@ -44,6 +45,11 @@ void UAsyncAction_PawnExtensionReady::Activate()
 
 void UAsyncAction_PawnExtensionReady::BroadcastReady()
 {
+	if (auto PawnExt = PawnExtCompPtr.Get())
+	{
+		PawnExt->OnExtensionReady.RemoveDynamic(this, &ThisClass::BroadcastReady);
+	}
+
 	OnReady.Broadcast();
 	SetReadyToDestroy();
 }

@@ -21,6 +21,7 @@ UYcPawnExtensionComponent::UYcPawnExtensionComponent(const FObjectInitializer& O
 	SetIsReplicatedByDefault(true);
 	PawnData = nullptr;
 	AbilitySystemComponent = nullptr;
+	bExtensionReady = false;
 }
 
 void UYcPawnExtensionComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -63,6 +64,7 @@ void UYcPawnExtensionComponent::BeginPlay()
 
 void UYcPawnExtensionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	bExtensionReady = false;
 	UninitializeAbilitySystem();
 	UnregisterInitStateFeature();
 
@@ -179,6 +181,7 @@ void UYcPawnExtensionComponent::OnActorInitStateChanged(const FActorInitStateCha
 	// 当该组件状态进入GameReady后广播通知
 	if (Params.FeatureName == NAME_ActorFeatureName && Params.FeatureState == YcGameplayTags::InitState_GameplayReady)
 	{
+		bExtensionReady = true;
 		OnExtensionReady.Broadcast();
 	}
 }

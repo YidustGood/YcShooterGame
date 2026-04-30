@@ -22,6 +22,9 @@ AYcGameState::AYcGameState(const FObjectInitializer& ObjectInitializer) : Super(
 	AbilitySystemComponent = ObjectInitializer.CreateDefaultSubobject<UYcAbilitySystemComponent>(this, TEXT("AbilitySystemComponent"));
 	AbilitySystemComponent->SetIsReplicated(true);
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
+	
+	//开启后使用AddReplicatedSubObject()将对象注册就会自动复制，否则需要重写ReplicateSubobjects手动复制
+	bReplicateUsingRegisteredSubObjectList = true;
 }
 
 void AYcGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

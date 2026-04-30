@@ -72,9 +72,7 @@ void UYcGameplayAbility_Interact::UpdateInteractions(const TArray<FYcInteraction
 	if (Controller == nullptr) return;
 	
 	CurrentOptions = InteractiveOptions;
-	if (CurrentOptions.Num() == 0) return;
-	
-	
+
 	UInteractionIndicatorComponent* IndicatorComp = UInteractionIndicatorComponent::GetComponent(Controller);
 	if (!IndicatorComp)
 	{
@@ -85,6 +83,8 @@ void UYcGameplayAbility_Interact::UpdateInteractions(const TArray<FYcInteraction
 	{
 		IndicatorComp->EmptyIndicators();
 	}
+
+	if (CurrentOptions.Num() == 0) return;
 	
 	/**
 	 * 如果在运行时Option没有设置交互UI类就指定为默认的
@@ -120,12 +120,18 @@ void UYcGameplayAbility_Interact::TriggerInteraction()
 
 	if(!AbilitySystem) return;
 
-	// 获取第一个交互选项
-	const FYcInteractionOption& InteractionOption = CurrentOptions[0];
+	const FYcInteractionOption* InteractionOption = CurrentOptions.FindByPredicate([](const FYcInteractionOption& Option)
+	{
+		return Option.IsInteractable();
+	});
+	if (!InteractionOption)
+	{
+		return;
+	}
 	
 	AActor* Instigator = GetAvatarActorFromActorInfo();
 	// 获取交互选项所属的Actor对象
-	AActor* InteractableTargetActor = UYcInteractionStatics::GetActorFromInteractableTarget(InteractionOption.InteractableTarget);
+	AActor* InteractableTargetActor = UYcInteractionStatics::GetActorFromInteractableTarget(InteractionOption->InteractableTarget);
 
 	// 允许交互目标在我们传递事件数据前进行自定义，以便其注入仅自身知道的额外数据
 	// （例如物体专属的自定义参数）
@@ -137,7 +143,7 @@ void UYcGameplayAbility_Interact::TriggerInteraction()
 	// 如有需要，可让交互目标进一步修改事件数据，例如墙上的按钮希望指定要打开的门 Actor
 	// 它可以将 Payload.Target 覆盖为门 Actor，方便能力在正确目标上执行
 	// ——从而完成按钮→门的间接交互。
-	InteractionOption.InteractableTarget->CustomizeInteractionEventData(TAG_Ability_Interaction_Activate, Payload);
+	InteractionOption->InteractableTarget->CustomizeInteractionEventData(TAG_Ability_Interaction_Activate, Payload);
 
 	// 从 Payload 中取出目标 Actor，用作此次交互的 Avatar；交互源 InteractableTarget Actor 作为 Owner
 	// （区分所有者与化身角色）。
@@ -145,15 +151,15 @@ void UYcGameplayAbility_Interact::TriggerInteraction()
 
 	// 构建交互所需的 ActorInfo 结构体
 	FGameplayAbilityActorInfo ActorInfo;
-	ActorInfo.InitFromActor(InteractableTargetActor, TargetActor, InteractionOption.TargetAbilitySystem);
+	ActorInfo.InitFromActor(InteractableTargetActor, TargetActor, InteractionOption->TargetAbilitySystem);
 
 	// 使用事件标签触发目标能力
-	const bool bSuccess = InteractionOption.TargetAbilitySystem->TriggerAbilityFromGameplayEvent(
-		InteractionOption.TargetInteractionAbilityHandle,
+	const bool bSuccess = InteractionOption->TargetAbilitySystem->TriggerAbilityFromGameplayEvent(
+		InteractionOption->TargetInteractionAbilityHandle,
 		&ActorInfo,
 		TAG_Ability_Interaction_Activate,
 		&Payload,
-		*InteractionOption.TargetAbilitySystem
+		*InteractionOption->TargetAbilitySystem
 	);
 }
 

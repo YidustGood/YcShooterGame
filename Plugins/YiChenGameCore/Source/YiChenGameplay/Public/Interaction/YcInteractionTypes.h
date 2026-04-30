@@ -11,6 +11,15 @@
 class IYcInteractableTarget;
 class UUserWidget;
 
+UENUM(BlueprintType)
+enum class EYcInteractionDisabledDisplayPolicy : uint8
+{
+	/** 玩家聚焦到该物体时，不显示任何交互提示UI */
+	Hide UMETA(DisplayName = "Hide Prompt"),
+	/** 玩家聚焦到该物体时，仍显示交互提示UI，但由UI表现为禁用态 */
+	Show UMETA(DisplayName = "Show Disabled Prompt")
+};
+
 // ==================== 性能追踪宏定义 ====================
 // 用于追踪关键函数的 CPU 耗时，可通过 Unreal Insights 或日志查看
 
@@ -48,6 +57,26 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FText SubText;
 
+	/** 当前是否允许真正执行交互 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bCanInteract = true;
+
+	/** 当不可交互时，是否仍然显示交互提示 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	EYcInteractionDisabledDisplayPolicy DisabledDisplayPolicy = EYcInteractionDisabledDisplayPolicy::Hide;
+
+	/** 不可交互时用于替换主文本的内容，不填写则沿用 Text */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FText DisabledText;
+
+	/** 不可交互时用于替换副文本的内容，不填写则沿用 SubText */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FText DisabledSubText;
+
+	/** 不可交互状态标识，可用于 UI 根据状态切换样式（例如 Locked / CoolingDown / MissingKey） */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (Categories = "Interaction.State"))
+	FGameplayTag InteractionStateTag;
+
 	// 1、将交互时需要激活的能力授予角色
 
 	/** 当角色接近可交互物体时授予的能力类 */
@@ -77,6 +106,31 @@ public:
 	FGameplayAbilitySpecHandle TargetInteractionAbilityHandle;
 
 public:
+	/** 当前是否允许真正执行交互。 */
+	FORCEINLINE bool IsInteractable() const
+	{
+		return bCanInteract;
+	}
+
+	/** 当前配置下，聚焦时是否应该显示交互提示。 */
+	FORCEINLINE bool ShouldShowPrompt() const
+	{
+		return bCanInteract || DisabledDisplayPolicy == EYcInteractionDisabledDisplayPolicy::Show;
+	}
+
+	/** 获取当前应显示给玩家的主文本，不可交互时优先返回 DisabledText。 */
+	FORCEINLINE FText GetDisplayText() const
+	{
+		return !bCanInteract && !DisabledText.IsEmpty() ? DisabledText : Text;
+	}
+
+	/** 获取当前应显示给玩家的副文本，不可交互时优先返回 DisabledSubText。 */
+	FORCEINLINE FText GetDisplaySubText() const
+	{
+		return !bCanInteract && !DisabledSubText.IsEmpty() ? DisabledSubText : SubText;
+	}
+
+public:
 	// 重载==运算符，将内部所有对象进行一一对比
 	FORCEINLINE bool operator==(const FYcInteractionOption& Other) const
 	{
@@ -85,8 +139,14 @@ public:
 			TargetAbilitySystem == Other.TargetAbilitySystem &&
 			TargetInteractionAbilityHandle == Other.TargetInteractionAbilityHandle &&
 			InteractionWidgetClass == Other.InteractionWidgetClass &&
+			WidgetExtensionPointTag == Other.WidgetExtensionPointTag &&
+			bCanInteract == Other.bCanInteract &&
+			DisabledDisplayPolicy == Other.DisabledDisplayPolicy &&
+			InteractionStateTag == Other.InteractionStateTag &&
 			Text.IdenticalTo(Other.Text) &&
-			SubText.IdenticalTo(Other.SubText);
+			SubText.IdenticalTo(Other.SubText) &&
+			DisabledText.IdenticalTo(Other.DisabledText) &&
+			DisabledSubText.IdenticalTo(Other.DisabledSubText);
 	}
 
 	FORCEINLINE bool operator!=(const FYcInteractionOption& Other) const

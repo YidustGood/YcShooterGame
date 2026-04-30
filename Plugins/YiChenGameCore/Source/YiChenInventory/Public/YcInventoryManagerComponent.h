@@ -291,6 +291,7 @@ public:
 	 * @param NumToConsume 要消费的数量
 	 * @return 是否成功消费指定数量
 	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = Inventory)
 	bool ConsumeItemsByDefinition(const FYcInventoryItemDefinition& ItemDef, int32 NumToConsume);
 	
 	//~=============================================================================

@@ -32,7 +32,7 @@
 // Gameplay Tags
 // ============================================================================
 
-UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_EquipmentSlot_Message_SlotChanged, "Yc.EquipmentSlot.Message.SlotChanged");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Yc_EquipmentSlot_Message_SlotChanged, "Yc.EquipmentSlot.Message.SlotChanged");
 
 namespace
 {

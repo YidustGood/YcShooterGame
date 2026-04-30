@@ -15,8 +15,8 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcInventoryOperationRouterComponent)
 
-UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_Inventory_Message_Operation_StateChanged, "Yc.Inventory.Message.Operation.StateChanged");
-UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_Inventory_Message_ProjectedState_Changed, "Yc.Inventory.Message.ProjectedStateChanged");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Yc_Inventory_Message_Operation_StateChanged, "Yc.Inventory.Message.Operation.StateChanged");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Yc_Inventory_Message_ProjectedState_Changed, "Yc.Inventory.Message.ProjectedStateChanged");
 
 namespace
 {

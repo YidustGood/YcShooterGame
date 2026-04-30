@@ -3,8 +3,8 @@
 #include "YcInventoryItemInstance.h"
 
 #include "DataRegistrySubsystem.h"
-#include "Net/UnrealNetwork.h"
 #include "GameplayTagContainer.h"
+#include "Net/UnrealNetwork.h"
 #include "YcInventoryManagerComponent.h"
 #include "YiChenInventory.h"
 
@@ -108,11 +108,21 @@ TInstancedStruct<FYcInventoryItemFragment> UYcInventoryItemInstance::FindItemFra
 
 void UYcInventoryItemInstance::AddStatTagStack(const FGameplayTag Tag, const int32 StackCount)
 {
+	if (StackCount <= 0)
+	{
+		return;
+	}
+
 	TagsStack.AddStack(Tag, StackCount);
 }
 
 void UYcInventoryItemInstance::RemoveStatTagStack(const FGameplayTag Tag, const int32 StackCount)
 {
+	if (StackCount <= 0)
+	{
+		return;
+	}
+
 	TagsStack.RemoveStack(Tag, StackCount);
 }
 
@@ -131,11 +141,21 @@ bool UYcInventoryItemInstance::HasStatTag(const FGameplayTag Tag) const
 
 void UYcInventoryItemInstance::AddFloatTagStack(const FGameplayTag Tag, const float Value)
 {
+	if (Value <= 0.0f)
+	{
+		return;
+	}
+
 	FloatTagsStack.AddStack(Tag, Value);
 }
 
 void UYcInventoryItemInstance::RemoveFloatTagStack(const FGameplayTag Tag, const float Value)
 {
+	if (Value <= 0.0f)
+	{
+		return;
+	}
+
 	FloatTagsStack.RemoveStack(Tag, Value);
 }
 

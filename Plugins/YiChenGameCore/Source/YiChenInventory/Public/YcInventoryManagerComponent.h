@@ -4,6 +4,7 @@
 
 #include "DataRegistryId.h"
 #include "GameplayTagContainer.h"
+#include "NativeGameplayTags.h"
 #include "StructUtils/InstancedStruct.h"
 #include "Components/ActorComponent.h"
 #include "Net/Serialization/FastArraySerializer.h"
@@ -15,6 +16,8 @@ struct FYcInventoryItemDefinition;
 class UYcInventoryItemInstance;
 struct FYcInventoryItemList;
 class AActor;
+
+YICHENINVENTORY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Yc_Inventory_Message_StackChanged);
 
 /**
  * 库存重排请求参数。

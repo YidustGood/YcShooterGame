@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Components/ActorComponent.h"
+#include "NativeGameplayTags.h"
 #include "YcInventoryOperationTypes.h"
 #include "YcInventoryOperationRouterComponent.generated.h"
 
@@ -10,6 +11,9 @@ class UYcInventoryManagerComponent;
 class UYcInventoryItemInstance;
 class AActor;
 class UObject;
+
+YICHENINVENTORY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Yc_Inventory_Message_Operation_StateChanged);
+YICHENINVENTORY_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Yc_Inventory_Message_ProjectedState_Changed);
 
 /**
  * 预测态变化消息（用于 UI 订阅）。

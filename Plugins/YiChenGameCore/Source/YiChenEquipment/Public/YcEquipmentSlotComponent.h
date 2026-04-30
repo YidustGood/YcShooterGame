@@ -3,6 +3,7 @@
 #pragma once
 
 #include "GameplayTagContainer.h"
+#include "NativeGameplayTags.h"
 #include "Components/PawnComponent.h"
 #include "System/YcMetaInventoryBridgeInterfaces.h"
 #include "YcEquipmentSlotComponent.generated.h"
@@ -13,6 +14,8 @@ class UYcEquipmentManagerComponent;
 struct FYcInventoryOperation;
 struct FYcInventoryOperationDelta;
 struct FYcInventoryProjectedState;
+
+YICHENEQUIPMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Yc_EquipmentSlot_Message_SlotChanged);
 
 /**
  * 装备槽位数据。

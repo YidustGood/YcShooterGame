@@ -25,8 +25,6 @@ namespace
 	static const FName OpTypePrefix_Container(TEXT("Container."));
 	static const FName OpTypePrefix_Search(TEXT("Search."));
 
-	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_Inventory_Message_StackChanged, "Yc.Inventory.Message.StackChanged");
-	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_EquipmentSlot_Message_SlotChanged, "Yc.EquipmentSlot.Message.SlotChanged");
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Inventory_Region_Main, "Inventory.Region.Main");
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_Inventory_Message_Grid_ContextAction_Request, "Yc.Inventory.Message.Grid.ContextAction.Request");
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_Inventory_ContextAction_Executor_Message, "Yc.Inventory.ContextAction.Executor.Message");

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Components/ControllerComponent.h"
+#include "NativeGameplayTags.h"
 #include "System/YcMetaInventoryBridgeInterfaces.h"
 #include "YcQuickBarComponent.generated.h"
 
@@ -12,6 +13,9 @@ class UYcEquipmentManagerComponent;
 struct FYcInventoryOperation;
 struct FYcInventoryOperationDelta;
 struct FYcInventoryProjectedState;
+
+YICHENEQUIPMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Yc_QuickBar_Message_SlotsChanged);
+YICHENEQUIPMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Yc_QuickBar_Message_ActiveIndexChanged);
 
 /**
  * ============================================================================

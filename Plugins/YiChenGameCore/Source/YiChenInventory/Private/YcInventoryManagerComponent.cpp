@@ -12,7 +12,7 @@
 #include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
 
-UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Yc_Inventory_Message_StackChanged, "Yc.Inventory.Message.StackChanged");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Yc_Inventory_Message_StackChanged, "Yc.Inventory.Message.StackChanged");
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcInventoryManagerComponent)
 

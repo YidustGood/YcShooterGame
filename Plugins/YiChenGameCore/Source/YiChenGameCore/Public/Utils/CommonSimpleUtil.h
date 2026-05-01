@@ -2,6 +2,14 @@
 
 #pragma once
 
+namespace YcTimeUtils
+{
+	FORCEINLINE int64 GetUtcNowUnixTimestampSeconds()
+	{
+		return FDateTime::UtcNow().ToUnixTimestamp();
+	}
+}
+
 // 获取是服务器还是服务端
 YICHENGAMECORE_API FString GetClientServerContextString(UObject* ContextObject = nullptr);
 

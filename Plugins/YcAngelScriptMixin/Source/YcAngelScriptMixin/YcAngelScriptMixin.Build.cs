@@ -25,7 +25,7 @@ public class YcAngelScriptMixin : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core", "Engine", "DataRegistry","Json","JsonUtilities","AngelscriptCode", "CommonGame","CommonUI","GameplayAbilities", "YiChenTeams","YiChenGameplay", "YiChenAbility"
+				"Core", "Engine", "DataRegistry","Json","JsonUtilities","AngelscriptCode", "CommonGame","CommonUI","GameplayAbilities", "YiChenTeams","YiChenGameplay", "YiChenAbility", "AnimGraphRuntime", "YcGridInventoryRuntime", "YiChenQuest"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

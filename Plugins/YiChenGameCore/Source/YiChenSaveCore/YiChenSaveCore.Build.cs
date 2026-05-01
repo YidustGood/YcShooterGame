@@ -21,7 +21,8 @@ public class YiChenSaveCore : ModuleRules
         PrivateDependencyModuleNames.AddRange(
             new string[]
             {
-                "Engine"
+                "Engine",
+                "YiChenGameCore"
             }
         );
     }

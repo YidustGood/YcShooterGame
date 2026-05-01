@@ -5,22 +5,15 @@
 #include "System/YcSaveBackend_LocalSaveGame.h"
 #include "System/YcSaveDomainProvider.h"
 #include "System/YcSaveDomainRegistry.h"
+#include "Utils/CommonSimpleUtil.h"
 #include "YiChenSaveCore.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcProfileSaveSubsystem)
-
 namespace
 {
     constexpr int32 CurrentSnapshotVersion = 2;
-
-    int64 GetNowUnixTime()
-    {
-        const FDateTime UtcNow = FDateTime::UtcNow();
-        const FDateTime UnixEpoch(1970, 1, 1);
-        return (UtcNow - UnixEpoch).GetTotalSeconds();
-    }
 }
 
 UYcProfileSaveSubsystem* UYcProfileSaveSubsystem::Get(const UObject* WorldContextObject)
@@ -604,7 +597,7 @@ bool UYcProfileSaveSubsystem::BuildRootFromContext(const FYcProfileSaveKey& Prof
     OutRoot.AccountId = ProfileKey.AccountId;
     OutRoot.ProfileId = ProfileKey.ProfileId;
     OutRoot.SnapshotVersion = CurrentSnapshotVersion;
-    OutRoot.LastSavedUnixTime = GetNowUnixTime();
+    OutRoot.LastSavedUnixTime = YcTimeUtils::GetUtcNowUnixTimestampSeconds();
 
     TArray<const UYcSaveDomainProvider*> Providers;
     GatherDomainProviders(Providers);

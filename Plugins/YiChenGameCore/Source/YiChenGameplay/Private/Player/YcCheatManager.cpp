@@ -5,6 +5,7 @@
 
 #include "Development/YcGameDeveloperSettings.h"
 #include "Engine/Console.h"
+#include "Health/YcHealthComponent.h"
 #include "Player/YcPlayerController.h"
 #include "System/YcGameSystemStatics.h"
 
@@ -81,6 +82,39 @@ void UYcCheatManager::CheatAll(const FString& Msg)
 	{
 		YcPC->ServerCheatAll(Msg.Left(128));
 	}
+}
+
+void UYcCheatManager::Suicide()
+{
+	AYcPlayerController* PlayerController = Cast<AYcPlayerController>(GetOuterAPlayerController());
+	if (!PlayerController)
+	{
+		CheatOutputText(TEXT("Suicide failed: no owning PlayerController."));
+		return;
+	}
+
+	if (!PlayerController->HasAuthority())
+	{
+		PlayerController->ServerCheat(TEXT("Suicide"));
+		return;
+	}
+
+	APawn* ControlledPawn = PlayerController->GetPawn();
+	if (!ControlledPawn)
+	{
+		CheatOutputText(TEXT("Suicide failed: PlayerController has no controlled Pawn."));
+		return;
+	}
+
+	UYcHealthComponent* HealthComponent = UYcHealthComponent::FindHealthComponent(ControlledPawn);
+	if (!HealthComponent)
+	{
+		CheatOutputText(FString::Printf(TEXT("Suicide failed: Pawn '%s' has no HealthComponent."), *GetNameSafe(ControlledPawn)));
+		return;
+	}
+
+	HealthComponent->DamageSelfDestruct();
+	CheatOutputText(FString::Printf(TEXT("Suicide triggered for Pawn '%s'."), *GetNameSafe(ControlledPawn)));
 }
 
 void UYcCheatManager::PlayNextGame(bool bSeamlessTravel)

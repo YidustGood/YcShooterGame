@@ -130,6 +130,6 @@ private:
 	FGameplayAttributeData Healing;
 
 	/** 接收到的伤害值，映射为-Health。使用Health - Damage后重置归零，在GE中对这个值进行增加 */
-	UPROPERTY(BlueprintReadOnly, Category="YcGameCore|Health", Meta=(HideFromModifiers, AllowPrivateAccess=true))
+	UPROPERTY(BlueprintReadOnly, Category="YcGameCore|Health", Meta=(AllowPrivateAccess=true))
 	FGameplayAttributeData Damage;
 };

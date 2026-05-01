@@ -47,6 +47,13 @@ public:
 	void CheatAll(const FString& Msg);
 
 	/**
+	 * 让当前控制的 Pawn 走一遍标准自毁死亡流程，便于测试死亡相关功能。
+	 * 优先复用 HealthComponent 的 DamageSelfDestruct，确保与正常死亡链保持一致。
+	 */
+	UFUNCTION(Exec)
+	void Suicide();
+
+	/**
 	 * 启动下一局游戏（重新加载当前关卡）
 	 * 内部通过 UYcGameSystemStatics::PlayNextGame 实现，可选择是否使用无缝旅行
 	 * @param bSeamlessTravel 是否尝试使用无缝旅行

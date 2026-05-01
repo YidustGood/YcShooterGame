@@ -1,6 +1,6 @@
-/**
- * 可拾取Acotr
- * 通过配置YcPickupableComp的StaticInventory来指定拾取这个Acotr后要给玩家Inventory添加的Items
+﻿/**
+ * 可拾取Actor
+ * 通过配置 YcPickupableComp.StaticInventory 指定拾取后添加到玩家背包中的物品。
  */
 class AYcPickupActor : AActor
 {
@@ -8,17 +8,25 @@ class AYcPickupActor : AActor
 	UPROPERTY(DefaultComponent)
 	UYcInteractableComponent YcInteractableComp;
 
-	/** 配置可供拾取的Item数据 */
+	/** 配置可被拾取的物品数据 */
 	UPROPERTY(DefaultComponent)
 	UYcPickupableComponent YcPickupableComp;
+
+	/** 是否在拾取成功后自动销毁Actor（默认开启） */
+	UPROPERTY(EditAnywhere, Category = "Pickup")
+	bool bAutoDestroyOnPickedUp = true;
+
+	/** 拾取成功后自动销毁延迟秒数（默认0.1秒） */
+	UPROPERTY(EditAnywhere, Category = "Pickup", meta = (ClampMin = "0.0"))
+	float AutoDestroyLifeSpan = 0.1f;
 
 	UFUNCTION(BlueprintOverride)
 	void BeginPlay()
 	{
-		// 在所有端都请求加载Item资产
+		// 在所有端预加载对应物品资产
 		RequestLoadItemsAssetAsync();
 	}
-	// @TODO 是否还需要这个异步加载呢?
+
 	// 请求异步加载关联的Item资产
 	void RequestLoadItemsAssetAsync()
 	{
@@ -26,5 +34,26 @@ class AYcPickupActor : AActor
 		{
 			YcInventory::LoadItemDefDataAssetAsync(ItemTemp.ItemRegistryId);
 		}
+	}
+
+	/**
+	 * 拾取成功后的默认行为。
+	 * - bAutoDestroyOnPickedUp=true 时，设置生命周期并自动销毁。
+	 * - bAutoDestroyOnPickedUp=false 时，不做销毁。
+	 */
+	UFUNCTION(BlueprintCallable)
+	void HandlePickedUp(AActor Instigator)
+	{
+		if (!HasAuthority())
+		{
+			return;
+		}
+
+		if (!bAutoDestroyOnPickedUp)
+		{
+			return;
+		}
+
+		SetLifeSpan(Math::Max(0.0f, AutoDestroyLifeSpan));
 	}
 }

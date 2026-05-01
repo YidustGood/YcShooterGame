@@ -100,6 +100,12 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	UFUNCTION(BlueprintOverride)
 	void OnDeactivated()
 	{
+		APlayerController OwningController = GetOwningPlayer();
+		if (OwningController != nullptr)
+		{
+			YcPersistence::RequestFlushSave(OwningController, FGameplayTag(), true);
+		}
+
 		// 关闭界面时仅重置当前容器搜索会话进度，不清理本局已识别物品（满足同局记忆）
 		if (OwnerInventory != nullptr)
 		{

@@ -26,7 +26,11 @@ public class YiChenGameUI : ModuleRules
                 "GameplayTags",
                 "UMG",
                 "GameFeatures",
-                "YiChenGameplay"
+                "CommonInput",
+                "InputCore",
+                "YiChenGameplay",
+                "EnhancedInput",
+                "DeveloperSettings",
             }
         );
     }

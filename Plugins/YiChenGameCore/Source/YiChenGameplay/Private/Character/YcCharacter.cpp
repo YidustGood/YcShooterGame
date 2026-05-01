@@ -101,7 +101,6 @@ void AYcCharacter::OnAbilitySystemInitialized()
 	Message.ASC = ASC;
 	Message.Owner = this;
 	MessageSubsystem.BroadcastMessage(YcGameplayTags::TAG_Ability_State_AbilitySystemInitialized, Message);
-	UKismetSystemLibrary::PrintString(this, TEXT("AYcCharacter::OnAbilitySystemInitialized()"));
 }
 
 void AYcCharacter::OnAbilitySystemUninitialized()

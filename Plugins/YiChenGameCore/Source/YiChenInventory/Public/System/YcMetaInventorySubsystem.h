@@ -56,17 +56,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
 	bool SaveDirtyProfiles();
 
-	/** 查询账号是否处于脏状态。 */
+	/** 查询档位是否处于脏状态。 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
-	bool IsProfileDirty(const FString& AccountId) const;
+	bool IsProfileDirty(const FYcProfileIdentity& ProfileIdentity) const;
 
-	/** 标记账号为脏（待保存）。 */
+	/** 标记档位为脏（待保存）。 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
-	void MarkProfileDirty(const FString& AccountId);
+	void MarkProfileDirty(const FYcProfileIdentity& ProfileIdentity);
 
-	/** 清理账号脏标记。 */
+	/** 清理档位脏标记。 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
-	void ClearProfileDirty(const FString& AccountId);
+	void ClearProfileDirty(const FYcProfileIdentity& ProfileIdentity);
 
 	/** 从运行时组件构建快照。 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
@@ -76,19 +76,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
 	bool ApplySnapshotToContext(UYcInventorySceneContext* Context, const FYcMetaInventoryRootSnapshot& Snapshot);
 
-	/** 快速搭建局外上下文并加载账号存档。 */
+	/** 快速搭建局外上下文并加载存档。 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
-	bool SetupOutOfMatchContextAndLoad(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory);
-	/** 快速搭建局外上下文并加载指定档位。 */
-	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
-	bool SetupOutOfMatchContextAndLoadWithProfile(const FString& AccountId, const FString& ProfileId, AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory);
+	bool SetupOutOfMatchContextAndLoad(const FYcProfileIdentity& ProfileIdentity, const FYcPlayerInventoryRuntime& Runtime);
 
-	/** 通过账号ID保存对应的局外上下文。 */
+	/** 保存指定档位对应的局外上下文。 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
-	bool SaveOutOfMatchContext(const FString& AccountId);
-	/** 通过账号+档位保存对应局外上下文。 */
-	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
-	bool SaveOutOfMatchContextWithProfile(const FString& AccountId, const FString& ProfileId);
+	bool SaveOutOfMatchContext(const FYcProfileIdentity& ProfileIdentity, const FYcPlayerInventoryRuntime& Runtime);
 
 	/**
 	 * 从局外持久化档案读取玩家负载，并应用到局内玩家（背包/装备/快捷栏）。
@@ -96,10 +90,7 @@ public:
 	 * 不依赖 SceneContext 的 SceneType，目标是同账号根档中的 Player 分区。
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
-	bool LoadPlayerLoadoutToInMatch(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory);
-	/** 从指定档位读取玩家负载并恢复到局内。 */
-	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
-	bool LoadPlayerLoadoutToInMatchWithProfile(const FString& AccountId, const FString& ProfileId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory);
+	bool LoadPlayerLoadoutToInMatch(const FYcProfileIdentity& ProfileIdentity, const FYcPlayerInventoryRuntime& Runtime);
 
 	/**
 	 * 将局内玩家当前负载回写到局外档案（按是否成功撤离执行不同策略）。
@@ -109,18 +100,17 @@ public:
 	 * 不依赖 SceneContext 的 SceneType，目标是同账号根档中的 Player 分区。
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
-	bool CommitInMatchPlayerLoadoutToProfile(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory, bool bExtractionSucceeded = true);
-	/** 将局内玩家负载回写到指定档位。 */
-	UFUNCTION(BlueprintCallable, Category = "Inventory|Meta")
-	bool CommitInMatchPlayerLoadoutToProfileWithProfile(const FString& AccountId, const FString& ProfileId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory, bool bExtractionSucceeded = true);
+	bool CommitInMatchPlayerLoadoutToProfile(const FYcProfileIdentity& ProfileIdentity, const FYcPlayerInventoryRuntime& Runtime, bool bExtractionSucceeded = true);
+
+	bool BuildPlayerSnapshotFromRuntime(const FYcPlayerInventoryRuntime& Runtime, FYcMetaPlayerSnapshot& OutPlayerSnapshot) const;
+	bool ApplyPlayerSnapshotToRuntime(const FYcPlayerInventoryRuntime& Runtime, const FYcMetaPlayerSnapshot& PlayerSnapshot);
 
 private:
 	/** 校验局外上下文是否允许执行档案读写。 */
 	bool ValidateOutOfMatchContext(const UYcInventorySceneContext* Context, const TCHAR* Caller) const;
 
 	/** 校验局内负载接口入参。 */
-	bool ValidateInMatchLoadoutRequest(const FString& AccountId, const FString& ProfileId, const AActor* ContextOwner, const UYcInventoryManagerComponent* InMatchPlayerInventory, bool bRequireRuntimeObjects, const TCHAR* Caller) const;
-	FString ResolveProfileId(const FString& ProfileId) const;
+	bool ValidateRuntimeRequest(const FYcProfileIdentity& ProfileIdentity, const FYcPlayerInventoryRuntime& Runtime, bool bRequireOutOfMatchRuntime, const TCHAR* Caller) const;
 	class UYcProfileSaveSubsystem* GetProfileSaveSubsystem() const;
 	void RegisterContextProfileKey(UYcInventorySceneContext* Context);
 	void UnregisterContextProfileKey(UYcInventorySceneContext* Context);
@@ -139,26 +129,23 @@ private:
 	void GatherPersistenceExtensionProviders(TArray<const UYcInventoryPersistenceExtensionProvider*>& OutProviders) const;
 
 	/** 构建玩家侧快照（背包/装备/快捷栏）。 */
-	bool BuildPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, FYcMetaPlayerSnapshot& OutPlayerSnapshot) const;
+	bool BuildPlayerSnapshot(const FYcPlayerInventoryRuntime& Runtime, FYcMetaPlayerSnapshot& OutPlayerSnapshot) const;
 	/** 将玩家侧快照应用到运行时（背包/装备/快捷栏）。 */
-	bool ApplyPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>* StashItemMap, const FYcMetaPlayerSnapshot& PlayerSnapshot);
+	bool ApplyPlayerSnapshot(const FYcPlayerInventoryRuntime& Runtime, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>* StashItemMap, const FYcMetaPlayerSnapshot& PlayerSnapshot);
 
 	/** 构建装备槽记录。 */
-	void BuildEquipmentRecords(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, TArray<FYcMetaEquipmentSlotRecord>& OutSlots) const;
+	void BuildEquipmentRecords(const FYcPlayerInventoryRuntime& Runtime, TArray<FYcMetaEquipmentSlotRecord>& OutSlots) const;
 	/** 构建快捷栏记录。 */
-	void BuildQuickBarRecords(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, TArray<FYcMetaQuickBarSlotRecord>& OutSlots) const;
+	void BuildQuickBarRecords(const FYcPlayerInventoryRuntime& Runtime, TArray<FYcMetaQuickBarSlotRecord>& OutSlots) const;
 
 	/** 清空当前装备槽状态。 */
-	void ClearEquipment(const AActor* ContextOwner) const;
+	void ClearEquipment(const FYcPlayerInventoryRuntime& Runtime) const;
 	/** 清空当前快捷栏状态。 */
-	void ClearQuickBar(const AActor* ContextOwner) const;
+	void ClearQuickBar(const FYcPlayerInventoryRuntime& Runtime) const;
 	/** 根据快照恢复装备槽。 */
-	bool RestoreEquipment(const AActor* ContextOwner, const TArray<FYcMetaEquipmentSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const;
+	bool RestoreEquipment(const FYcPlayerInventoryRuntime& Runtime, const TArray<FYcMetaEquipmentSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const;
 	/** 根据快照恢复快捷栏。 */
-	bool RestoreQuickBar(const AActor* ContextOwner, const TArray<FYcMetaQuickBarSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const;
-
-	/** 在 Owner/Controller/PlayerState 链上查找实现指定接口的组件。 */
-	static UActorComponent* FindComponentAcrossOwnerChainByInterface(const AActor* Owner, const UClass* InterfaceClass);
+	bool RestoreQuickBar(const FYcPlayerInventoryRuntime& Runtime, const TArray<FYcMetaQuickBarSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const;
 
 private:
 	/** 已注册的场景上下文列表。 */
@@ -167,15 +154,11 @@ private:
 
 	/** 档位键到上下文对象的快速映射。 */
 	UPROPERTY(Transient)
-	TMap<FYcProfileKey, TObjectPtr<UYcInventorySceneContext>> ContextByProfileKey;
+	TMap<FYcProfileSaveKey, TObjectPtr<UYcInventorySceneContext>> ContextByProfileKey;
 
 	/** 脏档位集合。 */
 	UPROPERTY(Transient)
-	TSet<FYcProfileKey> DirtyProfiles;
-
-	/** 旧 API 未显式传档位时使用的默认档位。 */
-	UPROPERTY(Config)
-	FString DefaultProfileId = TEXT("Slot01");
+	TSet<FYcProfileSaveKey> DirtyProfiles;
 
 	/** 未识别扩展载荷透传缓存（Key=ItemInstId，运行时缓存，非反射字段）。 */
 	TMap<FYcItemInstanceId, TArray<FYcMetaItemExtensionPayload>> UnknownItemExtensionPayloads;

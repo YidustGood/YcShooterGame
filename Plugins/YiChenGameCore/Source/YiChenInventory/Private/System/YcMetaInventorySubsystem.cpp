@@ -30,6 +30,13 @@ namespace
 {
 	static const FName OperationStateChangedTagName(TEXT("Yc.Inventory.Message.Operation.StateChanged"));
 
+	static bool IsPlayerSnapshotEmpty(const FYcMetaPlayerSnapshot& Snapshot)
+	{
+		return Snapshot.InventoryItems.IsEmpty()
+			&& Snapshot.EquipmentSlots.IsEmpty()
+			&& Snapshot.QuickBarSlots.IsEmpty();
+	}
+
 	static bool SerializeInventorySnapshotToBytes(const FYcMetaInventoryRootSnapshot& Snapshot, TArray<uint8>& OutBytes)
 	{
 		OutBytes.Reset();
@@ -47,6 +54,20 @@ namespace
 		FObjectAndNameAsStringProxyArchive ArReader(MemReader, true);
 		FYcMetaInventoryRootSnapshot::StaticStruct()->SerializeItem(ArReader, &OutSnapshot, nullptr);
 		return !ArReader.IsError();
+	}
+
+	static bool DoesComponentImplement(const UActorComponent* Component, const UClass* InterfaceClass)
+	{
+		return IsValid(Component)
+			&& IsValid(InterfaceClass)
+			&& Component->GetClass()->ImplementsInterface(InterfaceClass);
+	}
+
+	static bool InventoryActuallyContainsItem(const UYcInventoryManagerComponent* Inventory, const UYcInventoryItemInstance* ItemInstance)
+	{
+		return IsValid(Inventory)
+			&& IsValid(ItemInstance)
+			&& Inventory->GetStackCountByItemInstance(ItemInstance) > 0;
 	}
 }
 
@@ -140,39 +161,47 @@ bool UYcMetaInventorySubsystem::ValidateOutOfMatchContext(const UYcInventoryScen
 
 	if (!Context->IsValidForOutOfMatchPersistence())
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("%s: context is not eligible for out-of-match persistence. SceneType=%d, AccountId='%s', bRequirePersistenceCommit=%d"),
-			Caller, static_cast<int32>(Context->SceneType), *Context->AccountId, Context->bRequirePersistenceCommit ? 1 : 0);
+		UE_LOG(LogYcInventory, Warning, TEXT("%s: context is not eligible for out-of-match persistence. SceneType=%d, Profile='%s'."),
+			Caller, static_cast<int32>(Context->SceneType), *Context->ProfileIdentity.ToDebugString());
 		return false;
 	}
 
 	return true;
 }
 
-bool UYcMetaInventorySubsystem::ValidateInMatchLoadoutRequest(const FString& AccountId, const FString& ProfileId, const AActor* ContextOwner, const UYcInventoryManagerComponent* InMatchPlayerInventory, const bool bRequireRuntimeObjects, const TCHAR* Caller) const
+bool UYcMetaInventorySubsystem::ValidateRuntimeRequest(const FYcProfileIdentity& ProfileIdentity, const FYcPlayerInventoryRuntime& Runtime, const bool bRequireOutOfMatchRuntime, const TCHAR* Caller) const
 {
-	if (AccountId.IsEmpty())
+	if (!ProfileIdentity.IsValid())
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("%s: invalid account id."), Caller);
-		return false;
-	}
-	if (ResolveProfileId(ProfileId).IsEmpty())
-	{
-		UE_LOG(LogYcInventory, Warning, TEXT("%s: invalid profile id."), Caller);
+		UE_LOG(LogYcInventory, Warning, TEXT("%s: invalid profile identity '%s'."), Caller, *ProfileIdentity.ToDebugString());
 		return false;
 	}
 
-	if (bRequireRuntimeObjects && (!IsValid(ContextOwner) || !IsValid(InMatchPlayerInventory)))
+	if (!Runtime.IsRuntimeValid())
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("%s: invalid runtime args."), Caller);
+		UE_LOG(LogYcInventory, Warning, TEXT("%s: runtime is incomplete."), Caller);
+		return false;
+	}
+
+	if (!DoesComponentImplement(Runtime.QuickBarBridge, UYcMetaInventoryQuickBarBridge::StaticClass()))
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("%s: quickbar bridge does not implement meta bridge."), Caller);
+		return false;
+	}
+
+	if (IsValid(Runtime.EquipmentBridge) && !DoesComponentImplement(Runtime.EquipmentBridge, UYcMetaInventoryEquipmentBridge::StaticClass()))
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("%s: equipment bridge does not implement meta bridge."), Caller);
+		return false;
+	}
+
+	if (bRequireOutOfMatchRuntime && !Runtime.SupportsOutOfMatchPersistence())
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("%s: runtime does not support out-of-match persistence."), Caller);
 		return false;
 	}
 
 	return true;
-}
-
-FString UYcMetaInventorySubsystem::ResolveProfileId(const FString& ProfileId) const
-{
-	return ProfileId.IsEmpty() ? DefaultProfileId : ProfileId;
 }
 
 UYcProfileSaveSubsystem* UYcMetaInventorySubsystem::GetProfileSaveSubsystem() const
@@ -186,28 +215,28 @@ UYcProfileSaveSubsystem* UYcMetaInventorySubsystem::GetProfileSaveSubsystem() co
 
 void UYcMetaInventorySubsystem::RegisterContextProfileKey(UYcInventorySceneContext* Context)
 {
-	if (!IsValid(Context) || Context->AccountId.IsEmpty())
+	if (!IsValid(Context) || !Context->ProfileIdentity.IsValid())
 	{
 		return;
 	}
 
-	const FYcProfileKey ProfileKey = FYcProfileKey(Context->AccountId, ResolveProfileId(Context->ProfileId));
+	const FYcProfileSaveKey ProfileKey(Context->ProfileIdentity);
 	ContextByProfileKey.Add(ProfileKey, Context);
 
 	if (UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem())
 	{
-		SaveSubsystem->RegisterProfileContext(ProfileKey, Context);
+		SaveSubsystem->RegisterProfileContext(Context->ProfileIdentity, Context);
 	}
 }
 
 void UYcMetaInventorySubsystem::UnregisterContextProfileKey(UYcInventorySceneContext* Context)
 {
-	if (!IsValid(Context) || Context->AccountId.IsEmpty())
+	if (!IsValid(Context) || !Context->ProfileIdentity.IsValid())
 	{
 		return;
 	}
 
-	const FYcProfileKey ProfileKey = FYcProfileKey(Context->AccountId, ResolveProfileId(Context->ProfileId));
+	const FYcProfileSaveKey ProfileKey(Context->ProfileIdentity);
 	if (const TObjectPtr<UYcInventorySceneContext>* Existing = ContextByProfileKey.Find(ProfileKey))
 	{
 		if (Existing->Get() == Context)
@@ -218,7 +247,7 @@ void UYcMetaInventorySubsystem::UnregisterContextProfileKey(UYcInventorySceneCon
 
 	if (UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem())
 	{
-		SaveSubsystem->UnregisterProfileContext(ProfileKey, Context);
+		SaveSubsystem->UnregisterProfileContext(Context->ProfileIdentity, Context);
 	}
 }
 
@@ -238,12 +267,12 @@ bool UYcMetaInventorySubsystem::LoadOrInitializeProfile(UYcInventorySceneContext
 		return false;
 	}
 
-	const FYcProfileKey ProfileKey = FYcProfileKey(Context->AccountId, ResolveProfileId(Context->ProfileId));
+	const FYcProfileSaveKey ProfileKey(Context->ProfileIdentity);
 	FString Reason;
-	if (SaveSubsystem->LoadProfileSync(ProfileKey, Reason))
+	if (SaveSubsystem->LoadProfileSync(Context->ProfileIdentity, Reason))
 	{
 		DirtyProfiles.Remove(ProfileKey);
-		SaveSubsystem->ClearProfileDirty(ProfileKey);
+		SaveSubsystem->ClearProfileDirty(Context->ProfileIdentity);
 		return true;
 	}
 
@@ -264,7 +293,7 @@ bool UYcMetaInventorySubsystem::LoadOrInitializeProfile(UYcInventorySceneContext
 			*Reason);
 	}
 
-	FYcMetaInventoryRootSnapshot NewSnapshot = YcMetaInventoryVersion::MakeEmptySnapshot(Context->AccountId);
+	FYcMetaInventoryRootSnapshot NewSnapshot = YcMetaInventoryVersion::MakeEmptySnapshot(Context->ProfileIdentity);
 	if (!ApplySnapshotToContext(Context, NewSnapshot))
 	{
 		return false;
@@ -289,9 +318,9 @@ bool UYcMetaInventorySubsystem::SaveProfile(UYcInventorySceneContext* Context)
 		return false;
 	}
 
-	const FYcProfileKey ProfileKey = FYcProfileKey(Context->AccountId, ResolveProfileId(Context->ProfileId));
+	const FYcProfileSaveKey ProfileKey(Context->ProfileIdentity);
 	FString Reason;
-	const bool bSaved = SaveSubsystem->SaveProfileSync(ProfileKey, Reason);
+	const bool bSaved = SaveSubsystem->SaveProfileSync(Context->ProfileIdentity, Reason);
 	if (!bSaved)
 	{
 		UE_LOG(LogYcInventory, Warning, TEXT("SaveProfile: save failed. profile='%s', reason='%s'"), *ProfileKey.ToDebugString(), *Reason);
@@ -299,7 +328,7 @@ bool UYcMetaInventorySubsystem::SaveProfile(UYcInventorySceneContext* Context)
 	}
 
 	DirtyProfiles.Remove(ProfileKey);
-	SaveSubsystem->ClearProfileDirty(ProfileKey);
+	SaveSubsystem->ClearProfileDirty(Context->ProfileIdentity);
 	return true;
 }
 
@@ -313,11 +342,19 @@ bool UYcMetaInventorySubsystem::SaveDirtyProfiles()
 	}
 
 	bool bAllSucceeded = true;
-	const TArray<FYcProfileKey> DirtyKeys = DirtyProfiles.Array();
-	for (const FYcProfileKey& ProfileKey : DirtyKeys)
+	const TArray<FYcProfileSaveKey> DirtyKeys = DirtyProfiles.Array();
+	for (const FYcProfileSaveKey& ProfileKey : DirtyKeys)
 	{
+		const TObjectPtr<UYcInventorySceneContext>* ContextPtr = ContextByProfileKey.Find(ProfileKey);
+		if (!ContextPtr || !IsValid(*ContextPtr) || !(*ContextPtr)->ProfileIdentity.IsValid())
+		{
+			bAllSucceeded = false;
+			UE_LOG(LogYcInventory, Warning, TEXT("SaveDirtyProfiles: missing valid context for profile='%s'"), *ProfileKey.ToDebugString());
+			continue;
+		}
+
 		FString Reason;
-		if (!SaveSubsystem->SaveProfileSync(ProfileKey, Reason))
+		if (!SaveSubsystem->SaveProfileSync((*ContextPtr)->ProfileIdentity, Reason))
 		{
 			bAllSucceeded = false;
 			UE_LOG(LogYcInventory, Warning, TEXT("SaveDirtyProfiles: save failed. profile='%s', reason='%s'"), *ProfileKey.ToDebugString(), *Reason);
@@ -331,19 +368,14 @@ bool UYcMetaInventorySubsystem::SaveDirtyProfiles()
 	return bAllSucceeded;
 }
 
-bool UYcMetaInventorySubsystem::SetupOutOfMatchContextAndLoad(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory)
+bool UYcMetaInventorySubsystem::SetupOutOfMatchContextAndLoad(const FYcProfileIdentity& ProfileIdentity, const FYcPlayerInventoryRuntime& Runtime)
 {
-	return SetupOutOfMatchContextAndLoadWithProfile(AccountId, FString(), ContextOwner, PlayerInventory, StashInventory);
-}
-
-bool UYcMetaInventorySubsystem::SetupOutOfMatchContextAndLoadWithProfile(const FString& AccountId, const FString& ProfileId, AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory)
-{
-	if (AccountId.IsEmpty() || !IsValid(ContextOwner) || !IsValid(PlayerInventory) || !IsValid(StashInventory))
+	if (!ValidateRuntimeRequest(ProfileIdentity, Runtime, true, TEXT("SetupOutOfMatchContextAndLoad")))
 	{
 		return false;
 	}
 
-	const FYcProfileKey ProfileKey = FYcProfileKey(AccountId, ResolveProfileId(ProfileId));
+	const FYcProfileSaveKey ProfileKey(ProfileIdentity);
 	UYcInventorySceneContext* Context = nullptr;
 	if (TObjectPtr<UYcInventorySceneContext>* Existing = ContextByProfileKey.Find(ProfileKey))
 	{
@@ -355,46 +387,33 @@ bool UYcMetaInventorySubsystem::SetupOutOfMatchContextAndLoadWithProfile(const F
 	}
 
 	Context->SceneType = EYcInventorySceneType::OutOfMatch;
-	Context->AccountId = AccountId;
-	Context->ProfileId = ProfileKey.ProfileId;
-	Context->ContextOwner = ContextOwner;
-	Context->PlayerInventoryRef = PlayerInventory;
-	Context->ContainerInventoryRef = StashInventory;
-	Context->bRequirePersistenceCommit = true;
+	Context->ProfileIdentity = ProfileIdentity;
+	Context->Runtime = Runtime;
 
 	RegisterSceneContext(Context);
 	return LoadOrInitializeProfile(Context);
 }
 
-bool UYcMetaInventorySubsystem::SaveOutOfMatchContext(const FString& AccountId)
+bool UYcMetaInventorySubsystem::SaveOutOfMatchContext(const FYcProfileIdentity& ProfileIdentity, const FYcPlayerInventoryRuntime& Runtime)
 {
-	return SaveOutOfMatchContextWithProfile(AccountId, FString());
-}
-
-bool UYcMetaInventorySubsystem::SaveOutOfMatchContextWithProfile(const FString& AccountId, const FString& ProfileId)
-{
-	if (AccountId.IsEmpty())
+	if (!ValidateRuntimeRequest(ProfileIdentity, Runtime, true, TEXT("SaveOutOfMatchContext")))
 	{
 		return false;
 	}
 
-	const FYcProfileKey ProfileKey = FYcProfileKey(AccountId, ResolveProfileId(ProfileId));
+	const FYcProfileSaveKey ProfileKey(ProfileIdentity);
 	TObjectPtr<UYcInventorySceneContext>* FoundContext = ContextByProfileKey.Find(ProfileKey);
 	if (!FoundContext || !IsValid(*FoundContext))
 	{
 		return false;
 	}
+	(*FoundContext)->Runtime = Runtime;
 	return SaveProfile(*FoundContext);
 }
 
-bool UYcMetaInventorySubsystem::LoadPlayerLoadoutToInMatch(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory)
+bool UYcMetaInventorySubsystem::LoadPlayerLoadoutToInMatch(const FYcProfileIdentity& ProfileIdentity, const FYcPlayerInventoryRuntime& Runtime)
 {
-	return LoadPlayerLoadoutToInMatchWithProfile(AccountId, FString(), ContextOwner, InMatchPlayerInventory);
-}
-
-bool UYcMetaInventorySubsystem::LoadPlayerLoadoutToInMatchWithProfile(const FString& AccountId, const FString& ProfileId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory)
-{
-	if (!ValidateInMatchLoadoutRequest(AccountId, ProfileId, ContextOwner, InMatchPlayerInventory, true, TEXT("LoadPlayerLoadoutToInMatchWithProfile")))
+	if (!ValidateRuntimeRequest(ProfileIdentity, Runtime, false, TEXT("LoadPlayerLoadoutToInMatch")))
 	{
 		return false;
 	}
@@ -402,17 +421,26 @@ bool UYcMetaInventorySubsystem::LoadPlayerLoadoutToInMatchWithProfile(const FStr
 	UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem();
 	if (!SaveSubsystem)
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatchWithProfile: UYcProfileSaveSubsystem not found."));
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatch: UYcProfileSaveSubsystem not found."));
 		return false;
 	}
 
-	const FYcProfileKey ProfileKey = FYcProfileKey(AccountId, ResolveProfileId(ProfileId));
+	const FYcProfileSaveKey ProfileKey(ProfileIdentity);
 	FYcProfileSaveRoot Root;
 	FString Reason;
-	const EYcSaveBackendResult LoadResult = SaveSubsystem->LoadProfileRootSync(ProfileKey, Root, Reason);
+	const EYcSaveBackendResult LoadResult = SaveSubsystem->LoadProfileRootSync(ProfileIdentity, Root, Reason);
+	const FString EffectiveReason = Reason.IsEmpty()
+		? FString::Printf(TEXT("backend result=%d"), static_cast<int32>(LoadResult))
+		: Reason;
+	if (LoadResult == EYcSaveBackendResult::NotFound)
+	{
+		// 首次进入局内且无局外档案时，保留运行时默认初始化负载（例如默认武器），不做覆盖清空。
+		UE_LOG(LogYcInventory, Verbose, TEXT("LoadPlayerLoadoutToInMatch: profile not found. keep runtime loadout. profile='%s'"), *ProfileKey.ToDebugString());
+		return true;
+	}
 	if (LoadResult != EYcSaveBackendResult::Success)
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatchWithProfile: load failed. profile='%s', reason='%s'"), *ProfileKey.ToDebugString(), *Reason);
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatch: load failed. profile='%s', result=%d, reason='%s'"), *ProfileKey.ToDebugString(), static_cast<int32>(LoadResult), *EffectiveReason);
 		return false;
 	}
 
@@ -422,33 +450,35 @@ bool UYcMetaInventorySubsystem::LoadPlayerLoadoutToInMatchWithProfile(const FStr
 	});
 	if (!InventoryPayload)
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatchWithProfile: inventory domain payload missing. profile='%s'"), *ProfileKey.ToDebugString());
-		return false;
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatch: inventory domain payload missing. keep runtime loadout. profile='%s'"), *ProfileKey.ToDebugString());
+		return true;
 	}
 
 	FYcMetaInventoryRootSnapshot Snapshot;
 	if (!DeserializeInventorySnapshotFromBytes(InventoryPayload->PayloadBytes, Snapshot))
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatchWithProfile: deserialize snapshot bytes failed."));
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatch: deserialize snapshot bytes failed."));
 		return false;
 	}
 	if (!YcMetaInventoryVersion::IsSupportedVersion(Snapshot.SnapshotVersion))
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatchWithProfile: unsupported snapshot version=%d"), Snapshot.SnapshotVersion);
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadPlayerLoadoutToInMatch: unsupported snapshot version=%d"), Snapshot.SnapshotVersion);
 		return false;
 	}
 
-	return ApplyPlayerSnapshot(ContextOwner, InMatchPlayerInventory, nullptr, Snapshot.Player);
+	if (IsPlayerSnapshotEmpty(Snapshot.Player))
+	{
+		// 历史空快照或撤离失败回写后的空玩家快照：局内保持默认初始化负载，避免清空默认武器。
+		UE_LOG(LogYcInventory, Verbose, TEXT("LoadPlayerLoadoutToInMatch: player snapshot is empty. keep runtime loadout. profile='%s'"), *ProfileKey.ToDebugString());
+		return true;
+	}
+
+	return ApplyPlayerSnapshot(Runtime, nullptr, Snapshot.Player);
 }
 
-bool UYcMetaInventorySubsystem::CommitInMatchPlayerLoadoutToProfile(const FString& AccountId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory, const bool bExtractionSucceeded)
+bool UYcMetaInventorySubsystem::CommitInMatchPlayerLoadoutToProfile(const FYcProfileIdentity& ProfileIdentity, const FYcPlayerInventoryRuntime& Runtime, const bool bExtractionSucceeded)
 {
-	return CommitInMatchPlayerLoadoutToProfileWithProfile(AccountId, FString(), ContextOwner, InMatchPlayerInventory, bExtractionSucceeded);
-}
-
-bool UYcMetaInventorySubsystem::CommitInMatchPlayerLoadoutToProfileWithProfile(const FString& AccountId, const FString& ProfileId, AActor* ContextOwner, UYcInventoryManagerComponent* InMatchPlayerInventory, const bool bExtractionSucceeded)
-{
-	if (!ValidateInMatchLoadoutRequest(AccountId, ProfileId, ContextOwner, InMatchPlayerInventory, bExtractionSucceeded, TEXT("CommitInMatchPlayerLoadoutToProfileWithProfile")))
+	if (!ValidateRuntimeRequest(ProfileIdentity, Runtime, false, TEXT("CommitInMatchPlayerLoadoutToProfile")))
 	{
 		return false;
 	}
@@ -456,14 +486,14 @@ bool UYcMetaInventorySubsystem::CommitInMatchPlayerLoadoutToProfileWithProfile(c
 	UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem();
 	if (!SaveSubsystem)
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("CommitInMatchPlayerLoadoutToProfileWithProfile: UYcProfileSaveSubsystem not found."));
+		UE_LOG(LogYcInventory, Warning, TEXT("CommitInMatchPlayerLoadoutToProfile: UYcProfileSaveSubsystem not found."));
 		return false;
 	}
 
-	const FYcProfileKey ProfileKey = FYcProfileKey(AccountId, ResolveProfileId(ProfileId));
+	const FYcProfileSaveKey ProfileKey(ProfileIdentity);
 	FYcProfileSaveRoot Root;
 	FString Reason;
-	const EYcSaveBackendResult LoadResult = SaveSubsystem->LoadProfileRootSync(ProfileKey, Root, Reason);
+	const EYcSaveBackendResult LoadResult = SaveSubsystem->LoadProfileRootSync(ProfileIdentity, Root, Reason);
 	if (LoadResult != EYcSaveBackendResult::Success)
 	{
 		Root = FYcProfileSaveRoot();
@@ -480,41 +510,41 @@ bool UYcMetaInventorySubsystem::CommitInMatchPlayerLoadoutToProfileWithProfile(c
 	{
 		if (!DeserializeInventorySnapshotFromBytes(InventoryPayload->PayloadBytes, Snapshot))
 		{
-			UE_LOG(LogYcInventory, Warning, TEXT("CommitInMatchPlayerLoadoutToProfileWithProfile: deserialize snapshot bytes failed, reinit profile snapshot."));
-			Snapshot = YcMetaInventoryVersion::MakeEmptySnapshot(AccountId);
+			UE_LOG(LogYcInventory, Warning, TEXT("CommitInMatchPlayerLoadoutToProfile: deserialize snapshot bytes failed, reinit profile snapshot."));
+			Snapshot = YcMetaInventoryVersion::MakeEmptySnapshot(ProfileIdentity);
 		}
 	}
 	else
 	{
-		Snapshot = YcMetaInventoryVersion::MakeEmptySnapshot(AccountId);
+		Snapshot = YcMetaInventoryVersion::MakeEmptySnapshot(ProfileIdentity);
 	}
 
 	if (!YcMetaInventoryVersion::IsSupportedVersion(Snapshot.SnapshotVersion))
 	{
-		Snapshot = YcMetaInventoryVersion::MakeEmptySnapshot(AccountId);
+		Snapshot = YcMetaInventoryVersion::MakeEmptySnapshot(ProfileIdentity);
 	}
 
 	if (!bExtractionSucceeded)
 	{
 		// 撤离失败：清空玩家侧持久化负载，仓库(Stash)保持不变。
 		Snapshot.Player = FYcMetaPlayerSnapshot();
-		YcMetaInventoryVersion::PrepareSnapshotForSave(AccountId, Snapshot);
+		YcMetaInventoryVersion::PrepareSnapshotForSave(ProfileIdentity, Snapshot);
 	}
 	else
 	{
 		FYcMetaPlayerSnapshot PlayerSnapshot;
-		if (!BuildPlayerSnapshot(ContextOwner, InMatchPlayerInventory, nullptr, PlayerSnapshot))
+		if (!BuildPlayerSnapshot(Runtime, PlayerSnapshot))
 		{
 			return false;
 		}
 		Snapshot.Player = MoveTemp(PlayerSnapshot);
-		YcMetaInventoryVersion::PrepareSnapshotForSave(AccountId, Snapshot);
+		YcMetaInventoryVersion::PrepareSnapshotForSave(ProfileIdentity, Snapshot);
 	}
 
 	TArray<uint8> SerializedSnapshot;
 	if (!SerializeInventorySnapshotToBytes(Snapshot, SerializedSnapshot))
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("CommitInMatchPlayerLoadoutToProfileWithProfile: serialize snapshot bytes failed."));
+		UE_LOG(LogYcInventory, Warning, TEXT("CommitInMatchPlayerLoadoutToProfile: serialize snapshot bytes failed."));
 		return false;
 	}
 
@@ -537,64 +567,55 @@ bool UYcMetaInventorySubsystem::CommitInMatchPlayerLoadoutToProfileWithProfile(c
 
 	Root.AccountId = ProfileKey.AccountId;
 	Root.ProfileId = ProfileKey.ProfileId;
+	Root.Environment = ProfileKey.Environment;
 	Root.SnapshotVersion = FMath::Max(Root.SnapshotVersion, 1);
 	Root.LastSavedUnixTime = FDateTime::UtcNow().ToUnixTimestamp();
 
-	if (!SaveSubsystem->SaveProfileRootSync(ProfileKey, Root, Reason))
+	if (!SaveSubsystem->SaveProfileRootSync(ProfileIdentity, Root, Reason))
 	{
-		UE_LOG(LogYcInventory, Warning, TEXT("CommitInMatchPlayerLoadoutToProfileWithProfile: save failed. profile='%s', reason='%s'"), *ProfileKey.ToDebugString(), *Reason);
+		UE_LOG(LogYcInventory, Warning, TEXT("CommitInMatchPlayerLoadoutToProfile: save failed. profile='%s', reason='%s'"), *ProfileKey.ToDebugString(), *Reason);
 		return false;
 	}
 	return true;
 }
 
-bool UYcMetaInventorySubsystem::IsProfileDirty(const FString& AccountId) const
+bool UYcMetaInventorySubsystem::BuildPlayerSnapshotFromRuntime(const FYcPlayerInventoryRuntime& Runtime, FYcMetaPlayerSnapshot& OutPlayerSnapshot) const
 {
-	for (const FYcProfileKey& ProfileKey : DirtyProfiles)
-	{
-		if (ProfileKey.AccountId == AccountId)
-		{
-			return true;
-		}
-	}
-	return false;
+	return BuildPlayerSnapshot(Runtime, OutPlayerSnapshot);
 }
 
-void UYcMetaInventorySubsystem::MarkProfileDirty(const FString& AccountId)
+bool UYcMetaInventorySubsystem::ApplyPlayerSnapshotToRuntime(const FYcPlayerInventoryRuntime& Runtime, const FYcMetaPlayerSnapshot& PlayerSnapshot)
 {
-	if (!AccountId.IsEmpty())
+	return ApplyPlayerSnapshot(Runtime, nullptr, PlayerSnapshot);
+}
+
+bool UYcMetaInventorySubsystem::IsProfileDirty(const FYcProfileIdentity& ProfileIdentity) const
+{
+	return ProfileIdentity.IsValid() && DirtyProfiles.Contains(FYcProfileSaveKey(ProfileIdentity));
+}
+
+void UYcMetaInventorySubsystem::MarkProfileDirty(const FYcProfileIdentity& ProfileIdentity)
+{
+	if (ProfileIdentity.IsValid())
 	{
-		const FYcProfileKey ProfileKey = FYcProfileKey(AccountId, ResolveProfileId(FString()));
+		const FYcProfileSaveKey ProfileKey(ProfileIdentity);
 		DirtyProfiles.Add(ProfileKey);
 		if (UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem())
 		{
-			SaveSubsystem->MarkProfileDirty(ProfileKey);
+			SaveSubsystem->MarkProfileDirty(ProfileIdentity);
 		}
 	}
 }
 
-void UYcMetaInventorySubsystem::ClearProfileDirty(const FString& AccountId)
+void UYcMetaInventorySubsystem::ClearProfileDirty(const FYcProfileIdentity& ProfileIdentity)
 {
-	if (!AccountId.IsEmpty())
+	if (ProfileIdentity.IsValid())
 	{
-		TArray<FYcProfileKey> ToClear;
-		for (const FYcProfileKey& ProfileKey : DirtyProfiles)
-		{
-			if (ProfileKey.AccountId == AccountId)
-			{
-				ToClear.Add(ProfileKey);
-			}
-		}
-		for (const FYcProfileKey& ProfileKey : ToClear)
-		{
-			DirtyProfiles.Remove(ProfileKey);
-		}
+		const FYcProfileSaveKey ProfileKey(ProfileIdentity);
+		DirtyProfiles.Remove(ProfileKey);
 		if (UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem())
 		{
-			for (const FYcProfileKey& ProfileKey : ToClear)
-			{
-				SaveSubsystem->ClearProfileDirty(ProfileKey);
-			}
+			SaveSubsystem->ClearProfileDirty(ProfileIdentity);
 		}
 	}
 }
@@ -606,13 +627,13 @@ bool UYcMetaInventorySubsystem::BuildSnapshotFromContext(UYcInventorySceneContex
 		return false;
 	}
 
-	OutSnapshot = YcMetaInventoryVersion::MakeEmptySnapshot(Context->AccountId);
+	OutSnapshot = YcMetaInventoryVersion::MakeEmptySnapshot(Context->ProfileIdentity);
 
-	if (!BuildPlayerSnapshot(Context->ContextOwner, Context->PlayerInventoryRef, Context->ContainerInventoryRef, OutSnapshot.Player))
+	if (!BuildPlayerSnapshot(Context->Runtime, OutSnapshot.Player))
 	{
 		return false;
 	}
-	if (!BuildInventoryRecords(Context->ContainerInventoryRef, OutSnapshot.Stash.InventoryItems, OutSnapshot.Stash.InventoryExtensions))
+	if (!BuildInventoryRecords(Context->Runtime.StashInventory, OutSnapshot.Stash.InventoryItems, OutSnapshot.Stash.InventoryExtensions))
 	{
 		return false;
 	}
@@ -628,12 +649,12 @@ bool UYcMetaInventorySubsystem::ApplySnapshotToContext(UYcInventorySceneContext*
 	}
 
 	TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>> StashItemMap;
-	if (!RestoreInventoryRecords(Context->ContainerInventoryRef, Snapshot.Stash.InventoryItems, Snapshot.Stash.InventoryExtensions, StashItemMap))
+	if (!RestoreInventoryRecords(Context->Runtime.StashInventory, Snapshot.Stash.InventoryItems, Snapshot.Stash.InventoryExtensions, StashItemMap))
 	{
 		return false;
 	}
 
-	if (!ApplyPlayerSnapshot(Context->ContextOwner, Context->PlayerInventoryRef, &StashItemMap, Snapshot.Player))
+	if (!ApplyPlayerSnapshot(Context->Runtime, &StashItemMap, Snapshot.Player))
 	{
 		return false;
 	}
@@ -641,8 +662,10 @@ bool UYcMetaInventorySubsystem::ApplySnapshotToContext(UYcInventorySceneContext*
 	return true;
 }
 
-bool UYcMetaInventorySubsystem::BuildPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, FYcMetaPlayerSnapshot& OutPlayerSnapshot) const
+bool UYcMetaInventorySubsystem::BuildPlayerSnapshot(const FYcPlayerInventoryRuntime& Runtime, FYcMetaPlayerSnapshot& OutPlayerSnapshot) const
 {
+	UYcInventoryManagerComponent* PlayerInventory = Runtime.PlayerInventory;
+	UYcInventoryManagerComponent* StashInventory = Runtime.StashInventory;
 	if (!IsValid(PlayerInventory))
 	{
 		return false;
@@ -654,112 +677,8 @@ bool UYcMetaInventorySubsystem::BuildPlayerSnapshot(const AActor* ContextOwner, 
 		return false;
 	}
 
-	BuildEquipmentRecords(ContextOwner, PlayerInventory, StashInventory, OutPlayerSnapshot.EquipmentSlots);
-	BuildQuickBarRecords(ContextOwner, PlayerInventory, StashInventory, OutPlayerSnapshot.QuickBarSlots);
-
-	// 兜底：装备槽/快捷栏中可能存在不在PlayerInventory中的托管物品。
-	TSet<FYcItemInstanceId> PlayerItemIds;
-	for (const FYcMetaInventoryItemRecord& Record : OutPlayerSnapshot.InventoryItems)
-	{
-		if (Record.ItemInstId.IsValid())
-		{
-			PlayerItemIds.Add(Record.ItemInstId);
-		}
-	}
-
-	auto MakeUniquePlayerItemId = [&](const FYcItemInstanceId& BaseId) -> FYcItemInstanceId
-	{
-		(void)BaseId;
-		for (int32 Suffix = 0; Suffix < 1000; ++Suffix)
-		{
-			const FYcItemInstanceId Candidate = FYcItemInstanceId::NewId();
-			if (!PlayerItemIds.Contains(Candidate))
-			{
-				return Candidate;
-			}
-		}
-		return FYcItemInstanceId();
-	};
-
-	auto TryAddDetachedPlayerOwnedItem = [&](UYcInventoryItemInstance* ItemInstance, const TFunction<void(const FYcItemInstanceId&, const FYcItemInstanceId&)>& OnRemapSlotRef)
-	{
-		if (!IsValid(ItemInstance))
-		{
-			return;
-		}
-
-		const FYcItemInstanceId RawItemInstId = ItemInstance->GetItemInstId();
-		if (!RawItemInstId.IsValid())
-		{
-			return;
-		}
-
-		UYcInventoryManagerComponent* ItemOwnerInventory = UYcInventoryManagerComponent::FindInventoryManagerByItem(ItemInstance);
-		if (ItemOwnerInventory && ItemOwnerInventory != PlayerInventory)
-		{
-			return;
-		}
-
-		FYcItemInstanceId SavedItemInstId = RawItemInstId;
-		if (PlayerItemIds.Contains(SavedItemInstId))
-		{
-			SavedItemInstId = MakeUniquePlayerItemId(RawItemInstId);
-			OnRemapSlotRef(RawItemInstId, SavedItemInstId);
-		}
-
-		FYcMetaInventoryItemRecord NewRecord;
-		NewRecord.ItemInstId = SavedItemInstId;
-		NewRecord.ItemRegistryId = ItemInstance->GetItemRegistryId();
-		NewRecord.StackCount = 1;
-		const TArray<FYcMetaItemExtensionPayload>* UnknownPayloads = UnknownItemExtensionPayloads.Find(RawItemInstId);
-		YcMetaInventoryItemRecordCodec::ExportFromItem(*ItemInstance, UnknownPayloads, NewRecord);
-		OutPlayerSnapshot.InventoryItems.Add(NewRecord);
-		PlayerItemIds.Add(SavedItemInstId);
-	};
-
-	if (UActorComponent* EquipmentComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryEquipmentBridge::StaticClass()))
-	{
-		TArray<FGameplayTag> OccupiedSlots;
-		IYcMetaInventoryEquipmentBridge::Execute_GetMetaOccupiedSlots(EquipmentComp, OccupiedSlots);
-		for (const FGameplayTag& SlotTag : OccupiedSlots)
-		{
-			UYcInventoryItemInstance* SlotItem = IYcMetaInventoryEquipmentBridge::Execute_GetMetaItemInSlot(EquipmentComp, SlotTag);
-			const FGameplayTag LocalSlotTag = SlotTag;
-			TryAddDetachedPlayerOwnedItem(SlotItem,
-				[&](const FYcItemInstanceId& OldId, const FYcItemInstanceId& NewId)
-				{
-					for (FYcMetaEquipmentSlotRecord& SlotRecord : OutPlayerSnapshot.EquipmentSlots)
-					{
-						if (SlotRecord.SlotTag == LocalSlotTag && SlotRecord.ItemInstId == OldId)
-						{
-							SlotRecord.ItemInstId = NewId;
-						}
-					}
-				});
-		}
-	}
-
-	if (UActorComponent* QuickBarComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryQuickBarBridge::StaticClass()))
-	{
-		TArray<UYcInventoryItemInstance*> Slots;
-		IYcMetaInventoryQuickBarBridge::Execute_GetMetaQuickBarSlots(QuickBarComp, Slots);
-		for (int32 SlotIndex = 0; SlotIndex < Slots.Num(); ++SlotIndex)
-		{
-			UYcInventoryItemInstance* SlotItem = Slots[SlotIndex];
-			const int32 LocalSlotIndex = SlotIndex;
-			TryAddDetachedPlayerOwnedItem(SlotItem,
-				[&](const FYcItemInstanceId& OldId, const FYcItemInstanceId& NewId)
-				{
-					for (FYcMetaQuickBarSlotRecord& SlotRecord : OutPlayerSnapshot.QuickBarSlots)
-					{
-						if (SlotRecord.SlotIndex == LocalSlotIndex && SlotRecord.ItemInstId == OldId)
-						{
-							SlotRecord.ItemInstId = NewId;
-						}
-					}
-				});
-		}
-	}
+	BuildEquipmentRecords(Runtime, OutPlayerSnapshot.EquipmentSlots);
+	BuildQuickBarRecords(Runtime, OutPlayerSnapshot.QuickBarSlots);
 
 	OutPlayerSnapshot.InventoryItems.Sort([](const FYcMetaInventoryItemRecord& A, const FYcMetaInventoryItemRecord& B)
 	{
@@ -769,45 +688,190 @@ bool UYcMetaInventorySubsystem::BuildPlayerSnapshot(const AActor* ContextOwner, 
 	return true;
 }
 
-bool UYcMetaInventorySubsystem::ApplyPlayerSnapshot(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>* StashItemMap, const FYcMetaPlayerSnapshot& PlayerSnapshot)
+bool UYcMetaInventorySubsystem::ApplyPlayerSnapshot(const FYcPlayerInventoryRuntime& Runtime, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>* StashItemMap, const FYcMetaPlayerSnapshot& PlayerSnapshot)
 {
+	UYcInventoryManagerComponent* PlayerInventory = Runtime.PlayerInventory;
 	if (!IsValid(PlayerInventory))
 	{
 		return false;
 	}
 
-	ClearEquipment(ContextOwner);
-	ClearQuickBar(ContextOwner);
+	const bool bHasInventoryPayload = !PlayerSnapshot.InventoryItems.IsEmpty() || !PlayerSnapshot.InventoryExtensions.IsEmpty();
+	const bool bHasEquipmentPayload = !PlayerSnapshot.EquipmentSlots.IsEmpty();
+	const bool bHasQuickBarPayload = !PlayerSnapshot.QuickBarSlots.IsEmpty();
 
 	TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>> PlayerItemMap;
-	// 玩家库存恢复时，先只恢复物品本体；网格扩展落位需要等装备恢复后（装备可能提供额外区域）。
-	if (!RestoreInventoryRecords(PlayerInventory, PlayerSnapshot.InventoryItems, TArray<FYcMetaInventoryExtensionPayload>(), PlayerItemMap))
+	if (bHasEquipmentPayload)
+	{
+		ClearEquipment(Runtime);
+	}
+	if (bHasQuickBarPayload)
+	{
+		ClearQuickBar(Runtime);
+	}
+
+	// 仅在快照中存在库存载荷时才覆盖库存，避免“空快照”把运行时默认物品清空。
+	if (bHasInventoryPayload && !RestoreInventoryRecords(PlayerInventory, PlayerSnapshot.InventoryItems, TArray<FYcMetaInventoryExtensionPayload>(), PlayerItemMap))
 	{
 		return false;
+	}
+
+	if (!bHasInventoryPayload)
+	{
+		const TArray<UYcInventoryItemInstance*> ExistingItems = PlayerInventory->GetAllItemInstance();
+		for (UYcInventoryItemInstance* ExistingItem : ExistingItems)
+		{
+			if (IsValid(ExistingItem))
+			{
+				PlayerItemMap.Add(ExistingItem->GetItemInstId(), ExistingItem);
+			}
+		}
+	}
+
+	auto MaterializeDetachedPlayerItem = [&](const FYcMetaInventoryItemRecord& DetachedRecord) -> bool
+	{
+		if (!DetachedRecord.ItemInstId.IsValid())
+		{
+			UE_LOG(LogYcInventory, Warning, TEXT("ApplyPlayerSnapshot: detached item record missing item instance id."));
+			return false;
+		}
+		if (PlayerItemMap.Contains(DetachedRecord.ItemInstId))
+		{
+			return true;
+		}
+		if (!DetachedRecord.ItemRegistryId.IsValid() || DetachedRecord.StackCount <= 0)
+		{
+			UE_LOG(LogYcInventory, Warning, TEXT("ApplyPlayerSnapshot: detached item record invalid. itemId=%s registry=%s"),
+				*DetachedRecord.ItemInstId.ToString(),
+				*DetachedRecord.ItemRegistryId.ToString());
+			return false;
+		}
+
+		UYcInventoryItemInstance* CreatedItem = PlayerInventory->AddItemWithInstanceId(
+			DetachedRecord.ItemRegistryId,
+			DetachedRecord.ItemInstId,
+			DetachedRecord.StackCount);
+		if (!CreatedItem)
+		{
+			UE_LOG(LogYcInventory, Warning, TEXT("ApplyPlayerSnapshot: failed to materialize detached slot item. itemId=%s registry=%s"),
+				*DetachedRecord.ItemInstId.ToString(),
+				*DetachedRecord.ItemRegistryId.ToString());
+			return false;
+		}
+
+		TArray<FYcMetaItemExtensionPayload> UnknownPayloads;
+		YcMetaInventoryItemRecordCodec::ImportToItem(*CreatedItem, DetachedRecord, UnknownPayloads);
+		if (UnknownPayloads.IsEmpty())
+		{
+			UnknownItemExtensionPayloads.Remove(DetachedRecord.ItemInstId);
+		}
+		else
+		{
+			UnknownItemExtensionPayloads.Add(DetachedRecord.ItemInstId, MoveTemp(UnknownPayloads));
+		}
+
+		PlayerItemMap.Add(DetachedRecord.ItemInstId, CreatedItem);
+		return true;
+	};
+
+	for (const FYcMetaEquipmentSlotRecord& Slot : PlayerSnapshot.EquipmentSlots)
+	{
+		if (Slot.bOwnsDetachedItem && !MaterializeDetachedPlayerItem(Slot.DetachedItemRecord))
+		{
+			return false;
+		}
+	}
+
+	for (const FYcMetaQuickBarSlotRecord& Slot : PlayerSnapshot.QuickBarSlots)
+	{
+		if (Slot.bOwnsDetachedItem && !MaterializeDetachedPlayerItem(Slot.DetachedItemRecord))
+		{
+			return false;
+		}
 	}
 
 	const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>> EmptyStashMap;
 	const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& EffectiveStashItemMap = StashItemMap ? *StashItemMap : EmptyStashMap;
-	if (!RestoreEquipment(ContextOwner, PlayerSnapshot.EquipmentSlots, PlayerItemMap, EffectiveStashItemMap))
+
+	auto CanResolveItemId = [&](const FYcItemInstanceId& ItemId, const EYcMetaItemSourceScope SourceScope) -> bool
 	{
-		return false;
-	}
-	if (!RestoreQuickBar(ContextOwner, PlayerSnapshot.QuickBarSlots, PlayerItemMap, EffectiveStashItemMap))
+		switch (SourceScope)
+		{
+		case EYcMetaItemSourceScope::PlayerInventory:
+			return PlayerItemMap.Contains(ItemId);
+		case EYcMetaItemSourceScope::StashInventory:
+			return EffectiveStashItemMap.Contains(ItemId);
+		case EYcMetaItemSourceScope::Unknown:
+		default:
+			return PlayerItemMap.Contains(ItemId) || EffectiveStashItemMap.Contains(ItemId);
+		}
+	};
+
+	auto CanRestoreEquipmentPayload = [&]() -> bool
 	{
-		return false;
+		for (const FYcMetaEquipmentSlotRecord& Slot : PlayerSnapshot.EquipmentSlots)
+		{
+			if (!CanResolveItemId(Slot.ItemInstId, Slot.SourceScope))
+			{
+				return false;
+			}
+		}
+		return true;
+	};
+
+	auto CanRestoreQuickBarPayload = [&]() -> bool
+	{
+		for (const FYcMetaQuickBarSlotRecord& Slot : PlayerSnapshot.QuickBarSlots)
+		{
+			if (!CanResolveItemId(Slot.ItemInstId, Slot.SourceScope))
+			{
+				return false;
+			}
+		}
+		return true;
+	};
+
+	const bool bCanRestoreEquipmentPayload = bHasEquipmentPayload && CanRestoreEquipmentPayload();
+	const bool bCanRestoreQuickBarPayload = bHasQuickBarPayload && CanRestoreQuickBarPayload();
+
+	if (bHasEquipmentPayload && !bCanRestoreEquipmentPayload)
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("ApplyPlayerSnapshot: skip equipment payload because some item ids are unresolved. keep runtime equipment."));
 	}
-	if (!ApplyInventoryExtensions(PlayerInventory, PlayerItemMap, PlayerSnapshot.InventoryExtensions))
+	if (bHasQuickBarPayload && !bCanRestoreQuickBarPayload)
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("ApplyPlayerSnapshot: skip quickbar payload because some item ids are unresolved. keep runtime quickbar."));
+	}
+	if (bCanRestoreEquipmentPayload)
+	{
+		if (!RestoreEquipment(Runtime, PlayerSnapshot.EquipmentSlots, PlayerItemMap, EffectiveStashItemMap))
+		{
+			return false;
+		}
+	}
+
+	if (bCanRestoreQuickBarPayload)
+	{
+		if (!RestoreQuickBar(Runtime, PlayerSnapshot.QuickBarSlots, PlayerItemMap, EffectiveStashItemMap))
+		{
+			return false;
+		}
+	}
+
+	if (bHasInventoryPayload && !ApplyInventoryExtensions(PlayerInventory, PlayerItemMap, PlayerSnapshot.InventoryExtensions))
 	{
 		return false;
 	}
 
 	// 强制广播一次当前槽位状态，确保跨场景持久化UI能立即刷新图标。
-	if (UActorComponent* EquipmentComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryEquipmentBridge::StaticClass()))
+	if (DoesComponentImplement(Runtime.EquipmentBridge, UYcMetaInventoryEquipmentBridge::StaticClass()))
 	{
+		UActorComponent* EquipmentComp = Runtime.EquipmentBridge;
 		IYcMetaInventoryEquipmentBridge::Execute_MetaNotifySlotsUpdated(EquipmentComp);
 	}
-	if (UActorComponent* QuickBarComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryQuickBarBridge::StaticClass()))
+	if (DoesComponentImplement(Runtime.QuickBarBridge, UYcMetaInventoryQuickBarBridge::StaticClass()))
 	{
+		UActorComponent* QuickBarComp = Runtime.QuickBarBridge;
 		IYcMetaInventoryQuickBarBridge::Execute_MetaNotifyQuickBarSlotsUpdated(QuickBarComp);
 	}
 
@@ -837,15 +901,15 @@ void UYcMetaInventorySubsystem::OnOperationStateChanged(FGameplayTag ActualTag, 
 			continue;
 		}
 
-		const bool bTouchesPlayer = (Message.Operation.SourceInventory == Context->PlayerInventoryRef || Message.Operation.TargetInventory == Context->PlayerInventoryRef);
-		const bool bTouchesContainer = (Message.Operation.SourceInventory == Context->ContainerInventoryRef || Message.Operation.TargetInventory == Context->ContainerInventoryRef);
+		const bool bTouchesPlayer = (Message.Operation.SourceInventory == Context->Runtime.PlayerInventory || Message.Operation.TargetInventory == Context->Runtime.PlayerInventory);
+		const bool bTouchesContainer = (Message.Operation.SourceInventory == Context->Runtime.StashInventory || Message.Operation.TargetInventory == Context->Runtime.StashInventory);
 		if (bTouchesPlayer || bTouchesContainer)
 		{
-			const FYcProfileKey ProfileKey = FYcProfileKey(Context->AccountId, ResolveProfileId(Context->ProfileId));
+			const FYcProfileSaveKey ProfileKey(Context->ProfileIdentity);
 			DirtyProfiles.Add(ProfileKey);
 			if (UYcProfileSaveSubsystem* SaveSubsystem = GetProfileSaveSubsystem())
 			{
-				SaveSubsystem->MarkProfileDirty(ProfileKey);
+				SaveSubsystem->MarkProfileDirty(Context->ProfileIdentity);
 			}
 		}
 	}
@@ -1055,14 +1119,16 @@ bool UYcMetaInventorySubsystem::ApplyInventoryExtensions(UYcInventoryManagerComp
 	return true;
 }
 
-void UYcMetaInventorySubsystem::BuildEquipmentRecords(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, TArray<FYcMetaEquipmentSlotRecord>& OutSlots) const
+void UYcMetaInventorySubsystem::BuildEquipmentRecords(const FYcPlayerInventoryRuntime& Runtime, TArray<FYcMetaEquipmentSlotRecord>& OutSlots) const
 {
 	OutSlots.Empty();
-	UActorComponent* EquipmentComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryEquipmentBridge::StaticClass());
-	if (!EquipmentComp)
+	if (!DoesComponentImplement(Runtime.EquipmentBridge, UYcMetaInventoryEquipmentBridge::StaticClass()))
 	{
 		return;
 	}
+	UActorComponent* EquipmentComp = Runtime.EquipmentBridge;
+	const UYcInventoryManagerComponent* PlayerInventory = Runtime.PlayerInventory;
+	const UYcInventoryManagerComponent* StashInventory = Runtime.StashInventory;
 
 	TArray<FGameplayTag> OccupiedSlots;
 	IYcMetaInventoryEquipmentBridge::Execute_GetMetaOccupiedSlots(EquipmentComp, OccupiedSlots);
@@ -1076,31 +1142,45 @@ void UYcMetaInventorySubsystem::BuildEquipmentRecords(const AActor* ContextOwner
 		FYcMetaEquipmentSlotRecord SlotRecord;
 		SlotRecord.SlotTag = SlotTag;
 		SlotRecord.ItemInstId = SlotItem->GetItemInstId();
-		const UYcInventoryManagerComponent* ItemOwnerInventory = UYcInventoryManagerComponent::FindInventoryManagerByItem(SlotItem);
-		if (ItemOwnerInventory == StashInventory)
+		const bool bInPlayerInventory = InventoryActuallyContainsItem(PlayerInventory, SlotItem);
+		const bool bInStashInventory = InventoryActuallyContainsItem(StashInventory, SlotItem);
+		if (bInStashInventory)
 		{
 			SlotRecord.SourceScope = EYcMetaItemSourceScope::StashInventory;
 		}
-		else if (ItemOwnerInventory == nullptr || ItemOwnerInventory == PlayerInventory)
+		else if (bInPlayerInventory)
 		{
 			SlotRecord.SourceScope = EYcMetaItemSourceScope::PlayerInventory;
 		}
 		else
 		{
-			SlotRecord.SourceScope = EYcMetaItemSourceScope::Unknown;
+			SlotRecord.SourceScope = EYcMetaItemSourceScope::PlayerInventory;
+			SlotRecord.bOwnsDetachedItem = true;
 		}
+
+		if (SlotRecord.bOwnsDetachedItem)
+		{
+			SlotRecord.DetachedItemRecord.ItemInstId = SlotRecord.ItemInstId;
+			SlotRecord.DetachedItemRecord.ItemRegistryId = SlotItem->GetItemRegistryId();
+			SlotRecord.DetachedItemRecord.StackCount = 1;
+			const TArray<FYcMetaItemExtensionPayload>* UnknownPayloads = UnknownItemExtensionPayloads.Find(SlotRecord.ItemInstId);
+			YcMetaInventoryItemRecordCodec::ExportFromItem(*SlotItem, UnknownPayloads, SlotRecord.DetachedItemRecord);
+		}
+
 		OutSlots.Add(SlotRecord);
 	}
 }
 
-void UYcMetaInventorySubsystem::BuildQuickBarRecords(const AActor* ContextOwner, UYcInventoryManagerComponent* PlayerInventory, UYcInventoryManagerComponent* StashInventory, TArray<FYcMetaQuickBarSlotRecord>& OutSlots) const
+void UYcMetaInventorySubsystem::BuildQuickBarRecords(const FYcPlayerInventoryRuntime& Runtime, TArray<FYcMetaQuickBarSlotRecord>& OutSlots) const
 {
 	OutSlots.Empty();
-	UActorComponent* QuickBarComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryQuickBarBridge::StaticClass());
-	if (!QuickBarComp)
+	if (!DoesComponentImplement(Runtime.QuickBarBridge, UYcMetaInventoryQuickBarBridge::StaticClass()))
 	{
 		return;
 	}
+	UActorComponent* QuickBarComp = Runtime.QuickBarBridge;
+	const UYcInventoryManagerComponent* PlayerInventory = Runtime.PlayerInventory;
+	const UYcInventoryManagerComponent* StashInventory = Runtime.StashInventory;
 
 	TArray<UYcInventoryItemInstance*> Slots;
 	IYcMetaInventoryQuickBarBridge::Execute_GetMetaQuickBarSlots(QuickBarComp, Slots);
@@ -1114,30 +1194,42 @@ void UYcMetaInventorySubsystem::BuildQuickBarRecords(const AActor* ContextOwner,
 		FYcMetaQuickBarSlotRecord SlotRecord;
 		SlotRecord.SlotIndex = SlotIndex;
 		SlotRecord.ItemInstId = SlotItem->GetItemInstId();
-		const UYcInventoryManagerComponent* ItemOwnerInventory = UYcInventoryManagerComponent::FindInventoryManagerByItem(SlotItem);
-		if (ItemOwnerInventory == StashInventory)
+		const bool bInPlayerInventory = InventoryActuallyContainsItem(PlayerInventory, SlotItem);
+		const bool bInStashInventory = InventoryActuallyContainsItem(StashInventory, SlotItem);
+		if (bInStashInventory)
 		{
 			SlotRecord.SourceScope = EYcMetaItemSourceScope::StashInventory;
 		}
-		else if (ItemOwnerInventory == nullptr || ItemOwnerInventory == PlayerInventory)
+		else if (bInPlayerInventory)
 		{
 			SlotRecord.SourceScope = EYcMetaItemSourceScope::PlayerInventory;
 		}
 		else
 		{
-			SlotRecord.SourceScope = EYcMetaItemSourceScope::Unknown;
+			SlotRecord.SourceScope = EYcMetaItemSourceScope::PlayerInventory;
+			SlotRecord.bOwnsDetachedItem = true;
 		}
+
+		if (SlotRecord.bOwnsDetachedItem)
+		{
+			SlotRecord.DetachedItemRecord.ItemInstId = SlotRecord.ItemInstId;
+			SlotRecord.DetachedItemRecord.ItemRegistryId = SlotItem->GetItemRegistryId();
+			SlotRecord.DetachedItemRecord.StackCount = 1;
+			const TArray<FYcMetaItemExtensionPayload>* UnknownPayloads = UnknownItemExtensionPayloads.Find(SlotRecord.ItemInstId);
+			YcMetaInventoryItemRecordCodec::ExportFromItem(*SlotItem, UnknownPayloads, SlotRecord.DetachedItemRecord);
+		}
+
 		OutSlots.Add(SlotRecord);
 	}
 }
 
-void UYcMetaInventorySubsystem::ClearEquipment(const AActor* ContextOwner) const
+void UYcMetaInventorySubsystem::ClearEquipment(const FYcPlayerInventoryRuntime& Runtime) const
 {
-	UActorComponent* EquipmentComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryEquipmentBridge::StaticClass());
-	if (!EquipmentComp)
+	if (!DoesComponentImplement(Runtime.EquipmentBridge, UYcMetaInventoryEquipmentBridge::StaticClass()))
 	{
 		return;
 	}
+	UActorComponent* EquipmentComp = Runtime.EquipmentBridge;
 
 	TArray<FGameplayTag> OccupiedSlots;
 	IYcMetaInventoryEquipmentBridge::Execute_GetMetaOccupiedSlots(EquipmentComp, OccupiedSlots);
@@ -1147,13 +1239,13 @@ void UYcMetaInventorySubsystem::ClearEquipment(const AActor* ContextOwner) const
 	}
 }
 
-void UYcMetaInventorySubsystem::ClearQuickBar(const AActor* ContextOwner) const
+void UYcMetaInventorySubsystem::ClearQuickBar(const FYcPlayerInventoryRuntime& Runtime) const
 {
-	UActorComponent* QuickBarComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryQuickBarBridge::StaticClass());
-	if (!QuickBarComp)
+	if (!DoesComponentImplement(Runtime.QuickBarBridge, UYcMetaInventoryQuickBarBridge::StaticClass()))
 	{
 		return;
 	}
+	UActorComponent* QuickBarComp = Runtime.QuickBarBridge;
 
 	TArray<UYcInventoryItemInstance*> Slots;
 	IYcMetaInventoryQuickBarBridge::Execute_GetMetaQuickBarSlots(QuickBarComp, Slots);
@@ -1167,13 +1259,13 @@ void UYcMetaInventorySubsystem::ClearQuickBar(const AActor* ContextOwner) const
 	}
 }
 
-bool UYcMetaInventorySubsystem::RestoreEquipment(const AActor* ContextOwner, const TArray<FYcMetaEquipmentSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const
+bool UYcMetaInventorySubsystem::RestoreEquipment(const FYcPlayerInventoryRuntime& Runtime, const TArray<FYcMetaEquipmentSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const
 {
-	UActorComponent* EquipmentComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryEquipmentBridge::StaticClass());
-	if (!EquipmentComp)
+	if (!DoesComponentImplement(Runtime.EquipmentBridge, UYcMetaInventoryEquipmentBridge::StaticClass()))
 	{
 		return true;
 	}
+	UActorComponent* EquipmentComp = Runtime.EquipmentBridge;
 
 	bool bAllSucceeded = true;
 
@@ -1216,13 +1308,13 @@ bool UYcMetaInventorySubsystem::RestoreEquipment(const AActor* ContextOwner, con
 	return bAllSucceeded;
 }
 
-bool UYcMetaInventorySubsystem::RestoreQuickBar(const AActor* ContextOwner, const TArray<FYcMetaQuickBarSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const
+bool UYcMetaInventorySubsystem::RestoreQuickBar(const FYcPlayerInventoryRuntime& Runtime, const TArray<FYcMetaQuickBarSlotRecord>& InSlots, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& PlayerItemMap, const TMap<FYcItemInstanceId, TObjectPtr<UYcInventoryItemInstance>>& StashItemMap) const
 {
-	UActorComponent* QuickBarComp = FindComponentAcrossOwnerChainByInterface(ContextOwner, UYcMetaInventoryQuickBarBridge::StaticClass());
-	if (!QuickBarComp)
+	if (!DoesComponentImplement(Runtime.QuickBarBridge, UYcMetaInventoryQuickBarBridge::StaticClass()))
 	{
 		return true;
 	}
+	UActorComponent* QuickBarComp = Runtime.QuickBarBridge;
 
 	bool bAllSucceeded = true;
 
@@ -1263,74 +1355,4 @@ bool UYcMetaInventorySubsystem::RestoreQuickBar(const AActor* ContextOwner, cons
 	}
 
 	return bAllSucceeded;
-}
-
-UActorComponent* UYcMetaInventorySubsystem::FindComponentAcrossOwnerChainByInterface(const AActor* Owner, const UClass* InterfaceClass)
-{
-	if (!Owner || !InterfaceClass)
-	{
-		return nullptr;
-	}
-
-	auto FindByInterface = [InterfaceClass](const AActor* Actor) -> UActorComponent*
-	{
-		if (!Actor)
-		{
-			return nullptr;
-		}
-
-		TInlineComponentArray<UActorComponent*> Components;
-		Actor->GetComponents(Components);
-		for (UActorComponent* Component : Components)
-		{
-			if (Component && Component->GetClass() && Component->GetClass()->ImplementsInterface(InterfaceClass))
-			{
-				return Component;
-			}
-		}
-		return nullptr;
-	};
-
-	if (UActorComponent* Found = FindByInterface(Owner))
-	{
-		return Found;
-	}
-
-	if (const APawn* Pawn = Cast<APawn>(Owner))
-	{
-		if (UActorComponent* Found = FindByInterface(Pawn->GetController()))
-		{
-			return Found;
-		}
-		if (UActorComponent* Found = FindByInterface(Pawn->GetPlayerState()))
-		{
-			return Found;
-		}
-	}
-
-	if (const AController* Controller = Cast<AController>(Owner))
-	{
-		if (UActorComponent* Found = FindByInterface(Controller->GetPawn()))
-		{
-			return Found;
-		}
-		if (UActorComponent* Found = FindByInterface(Controller->PlayerState))
-		{
-			return Found;
-		}
-	}
-
-	if (const APlayerState* PlayerState = Cast<APlayerState>(Owner))
-	{
-		if (UActorComponent* Found = FindByInterface(PlayerState->GetPawn()))
-		{
-			return Found;
-		}
-		if (UActorComponent* Found = FindByInterface(Cast<AController>(PlayerState->GetOwner())))
-		{
-			return Found;
-		}
-	}
-
-	return nullptr;
 }

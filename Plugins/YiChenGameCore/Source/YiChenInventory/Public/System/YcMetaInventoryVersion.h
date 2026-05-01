@@ -14,9 +14,8 @@ namespace YcMetaInventoryVersion
 	YICHENINVENTORY_API bool IsSupportedVersion(int32 Version);
 
 	/** 创建一个空白根快照并填充协议元数据。 */
-	YICHENINVENTORY_API FYcMetaInventoryRootSnapshot MakeEmptySnapshot(const FString& AccountId);
+	YICHENINVENTORY_API FYcMetaInventoryRootSnapshot MakeEmptySnapshot(const FYcProfileIdentity& ProfileIdentity);
 
 	/** 保存前统一填充协议元数据。 */
-	YICHENINVENTORY_API void PrepareSnapshotForSave(const FString& AccountId, FYcMetaInventoryRootSnapshot& InOutSnapshot);
+	YICHENINVENTORY_API void PrepareSnapshotForSave(const FYcProfileIdentity& ProfileIdentity, FYcMetaInventoryRootSnapshot& InOutSnapshot);
 }
-

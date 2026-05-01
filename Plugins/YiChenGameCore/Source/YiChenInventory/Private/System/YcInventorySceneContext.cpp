@@ -2,21 +2,19 @@
 
 #include "System/YcInventorySceneContext.h"
 
-#include "YcInventoryManagerComponent.h"
-
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcInventorySceneContext)
 
 bool UYcInventorySceneContext::IsValidForOutOfMatchPersistence() const
 {
-	if (!bRequirePersistenceCommit || !IsOutOfMatchContext())
+	if (!IsOutOfMatchContext())
 	{
 		return false;
 	}
 
-	if (AccountId.IsEmpty())
+	if (!ProfileIdentity.IsValid())
 	{
 		return false;
 	}
 
-	return IsValid(PlayerInventoryRef) && IsValid(ContainerInventoryRef);
+	return Runtime.SupportsOutOfMatchPersistence();
 }

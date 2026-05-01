@@ -3,11 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "System/YcInventorySceneTypes.h"
+#include "System/YcMetaInventoryTypes.h"
 #include "YcInventorySceneContext.generated.h"
-
-class UYcInventoryManagerComponent;
-class AActor;
 
 /**
  * 库存场景上下文。
@@ -23,29 +20,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	EYcInventorySceneType SceneType = EYcInventorySceneType::InMatch;
 
-	/** 账号ID（用于持久化定位与脏标记）。 */
+	/** 当前激活 Profile 身份（用于持久化定位与脏标记）。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	FString AccountId;
+	FYcProfileIdentity ProfileIdentity;
 
-	/** 档位ID（例如 Slot01）。 */
+	/** 显式运行时句柄。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	FString ProfileId = TEXT("Slot01");
-
-	/** 上下文拥有者（通常是角色/控制器）。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	TObjectPtr<AActor> ContextOwner = nullptr;
-
-	/** 玩家自身库存组件引用。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	TObjectPtr<UYcInventoryManagerComponent> PlayerInventoryRef = nullptr;
-
-	/** 容器库存组件引用（局外时通常是仓库）。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	TObjectPtr<UYcInventoryManagerComponent> ContainerInventoryRef = nullptr;
-
-	/** 是否需要持久化提交（局外一般为 true）。 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
-	bool bRequirePersistenceCommit = false;
+	FYcPlayerInventoryRuntime Runtime;
 
 	/** 是否为局外场景。 */
 	UFUNCTION(BlueprintPure, Category = "Inventory")

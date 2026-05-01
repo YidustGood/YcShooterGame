@@ -6,9 +6,16 @@
 #include "DataRegistryId.h"
 #include "GameplayTagContainer.h"
 #include "StructUtils/InstancedStruct.h"
+#include "System/YcAccountTypes.h"
 #include "System/YcInventorySceneTypes.h"
 #include "YcItemInstanceId.h"
 #include "YcMetaInventoryTypes.generated.h"
+
+class APlayerController;
+class APlayerState;
+class APawn;
+class UActorComponent;
+class UYcInventoryManagerComponent;
 
 /** 整数标签值。 */
 USTRUCT(BlueprintType)
@@ -120,6 +127,69 @@ enum class EYcMetaItemSourceScope : uint8
 	Unknown
 };
 
+UENUM(BlueprintType)
+enum class EYcPlayerPersistenceSceneMode : uint8
+{
+	Disabled,
+	OutOfMatch,
+	InMatch
+};
+
+/** 显式玩家运行时句柄。用于把账户/Profile 持久化接到确定的玩家资产对象上。 */
+USTRUCT(BlueprintType)
+struct YICHENINVENTORY_API FYcPlayerInventoryRuntime
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	EYcPlayerPersistenceSceneMode SceneMode = EYcPlayerPersistenceSceneMode::Disabled;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	TObjectPtr<APlayerController> PlayerController = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	TObjectPtr<APlayerState> PlayerState = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	TObjectPtr<APawn> ControlledPawn = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	TObjectPtr<UYcInventoryManagerComponent> PlayerInventory = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	TObjectPtr<UYcInventoryManagerComponent> StashInventory = nullptr;
+
+	/** 必须实现 IYcMetaInventoryEquipmentBridge。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	TObjectPtr<UActorComponent> EquipmentBridge = nullptr;
+
+	/** 必须实现 IYcMetaInventoryQuickBarBridge。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	TObjectPtr<UActorComponent> QuickBarBridge = nullptr;
+
+	bool IsRuntimeValid() const
+	{
+		return PlayerController != nullptr
+			&& ControlledPawn != nullptr
+			&& PlayerInventory != nullptr
+			&& EquipmentBridge != nullptr
+			&& QuickBarBridge != nullptr;
+	}
+
+	bool SupportsOutOfMatchPersistence() const
+	{
+		return SceneMode == EYcPlayerPersistenceSceneMode::OutOfMatch
+			&& IsRuntimeValid()
+			&& StashInventory != nullptr;
+	}
+
+	bool SupportsInMatchPersistence() const
+	{
+		return SceneMode == EYcPlayerPersistenceSceneMode::InMatch
+			&& IsRuntimeValid();
+	}
+};
+
 /** 装备槽位记录。 */
 USTRUCT(BlueprintType)
 struct YICHENINVENTORY_API FYcMetaEquipmentSlotRecord
@@ -137,6 +207,14 @@ struct YICHENINVENTORY_API FYcMetaEquipmentSlotRecord
 	/** 物品来源范围。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	EYcMetaItemSourceScope SourceScope = EYcMetaItemSourceScope::PlayerInventory;
+
+	/** 槽位是否直接托管该物品，而非仅引用某个库存中的实例。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	bool bOwnsDetachedItem = false;
+
+	/** 当槽位直接托管物品时，写入完整物品快照，用于恢复时先重建再装槽。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	FYcMetaInventoryItemRecord DetachedItemRecord;
 };
 
 /** 快捷栏槽位记录。 */
@@ -156,6 +234,14 @@ struct YICHENINVENTORY_API FYcMetaQuickBarSlotRecord
 	/** 物品来源范围。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	EYcMetaItemSourceScope SourceScope = EYcMetaItemSourceScope::PlayerInventory;
+
+	/** 槽位是否直接托管该物品，而非仅引用某个库存中的实例。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	bool bOwnsDetachedItem = false;
+
+	/** 当槽位直接托管物品时，写入完整物品快照，用于恢复时先重建再装槽。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	FYcMetaInventoryItemRecord DetachedItemRecord;
 };
 
 /** 玩家侧快照（背包+装备+快捷栏）。 */
@@ -196,15 +282,23 @@ struct YICHENINVENTORY_API FYcMetaStashSnapshot
 	TArray<FYcMetaInventoryExtensionPayload> InventoryExtensions;
 };
 
-/** 账号级库存根快照。 */
+/** Profile 级库存根快照。 */
 USTRUCT(BlueprintType)
 struct YICHENINVENTORY_API FYcMetaInventoryRootSnapshot
 {
 	GENERATED_BODY()
 
+	/** 运行环境。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	EYcAccountEnvironment Environment = EYcAccountEnvironment::Unknown;
+
 	/** 账号ID。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
 	FString AccountId;
+
+	/** Profile ID。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
+	FString ProfileId;
 
 	/** 快照版本号（用于版本闸门）。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")

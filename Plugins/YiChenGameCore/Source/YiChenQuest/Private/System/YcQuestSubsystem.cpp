@@ -8,23 +8,15 @@
 #include "YcQuestObjective.h"
 #include "YiChenQuest.h"
 #include "Engine/AssetManager.h"
-#include "System/YcAssetManager.h"
 #include "System/YcQuestInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/Pawn.h"
 #include "System/YcPlayerIdentityProvider.h"
+#include "Utils/CommonSimpleUtil.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcQuestSubsystem)
-
-namespace
-{
-    int64 GetNowUnixTime()
-    {
-        return FDateTime::UtcNow().ToUnixTimestamp();
-    }
-}
 
 void UYcQuestSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -397,7 +389,7 @@ bool UYcQuestSubsystem::ServerUpdateSharedQuestMembers(const FYcQuestInstanceKey
     Membership.TeamId = InstanceKey.OwnerId;
     Membership.ActiveMemberPlayerIds = MemberIds;
     Membership.Version += 1;
-    Membership.LastUpdatedTime = GetNowUnixTime();
+    Membership.LastUpdatedTime = YcTimeUtils::GetUtcNowUnixTimestampSeconds();
     return true;
 }
 
@@ -751,13 +743,13 @@ bool UYcQuestSubsystem::IsDuplicateEvent(const FYcQuestEvent& Event)
         return true;
     }
 
-    EventDedupTimestamps.Add(Event.EventId, GetNowUnixTime());
+    EventDedupTimestamps.Add(Event.EventId, YcTimeUtils::GetUtcNowUnixTimestampSeconds());
     return false;
 }
 
 void UYcQuestSubsystem::PruneEventDedupCache()
 {
-    const int64 Now = GetNowUnixTime();
+    const int64 Now = YcTimeUtils::GetUtcNowUnixTimestampSeconds();
     for (auto It = EventDedupTimestamps.CreateIterator(); It; ++It)
     {
         if (Now - It.Value() > 60)

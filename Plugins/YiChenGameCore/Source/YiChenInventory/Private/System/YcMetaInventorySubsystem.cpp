@@ -22,6 +22,7 @@
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
 #include "Serialization/ObjectAndNameAsStringProxyArchive.h"
+#include "Utils/CommonSimpleUtil.h"
 #include "YiChenInventory.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcMetaInventorySubsystem)
@@ -569,7 +570,7 @@ bool UYcMetaInventorySubsystem::CommitInMatchPlayerLoadoutToProfile(const FYcPro
 	Root.ProfileId = ProfileKey.ProfileId;
 	Root.Environment = ProfileKey.Environment;
 	Root.SnapshotVersion = FMath::Max(Root.SnapshotVersion, 1);
-	Root.LastSavedUnixTime = FDateTime::UtcNow().ToUnixTimestamp();
+	Root.LastSavedUnixTime = YcTimeUtils::GetUtcNowUnixTimestampSeconds();
 
 	if (!SaveSubsystem->SaveProfileRootSync(ProfileIdentity, Root, Reason))
 	{

@@ -4,21 +4,14 @@
 
 #include "Net/Core/PushModel/PushModel.h"
 #include "Net/UnrealNetwork.h"
+#include "Utils/CommonSimpleUtil.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcQuestInstance)
-
-namespace
-{
-    int64 GetNowUnixTime()
-    {
-        return FDateTime::UtcNow().ToUnixTimestamp();
-    }
-}
 
 UYcQuestInstance::UYcQuestInstance(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
 {
-    LastUpdatedUnixTime = GetNowUnixTime();
+    LastUpdatedUnixTime = YcTimeUtils::GetUtcNowUnixTimestampSeconds();
 }
 
 void UYcQuestInstance::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -43,7 +36,7 @@ void UYcQuestInstance::InitializeInstance(const FYcQuestInstanceKey& InInstanceK
     State = InInitialState;
     Version = 1;
     ReplicatedPayload.Reset();
-    LastUpdatedUnixTime = GetNowUnixTime();
+    LastUpdatedUnixTime = YcTimeUtils::GetUtcNowUnixTimestampSeconds();
 
     MARK_PROPERTY_DIRTY_FROM_NAME(UYcQuestInstance, InstanceKey, this);
     MARK_PROPERTY_DIRTY_FROM_NAME(UYcQuestInstance, QuestId, this);
@@ -153,7 +146,7 @@ const TArray<TObjectPtr<UYcQuestEffect>>& UYcQuestInstance::GetRuntimeQuestEffec
 void UYcQuestInstance::UpdateTimestampAndVersion()
 {
     ++Version;
-    LastUpdatedUnixTime = GetNowUnixTime();
+    LastUpdatedUnixTime = YcTimeUtils::GetUtcNowUnixTimestampSeconds();
     MARK_PROPERTY_DIRTY_FROM_NAME(UYcQuestInstance, Version, this);
     MARK_PROPERTY_DIRTY_FROM_NAME(UYcQuestInstance, LastUpdatedUnixTime, this);
 }

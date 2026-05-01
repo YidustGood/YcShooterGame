@@ -1,16 +1,7 @@
 // Copyright (c) 2025 YiChen. All Rights Reserved.
 
 #include "System/YcMetaInventoryVersion.h"
-
-namespace
-{
-	int64 GetNowUnixTime()
-	{
-		const FDateTime UtcNow = FDateTime::UtcNow();
-		const FDateTime UnixEpoch(1970, 1, 1);
-		return (UtcNow - UnixEpoch).GetTotalSeconds();
-	}
-}
+#include "Utils/CommonSimpleUtil.h"
 
 bool YcMetaInventoryVersion::IsSupportedVersion(const int32 Version)
 {
@@ -24,7 +15,7 @@ FYcMetaInventoryRootSnapshot YcMetaInventoryVersion::MakeEmptySnapshot(const FYc
 	Snapshot.AccountId = ProfileIdentity.AccountIdentity.AccountId;
 	Snapshot.ProfileId = ProfileIdentity.ProfileId;
 	Snapshot.SnapshotVersion = CurrentSnapshotVersion;
-	Snapshot.LastSavedUnixTime = GetNowUnixTime();
+	Snapshot.LastSavedUnixTime = YcTimeUtils::GetUtcNowUnixTimestampSeconds();
 	return Snapshot;
 }
 
@@ -34,5 +25,5 @@ void YcMetaInventoryVersion::PrepareSnapshotForSave(const FYcProfileIdentity& Pr
 	InOutSnapshot.AccountId = ProfileIdentity.AccountIdentity.AccountId;
 	InOutSnapshot.ProfileId = ProfileIdentity.ProfileId;
 	InOutSnapshot.SnapshotVersion = CurrentSnapshotVersion;
-	InOutSnapshot.LastSavedUnixTime = GetNowUnixTime();
+	InOutSnapshot.LastSavedUnixTime = YcTimeUtils::GetUtcNowUnixTimestampSeconds();
 }

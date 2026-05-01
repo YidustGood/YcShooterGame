@@ -49,6 +49,28 @@ class UGridItemWidget : UUserWidget
 		return PlayerInventory.IsItemRevealedForCurrentSession(ItemInstance);
 	}
 
+	UFUNCTION()
+	bool TryGetGridFragment(FItemFragment_GridItem&out OutGridFragment) const
+	{
+		if (ItemInstance == nullptr)
+		{
+			Warning("UGridItemWidget::TryGetGridFragment failed: ItemInstance is nullptr.");
+			return false;
+		}
+
+		FInstancedStruct GridFragmentResult = ItemInstance.FindItemFragment(FItemFragment_GridItem);
+		if (!GridFragmentResult.IsValid())
+		{
+			AActor OuterActor = ItemInstance.GetActorOuter();
+			FString OuterName = OuterActor != nullptr ? OuterActor.GetName().ToString() : "None";
+			Warning(f"UGridItemWidget::TryGetGridFragment failed: missing FItemFragment_GridItem. Item={ItemInstance.GetName()} RegistryId={ItemInstance.ItemRegistryId.ToString()} Outer={OuterName}");
+			return false;
+		}
+
+		OutGridFragment = GridFragmentResult.Get(FItemFragment_GridItem);
+		return true;
+	}
+
 	// 刷新当前物品在UI中的显示位置和状态
 	UFUNCTION()
 	void Refresh()
@@ -58,7 +80,14 @@ class UGridItemWidget : UUserWidget
 			return;
 		}
 
-		FItemFragment_GridItem IF_Grid = ItemInstance.FindItemFragment(FItemFragment_GridItem).Get(FItemFragment_GridItem);
+		FItemFragment_GridItem IF_Grid;
+		if (!TryGetGridFragment(IF_Grid))
+		{
+			SetVisibility(ESlateVisibility::Collapsed);
+			return;
+		}
+
+		SetVisibility(ESlateVisibility::Visible);
 		Size.X = IF_Grid.Dimensions.X * TileSize;
 		Size.Y = IF_Grid.Dimensions.Y * TileSize;
 		SB_Background.SetWidthOverride(Size.X);
@@ -80,6 +109,11 @@ class UGridItemWidget : UUserWidget
 		}
 
 		auto DynamicMaterial = Material::CreateDynamicMaterialInstance(IF_Grid.Icon);
+		if (DynamicMaterial == nullptr)
+		{
+			Warning(f"UGridItemWidget::Refresh failed: cannot create icon material. Item={ItemInstance.GetName()} RegistryId={ItemInstance.ItemRegistryId.ToString()}");
+			return;
+		}
 		DynamicMaterial.SetTextureParameterValue(n"ItemIcon", IF_Grid.IconTexture);
 		ItemImage.SetBrushFromMaterial(DynamicMaterial);
 		ItemImage.SetColorAndOpacity(FLinearColor::White);

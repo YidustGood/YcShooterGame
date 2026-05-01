@@ -67,7 +67,7 @@ class UGridInventoryWidget : UUserWidget
 		CachedSearchRevision = -1;
 		bForceItemVisualRefresh = true;
 		ItemWidgetMap.Empty();
-        PendingPredictedOps.Empty();
+		PendingPredictedOps.Empty();
 		GridCanvasPanel.ClearChildren();
 
 		auto GridBorderSlot = WidgetLayout::SlotAsCanvasSlot(GridBorder);
@@ -101,7 +101,7 @@ class UGridInventoryWidget : UUserWidget
 		InventoryChangedHandle.Unregister();
 		OperationStateHandle.Unregister();
 		ItemWidgetMap.Empty();
-        PendingPredictedOps.Empty();
+		PendingPredictedOps.Empty();
 	}
 
 	UFUNCTION(BlueprintOverride)
@@ -128,7 +128,11 @@ class UGridInventoryWidget : UUserWidget
 			auto DraggedItem = Cast<UYcInventoryItemInstance>(Widget::GetDragDroppingContent().Payload);
 			if (DraggedItem != nullptr)
 			{
-				auto IF_Drag = DraggedItem.FindItemFragment(FItemFragment_GridItem).Get(FItemFragment_GridItem);
+				FItemFragment_GridItem IF_Drag;
+				if (!TryGetGridFragmentForItem(DraggedItem, IF_Drag, "OnPaint"))
+				{
+					return;
+				}
 				bool bIsRoomAvailable = IsRoomAvailable(DraggedItem);
 				FLinearColor TintColor = FLinearColor(1, 0, 0, 0.25);
 				if (bIsRoomAvailable)
@@ -351,12 +355,8 @@ class UGridInventoryWidget : UUserWidget
 			return;
 		}
 
-		bool bSourceIsThis = (Op.SourceInventory == GridInventoryManager
-			&& (!Op.SourceGridRegionId.IsValid() || Op.SourceGridRegionId == CurrentRegionId)
-			&& (Op.SourceGridPocketIndex < 0 || Op.SourceGridPocketIndex == CurrentPocketIndex));
-		bool bTargetIsThis = (Op.TargetInventory == GridInventoryManager
-			&& (!Op.GridRegionId.IsValid() || Op.GridRegionId == CurrentRegionId)
-			&& (Op.GridPocketIndex < 0 || Op.GridPocketIndex == CurrentPocketIndex));
+		bool bSourceIsThis = (Op.SourceInventory == GridInventoryManager && (!Op.SourceGridRegionId.IsValid() || Op.SourceGridRegionId == CurrentRegionId) && (Op.SourceGridPocketIndex < 0 || Op.SourceGridPocketIndex == CurrentPocketIndex));
+		bool bTargetIsThis = (Op.TargetInventory == GridInventoryManager && (!Op.GridRegionId.IsValid() || Op.GridRegionId == CurrentRegionId) && (Op.GridPocketIndex < 0 || Op.GridPocketIndex == CurrentPocketIndex));
 		if (!bSourceIsThis && !bTargetIsThis)
 		{
 			return;
@@ -445,6 +445,28 @@ class UGridInventoryWidget : UUserWidget
 	}
 
 	UFUNCTION()
+	bool TryGetGridFragmentForItem(UYcInventoryItemInstance ItemInst, FItemFragment_GridItem&out OutGridFragment, FString Context) const
+	{
+		if (ItemInst == nullptr)
+		{
+			Warning(f"UGridInventoryWidget::{Context} failed: ItemInst is nullptr.");
+			return false;
+		}
+
+		FInstancedStruct GridFragmentResult = ItemInst.FindItemFragment(FItemFragment_GridItem);
+		if (!GridFragmentResult.IsValid())
+		{
+			AActor OuterActor = ItemInst.GetActorOuter();
+			FString OuterName = OuterActor != nullptr ? OuterActor.GetName().ToString() : "None";
+			Warning(f"UGridInventoryWidget::{Context} failed: missing FItemFragment_GridItem. Item={ItemInst.GetName()} RegistryId={ItemInst.ItemRegistryId.ToString()} Outer={OuterName} Region={CurrentRegionId.ToString()} Pocket={CurrentPocketIndex}");
+			return false;
+		}
+
+		OutGridFragment = GridFragmentResult.Get(FItemFragment_GridItem);
+		return true;
+	}
+
+	UFUNCTION()
 	// 搜索会话版本变化时刷新可见性（未知/已识别状态）
 	void UpdateSearchPresentation()
 	{
@@ -492,6 +514,12 @@ class UGridInventoryWidget : UUserWidget
 	UFUNCTION()
 	void Refresh()
 	{
+		if (GridInventoryManager == nullptr)
+		{
+			Warning("UGridInventoryWidget::Refresh ignored: GridInventoryManager is nullptr.");
+			return;
+		}
+
 		if (ItemWidgetClass == nullptr)
 		{
 			Warning("ItemWidgetClass is nullptr!");
@@ -577,7 +605,13 @@ class UGridInventoryWidget : UUserWidget
 	UFUNCTION()
 	void MousePositionInTile(UYcInventoryItemInstance ItemInst, FVector2D MousePosition, bool&out bRight, bool&out bDown) const
 	{
-		auto IF_Grid = ItemInst.FindItemFragment(FItemFragment_GridItem).Get(FItemFragment_GridItem);
+		FItemFragment_GridItem IF_Grid;
+		if (!TryGetGridFragmentForItem(ItemInst, IF_Grid, "MousePositionInTile"))
+		{
+			bRight = false;
+			bDown = false;
+			return;
+		}
 		int IntTileSize = Math::TruncToInt(TileSize);
 		int ItemTileSizeX = IF_Grid.Dimensions.X * IntTileSize;
 		int ItemTileSizeY = IF_Grid.Dimensions.Y * IntTileSize;
@@ -603,20 +637,20 @@ class UGridInventoryWidget : UUserWidget
 
 		auto ItemStack = GridInventoryManager.GetStackCountByItemInstance(ItemInst);
 
-        if (!GridInventoryManager.CanPlaceGridItemInst(ItemInst, DraggedItemTopLeftTile, false, CurrentRegionId, CurrentPocketIndex))
-        {
-            return true;
-        }
+		if (!GridInventoryManager.CanPlaceGridItemInst(ItemInst, DraggedItemTopLeftTile, false, CurrentRegionId, CurrentPocketIndex))
+		{
+			return true;
+		}
 
 		FYcInventoryOperation Op;
 		Op.OpType = n"Inventory.SwapGrid";
 		Op.ItemInstance = ItemInst;
 		Op.SourceInventory = Cast<UYcInventoryManagerComponent>(ItemInst.GetActorOuter().GetComponentByClass(UGridInventoryManagerComponent));
 
-        if (Op.SourceInventory == nullptr)
-        {
-            return true;
-        }
+		if (Op.SourceInventory == nullptr)
+		{
+			return true;
+		}
 		auto SourceGridInventory = Cast<UGridInventoryManagerComponent>(Op.SourceInventory);
 		if (SourceGridInventory != nullptr)
 		{
@@ -659,7 +693,11 @@ class UGridInventoryWidget : UUserWidget
 			return false;
 		}
 
-		auto IF_Grid = ItemInst.FindItemFragment(FItemFragment_GridItem).Get(FItemFragment_GridItem);
+		FItemFragment_GridItem IF_Grid;
+		if (!TryGetGridFragmentForItem(ItemInst, IF_Grid, "OnDragOver"))
+		{
+			return false;
+		}
 		bool bRight, bDown;
 		MousePositionInTile(ItemInst, MouseLocalPos, bRight, bDown);
 		int32 PosX = IF_Grid.Dimensions.X - (bRight ? 0 : 1);
@@ -683,21 +721,3 @@ class UGridInventoryWidget : UUserWidget
 		return Widget::Unhandled();
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

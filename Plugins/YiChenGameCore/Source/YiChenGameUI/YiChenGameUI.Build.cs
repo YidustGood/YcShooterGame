@@ -9,7 +9,14 @@ public class YiChenGameUI : ModuleRules
         PublicDependencyModuleNames.AddRange(
             new string[]
             {
-                "Core", "GameplayTags", "UIExtension",
+                "Core",
+                "CoreUObject",
+                "Engine",
+                "GameplayTags",
+                "GameplayMessageRuntime",
+                "StructUtils",
+                "UIExtension",
+                "CommonUI",
             }
         );
 
@@ -21,9 +28,7 @@ public class YiChenGameUI : ModuleRules
                 "Slate",
                 "SlateCore", 
                 "ModularGameplay", 
-                "CommonUI", 
                 "CommonGame",
-                "GameplayTags",
                 "UMG",
                 "GameFeatures",
                 "CommonInput",
@@ -31,6 +36,7 @@ public class YiChenGameUI : ModuleRules
                 "YiChenGameplay",
                 "EnhancedInput",
                 "DeveloperSettings",
+                "NetCore",
             }
         );
     }

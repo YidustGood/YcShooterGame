@@ -22,7 +22,8 @@ public class YiChenGameplay : ModuleRules
                 "YiChenDamage",
                 "YiChenInventory",
                 "YiChenEquipment",
-                "YiChenAccountCore"
+                "YiChenAccountCore",
+                "ModularGameplay"
             }
         );
 

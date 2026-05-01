@@ -6,6 +6,8 @@
 #include "AbilitySystemInterface.h"
 #include "ModularPlayerState.h"
 #include "YcGameplayTagStack.h"
+#include "System/YcAccountTypes.h"
+#include "System/YcPlayerIdentityProvider.h"
 #include "YcTeamAgentInterface.h"
 #include "YcPlayerState.generated.h"
 
@@ -29,7 +31,7 @@ class UYcExperienceDefinition;
  * - 支持网络复制，确保客户端和服务器端的队伍信息一致
  */
 UCLASS(Config = Game)
-class YICHENGAMEPLAY_API AYcPlayerState : public AModularPlayerState, public IAbilitySystemInterface, public IYcTeamAgentInterface
+class YICHENGAMEPLAY_API AYcPlayerState : public AModularPlayerState, public IAbilitySystemInterface, public IYcTeamAgentInterface, public IYcPlayerIdentityProvider
 {
 	GENERATED_BODY()
 	
@@ -78,6 +80,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "YcGameCore|PlayerState")
 	int32 GetSquadId() const;
+
+    UFUNCTION(BlueprintCallable, Category = "YcGameCore|PlayerState")
+    bool GetReplicatedPlayerIdentity(FYcPlayerIdentitySnapshot& OutIdentity) const;
+
+    UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "YcGameCore|PlayerState")
+    bool SetReplicatedPlayerIdentity(const FYcPlayerIdentitySnapshot& InIdentity);
+
+    UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "YcGameCore|PlayerState")
+    void ClearReplicatedPlayerIdentity();
 
 	/**
 	 * 蓝图可调用的设置玩家的队伍ID
@@ -128,10 +139,20 @@ protected:
 	
 	UFUNCTION()
 	void OnRep_PawnData();
+
+    UFUNCTION()
+    void OnRep_ReplicatedPlayerIdentity();
+
+    //~IYcPlayerIdentityProvider interface
+    virtual bool GetPlayerIdentity_Implementation(FYcPlayerIdentitySnapshot& OutIdentity) const override;
+    //~End of IYcPlayerIdentityProvider interface
 	
 	/** 玩家Pawn的数据包，当游戏体验加载完成后从体验定义实例中获取 */
 	UPROPERTY(VisibleInstanceOnly, ReplicatedUsing = OnRep_PawnData)
 	TObjectPtr<const UYcPawnData> PawnData;
+
+    UPROPERTY(VisibleInstanceOnly, ReplicatedUsing = OnRep_ReplicatedPlayerIdentity)
+    FYcPlayerIdentitySnapshot ReplicatedPlayerIdentity;
 	
 private:
 	/** 

@@ -4,7 +4,13 @@
 #include "Player/YcPlayerController.h"
 
 #include "AbilitySystemGlobals.h"
+#include "Engine/Engine.h"
+#include "Engine/LocalPlayer.h"
 #include "EngineUtils.h"
+#include "Misc/App.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "System/YcAccountSessionSubsystem.h"
 #include "YcAbilitySystemComponent.h"
 #include "YcTeamAgentInterface.h"
 #include "Player/YcCheatManager.h"
@@ -12,6 +18,108 @@
 #include "YiChenGameplay.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcPlayerController)
+
+namespace
+{
+	FString ResolveAccountCommandLineValue(const TCHAR* Key)
+	{
+		FString Value;
+		return FParse::Value(FCommandLine::Get(), Key, Value) ? Value : FString();
+	}
+
+	int32 ResolvePieInstanceSlot(const UWorld* World)
+	{
+		if (!World)
+		{
+			return 0;
+		}
+
+		if (UPackage* Package = World->GetPackage())
+		{
+			const int32 PackagePieId = Package->GetPIEInstanceID();
+			if (PackagePieId != INDEX_NONE)
+			{
+				return PackagePieId;
+			}
+		}
+
+		if (GEngine)
+		{
+			if (const FWorldContext* Context = GEngine->GetWorldContextFromWorld(World))
+			{
+				return Context->PIEInstance != INDEX_NONE ? Context->PIEInstance : 0;
+			}
+		}
+
+		return 0;
+	}
+
+	FString BuildStablePlatformUserIdHint(const APlayerController* PlayerController)
+	{
+		if (const FString CommandLineUserId = ResolveAccountCommandLineValue(TEXT("YCPlatformUserId=")); !CommandLineUserId.IsEmpty())
+		{
+			return CommandLineUserId;
+		}
+
+		const UWorld* World = PlayerController ? PlayerController->GetWorld() : nullptr;
+		if (World && World->WorldType == EWorldType::PIE)
+		{
+			FString ProjectName = FApp::GetProjectName();
+			if (ProjectName.IsEmpty())
+			{
+				ProjectName = TEXT("Project");
+			}
+
+			int32 LocalPlayerSlot = 0;
+			if (PlayerController)
+			{
+				if (const ULocalPlayer* LocalPlayer = PlayerController->GetLocalPlayer())
+				{
+					const int32 LocalPlayerIndex = LocalPlayer->GetLocalPlayerIndex();
+					if (LocalPlayerIndex != INDEX_NONE)
+					{
+						LocalPlayerSlot = LocalPlayerIndex;
+					}
+					else if (LocalPlayer->GetControllerId() != INDEX_NONE)
+					{
+						LocalPlayerSlot = LocalPlayer->GetControllerId();
+					}
+				}
+			}
+
+			return FString::Printf(TEXT("PIE_%s_%d_P%d"), *ProjectName, ResolvePieInstanceSlot(World), LocalPlayerSlot);
+		}
+
+		return FString();
+	}
+
+	FString BuildDisplayNameHint(const APlayerController* PlayerController, const FString& PlatformUserIdHint)
+	{
+		if (const FString CommandLineDisplayName = ResolveAccountCommandLineValue(TEXT("YCDisplayName=")); !CommandLineDisplayName.IsEmpty())
+		{
+			return CommandLineDisplayName;
+		}
+
+		if (PlayerController && PlayerController->PlayerState)
+		{
+			const FString PlayerName = PlayerController->PlayerState->GetPlayerName();
+			if (!PlayerName.IsEmpty())
+			{
+				return PlayerName;
+			}
+		}
+
+		return PlatformUserIdHint;
+	}
+
+	FYcAuthRequest BuildDefaultAuthRequest(const APlayerController* PlayerController)
+	{
+		FYcAuthRequest AuthRequest;
+		AuthRequest.PlatformUserIdHint = BuildStablePlatformUserIdHint(PlayerController);
+		AuthRequest.DisplayNameHint = BuildDisplayNameHint(PlayerController, AuthRequest.PlatformUserIdHint);
+		return AuthRequest;
+	}
+}
 
 AYcPlayerController::AYcPlayerController(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -34,6 +142,24 @@ UAbilitySystemComponent* AYcPlayerController::GetAbilitySystemComponent() const
 	return GetYcAbilitySystemComponent();
 }
 
+void AYcPlayerController::BeginPlay()
+{
+    Super::BeginPlay();
+    TryBootstrapAccountSession();
+}
+
+void AYcPlayerController::ReceivedPlayer()
+{
+    Super::ReceivedPlayer();
+    TryBootstrapAccountSession();
+}
+
+void AYcPlayerController::OnRep_PlayerState()
+{
+    Super::OnRep_PlayerState();
+    TryBootstrapAccountSession();
+}
+
 void AYcPlayerController::PreProcessInput(const float DeltaTime, const bool bGamePaused)
 {
 	Super::PreProcessInput(DeltaTime, bGamePaused);
@@ -52,7 +178,8 @@ void AYcPlayerController::PostProcessInput(const float DeltaTime, const bool bGa
 
 void AYcPlayerController::OnPossess(APawn* InPawn)
 {
-	Super::OnPossess(InPawn);
+    Super::OnPossess(InPawn);
+    TryBootstrapAccountSession();
 }
 
 void AYcPlayerController::OnUnPossess()
@@ -112,6 +239,125 @@ void AYcPlayerController::ServerCheat_Implementation(const FString& Msg)
 bool AYcPlayerController::ServerCheat_Validate(const FString& Msg)
 {
 	return true;
+}
+
+void AYcPlayerController::TryBootstrapAccountSession()
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    UYcAccountSessionSubsystem* AccountSessionSubsystem = UYcAccountSessionSubsystem::Get(this);
+    if (!AccountSessionSubsystem)
+    {
+        UE_LOG(LogYcGameplay, Warning, TEXT("TryBootstrapAccountSession failed: AccountSessionSubsystem is null."));
+        return;
+    }
+
+    FYcPlayerIdentitySnapshot ExistingIdentity;
+    if (const AYcPlayerState* YcPlayerState = GetYcPlayerState())
+    {
+        if (YcPlayerState->GetReplicatedPlayerIdentity(ExistingIdentity) && ExistingIdentity.IsReady())
+        {
+            AccountSessionSubsystem->AdoptReplicatedPlayerIdentity(ExistingIdentity);
+            return;
+        }
+    }
+
+	if (AccountSessionSubsystem->GetCurrentSessionState() == EYcAccountSessionState::SignedOut
+		|| AccountSessionSubsystem->GetCurrentSessionState() == EYcAccountSessionState::Uninitialized
+		|| AccountSessionSubsystem->GetCurrentSessionState() == EYcAccountSessionState::Error)
+	{
+		if (HasAuthority())
+		{
+			if (AccountSessionSubsystem->RestoreLocalSession(this))
+			{
+				return;
+			}
+
+			FYcAuthRequest AuthRequest = BuildDefaultAuthRequest(this);
+			ServerRequestPlayerAuthentication(AuthRequest);
+			return;
+		}
+
+		FYcAuthRequest AuthRequest = BuildDefaultAuthRequest(this);
+		if (!AccountSessionSubsystem->BeginLocalLogin(this, AuthRequest))
+		{
+			ServerRequestPlayerAuthentication(AuthRequest);
+		}
+	}
+}
+
+void AYcPlayerController::ServerRequestPlayerAuthentication_Implementation(const FYcAuthRequest& AuthRequest)
+{
+    UYcAccountSessionSubsystem* AccountSessionSubsystem = UYcAccountSessionSubsystem::Get(this);
+    if (!AccountSessionSubsystem)
+    {
+        UE_LOG(LogYcGameplay, Warning, TEXT("ServerRequestPlayerAuthentication failed: AccountSessionSubsystem is null."));
+        return;
+    }
+
+    AYcPlayerState* YcPlayerState = GetYcPlayerState();
+    if (!YcPlayerState)
+    {
+        UE_LOG(LogYcGameplay, Warning, TEXT("ServerRequestPlayerAuthentication failed: PlayerState is null."));
+        return;
+    }
+
+    FYcSessionSnapshot ResolvedSession;
+    if (!AccountSessionSubsystem->AuthenticatePlayerControllerOnServer(this, AuthRequest, ResolvedSession))
+    {
+        UE_LOG(LogYcGameplay, Warning, TEXT("ServerRequestPlayerAuthentication failed to authenticate local player."));
+        return;
+    }
+
+    FYcPlayerIdentitySnapshot AuthoritativeIdentity = ResolvedSession.PlayerIdentity;
+    AuthoritativeIdentity.bIsAuthoritative = true;
+    YcPlayerState->SetReplicatedPlayerIdentity(AuthoritativeIdentity);
+    AccountSessionSubsystem->AdoptReplicatedPlayerIdentity(AuthoritativeIdentity);
+}
+
+void AYcPlayerController::ServerSwitchPlayerProfile_Implementation(const FString& RequestedProfileId, const bool bCreateProfileIfMissing)
+{
+    UYcAccountSessionSubsystem* AccountSessionSubsystem = UYcAccountSessionSubsystem::Get(this);
+    AYcPlayerState* YcPlayerState = GetYcPlayerState();
+    if (!AccountSessionSubsystem || !YcPlayerState)
+    {
+        UE_LOG(LogYcGameplay, Warning, TEXT("ServerSwitchPlayerProfile failed: subsystem or PlayerState missing."));
+        return;
+    }
+
+    FYcSessionSnapshot ResolvedSession;
+    if (!AccountSessionSubsystem->SwitchActiveProfileOnServer(this, RequestedProfileId, bCreateProfileIfMissing, ResolvedSession))
+    {
+        UE_LOG(LogYcGameplay, Warning, TEXT("ServerSwitchPlayerProfile failed to activate profile '%s'."), *RequestedProfileId);
+        return;
+    }
+
+    FYcPlayerIdentitySnapshot AuthoritativeIdentity = ResolvedSession.PlayerIdentity;
+    AuthoritativeIdentity.bIsAuthoritative = true;
+    YcPlayerState->SetReplicatedPlayerIdentity(AuthoritativeIdentity);
+    AccountSessionSubsystem->AdoptReplicatedPlayerIdentity(AuthoritativeIdentity);
+}
+
+void AYcPlayerController::ServerSignOutPlayer_Implementation()
+{
+    UYcAccountSessionSubsystem* AccountSessionSubsystem = UYcAccountSessionSubsystem::Get(this);
+    AYcPlayerState* YcPlayerState = GetYcPlayerState();
+    if (!AccountSessionSubsystem || !YcPlayerState)
+    {
+        UE_LOG(LogYcGameplay, Warning, TEXT("ServerSignOutPlayer failed: subsystem or PlayerState missing."));
+        return;
+    }
+
+    if (!AccountSessionSubsystem->SignOutPlayerOnServer(this))
+    {
+        UE_LOG(LogYcGameplay, Warning, TEXT("ServerSignOutPlayer failed to sign out local player."));
+        return;
+    }
+
+    YcPlayerState->ClearReplicatedPlayerIdentity();
 }
 
 void AYcPlayerController::SetGenericTeamId(const FGenericTeamId& NewTeamID)

@@ -4,6 +4,7 @@
 
 #include "AbilitySystemInterface.h"
 #include "CommonPlayerController.h"
+#include "System/YcAccountTypes.h"
 #include "YcTeamAgentInterface.h"
 #include "YcPlayerController.generated.h"
 
@@ -79,6 +80,9 @@ public:
 	//~End of IYcTeamAgentInterface interface
 	
 	//~APlayerController interface
+	virtual void BeginPlay() override;
+	virtual void ReceivedPlayer() override;
+	virtual void OnRep_PlayerState() override;
 	virtual void PreProcessInput(const float DeltaTime, const bool bGamePaused) override;
 	virtual void PostProcessInput(const float DeltaTime, const bool bGamePaused) override;
 	//~End of APlayerController interface
@@ -97,4 +101,16 @@ public:
 	UFUNCTION(Reliable, Server, WithValidation)
 	void ServerCheatAll(const FString& Msg);
 	////////// ~Cheat相关 //////////
+
+private:
+    void TryBootstrapAccountSession();
+
+    UFUNCTION(Server, Reliable)
+    void ServerRequestPlayerAuthentication(const FYcAuthRequest& AuthRequest);
+
+    UFUNCTION(Server, Reliable)
+    void ServerSwitchPlayerProfile(const FString& RequestedProfileId, bool bCreateProfileIfMissing);
+
+    UFUNCTION(Server, Reliable)
+    void ServerSignOutPlayer();
 };

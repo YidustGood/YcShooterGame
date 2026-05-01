@@ -13,6 +13,7 @@
 #include "Components/GameFrameworkComponentManager.h"
 #include "GameModes/YcExperienceManagerComponent.h"
 #include "GameModes/YcGameMode.h"
+#include "System/YcAccountSessionSubsystem.h"
 #include "Net/UnrealNetwork.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcPlayerState)
@@ -28,6 +29,9 @@ AYcPlayerState::AYcPlayerState(const FObjectInitializer& ObjectInitializer)
 	
 	// ASC需要以较高的频率进行更新。
 	SetNetUpdateFrequency(100.0f);
+	
+	//开启后使用AddReplicatedSubObject()将对象注册就会自动复制，否则需要重写ReplicateSubobjects手动复制
+	bReplicateUsingRegisteredSubObjectList = true;
 }
 
 void AYcPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -41,6 +45,7 @@ void AYcPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, MyTeamID, SharedParams);
 	DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, MySquadID, SharedParams);
 	DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, StatTags, SharedParams);
+    DOREPLIFETIME_WITH_PARAMS_FAST(ThisClass, ReplicatedPlayerIdentity, SharedParams);
 }
 
 AYcPlayerController* AYcPlayerState::GetYcPlayerController() const
@@ -138,6 +143,60 @@ void AYcPlayerState::OnExperienceLoaded(const UYcExperienceDefinition* CurrentEx
 
 void AYcPlayerState::OnRep_PawnData()
 {
+}
+
+bool AYcPlayerState::GetReplicatedPlayerIdentity(FYcPlayerIdentitySnapshot& OutIdentity) const
+{
+    OutIdentity = ReplicatedPlayerIdentity;
+    return OutIdentity.IsReady();
+}
+
+bool AYcPlayerState::SetReplicatedPlayerIdentity(const FYcPlayerIdentitySnapshot& InIdentity)
+{
+    if (GetLocalRole() != ROLE_Authority || !InIdentity.IsReady())
+    {
+        return false;
+    }
+
+    if (ReplicatedPlayerIdentity == InIdentity)
+    {
+        return true;
+    }
+
+    MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedPlayerIdentity, this);
+    ReplicatedPlayerIdentity = InIdentity;
+    ForceNetUpdate();
+    return true;
+}
+
+void AYcPlayerState::ClearReplicatedPlayerIdentity()
+{
+    if (GetLocalRole() != ROLE_Authority)
+    {
+        return;
+    }
+
+    if (!ReplicatedPlayerIdentity.IsAuthenticated() && !ReplicatedPlayerIdentity.HasActiveProfile())
+    {
+        return;
+    }
+
+    MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, ReplicatedPlayerIdentity, this);
+    ReplicatedPlayerIdentity = FYcPlayerIdentitySnapshot();
+    ForceNetUpdate();
+}
+
+bool AYcPlayerState::GetPlayerIdentity_Implementation(FYcPlayerIdentitySnapshot& OutIdentity) const
+{
+    return GetReplicatedPlayerIdentity(OutIdentity);
+}
+
+void AYcPlayerState::OnRep_ReplicatedPlayerIdentity()
+{
+    if (UYcAccountSessionSubsystem* SessionSubsystem = UYcAccountSessionSubsystem::Get(this))
+    {
+        SessionSubsystem->AdoptReplicatedPlayerIdentity(ReplicatedPlayerIdentity);
+    }
 }
 
 void AYcPlayerState::AddStatTagStack(const FGameplayTag Tag, const int32 StackCount)

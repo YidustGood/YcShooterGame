@@ -21,6 +21,11 @@
         "LoadingPhase": "Default"
         },
         {
+        "Name": "YiChenAccountCore",
+        "Type": "Runtime",
+        "LoadingPhase": "Default"
+        },
+        {
         "Name": "YiChenInventory",
         "Type": "Runtime",
         "LoadingPhase": "Default"
@@ -67,6 +72,11 @@
         },
         {
         "Name": "YiChenGamePhase",
+        "Type": "Runtime",
+        "LoadingPhase": "Default"
+        },
+        {
+        "Name": "YiChenQuest",
         "Type": "Runtime",
         "LoadingPhase": "Default"
         }

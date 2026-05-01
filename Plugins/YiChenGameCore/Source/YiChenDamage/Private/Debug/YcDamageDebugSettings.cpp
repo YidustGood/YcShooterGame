@@ -1,73 +1,72 @@
 // Copyright (c) 2025 YiChen. All Rights Reserved.
 
 #include "Debug/YcDamageDebugSettings.h"
+
 #include "HAL/IConsoleManager.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcDamageDebugSettings)
 
 FYcDamageDebugSettings UYcDamageDebugSubsystem::Settings;
 
+#if !UE_BUILD_SHIPPING
+namespace
+{
+	static FAutoConsoleCommand YcDamageEnableAllCommand(
+		TEXT("Yc.Damage.EnableAll"),
+		TEXT("Toggle all damage debug features (0/1)"),
+		FConsoleCommandWithArgsDelegate::CreateStatic(&UYcDamageDebugSubsystem::HandleEnableAllCommand),
+		ECVF_Cheat
+	);
+
+	static FAutoConsoleCommand YcDamageDebugCommand(
+		TEXT("Yc.Damage.Debug"),
+		TEXT("Toggle damage debug log (0/1)"),
+		FConsoleCommandWithArgsDelegate::CreateStatic(&UYcDamageDebugSubsystem::HandleDebugCommand),
+		ECVF_Cheat
+	);
+
+	static FAutoConsoleCommand YcDamageVisualizeCommand(
+		TEXT("Yc.Damage.Visualize"),
+		TEXT("Toggle damage visualization (0/1)"),
+		FConsoleCommandWithArgsDelegate::CreateStatic(&UYcDamageDebugSubsystem::HandleVisualizationCommand),
+		ECVF_Cheat
+	);
+
+	static FAutoConsoleCommand YcDamageShowProcessCommand(
+		TEXT("Yc.Damage.ShowProcess"),
+		TEXT("Toggle showing damage calculation process (0/1)"),
+		FConsoleCommandWithArgsDelegate::CreateStatic(&UYcDamageDebugSubsystem::HandleShowProcessCommand),
+		ECVF_Cheat
+	);
+
+	static FAutoConsoleCommand YcDamageShowComponentsCommand(
+		TEXT("Yc.Damage.ShowComponents"),
+		TEXT("Toggle showing component execution order (0/1)"),
+		FConsoleCommandWithArgsDelegate::CreateStatic(&UYcDamageDebugSubsystem::HandleShowComponentOrderCommand),
+		ECVF_Cheat
+	);
+
+	static FAutoConsoleCommand YcDamageDurationCommand(
+		TEXT("Yc.Damage.Duration"),
+		TEXT("Set visualization duration in seconds (default: 3.0)"),
+		FConsoleCommandWithArgsDelegate::CreateStatic(&UYcDamageDebugSubsystem::HandleDurationCommand),
+		ECVF_Cheat
+	);
+}
+#endif
+
 void UYcDamageDebugSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
 #if !UE_BUILD_SHIPPING
-	// 注册控制台命令（使用 ECVF_Cheat 确保在 PIE 中可用）
-
-	// 总开关命令
-	IConsoleManager::Get().RegisterConsoleCommand(
-		TEXT("Yc.Damage.EnableAll"),
-		TEXT("Toggle all damage debug features (0/1)"),
-		FConsoleCommandWithArgsDelegate::CreateStatic(&HandleEnableAllCommand),
-		ECVF_Cheat
-	);
-
-	IConsoleManager::Get().RegisterConsoleCommand(
-		TEXT("Yc.Damage.Debug"),
-		TEXT("Toggle damage debug log (0/1)"),
-		FConsoleCommandWithArgsDelegate::CreateStatic(&HandleDebugCommand),
-		ECVF_Cheat
-	);
-
-	IConsoleManager::Get().RegisterConsoleCommand(
-		TEXT("Yc.Damage.Visualize"),
-		TEXT("Toggle damage visualization (0/1)"),
-		FConsoleCommandWithArgsDelegate::CreateStatic(&HandleVisualizationCommand),
-		ECVF_Cheat
-	);
-
-	IConsoleManager::Get().RegisterConsoleCommand(
-		TEXT("Yc.Damage.ShowProcess"),
-		TEXT("Toggle showing damage calculation process (0/1)"),
-		FConsoleCommandWithArgsDelegate::CreateStatic(&HandleShowProcessCommand),
-		ECVF_Cheat
-	);
-
-	IConsoleManager::Get().RegisterConsoleCommand(
-		TEXT("Yc.Damage.ShowComponents"),
-		TEXT("Toggle showing component execution order (0/1)"),
-		FConsoleCommandWithArgsDelegate::CreateStatic(&HandleShowComponentOrderCommand),
-		ECVF_Cheat
-	);
-
-	IConsoleManager::Get().RegisterConsoleCommand(
-		TEXT("Yc.Damage.Duration"),
-		TEXT("Set visualization duration in seconds (default: 3.0)"),
-		FConsoleCommandWithArgsDelegate::CreateStatic(&HandleDurationCommand),
-		ECVF_Cheat
-	);
-
-	UE_LOG(LogTemp, Log, TEXT("YcDamageDebugSubsystem initialized. Commands: Yc.Damage.EnableAll, Yc.Damage.Debug, Yc.Damage.Visualize, etc."));
+	UE_LOG(LogTemp, Verbose, TEXT("YcDamageDebugSubsystem initialized. Debug console commands are registered at module scope."));
 #endif
 }
 
 void UYcDamageDebugSubsystem::Deinitialize()
 {
 	Super::Deinitialize();
-
-#if !UE_BUILD_SHIPPING
-	// 控制台命令会自动在模块卸载时清理，无需手动注销
-#endif
 }
 
 #if !UE_BUILD_SHIPPING
@@ -80,11 +79,9 @@ void UYcDamageDebugSubsystem::HandleEnableAllCommand(const TArray<FString>& Args
 	}
 	else
 	{
-		// 无参数时切换状态
 		bEnable = !Settings.bEnableDebugLog || !Settings.bEnableVisualization;
 	}
 
-	// 设置所有开关
 	Settings.bEnableDebugLog = bEnable;
 	Settings.bEnableVisualization = bEnable;
 	Settings.bShowCalculationProcess = bEnable;
@@ -107,6 +104,7 @@ void UYcDamageDebugSubsystem::HandleDebugCommand(const TArray<FString>& Args)
 	{
 		Settings.bEnableDebugLog = !Settings.bEnableDebugLog;
 	}
+
 	UE_LOG(LogTemp, Log, TEXT("YcDamage Debug Log: %s"), Settings.bEnableDebugLog ? TEXT("ON") : TEXT("OFF"));
 }
 
@@ -120,6 +118,7 @@ void UYcDamageDebugSubsystem::HandleVisualizationCommand(const TArray<FString>& 
 	{
 		Settings.bEnableVisualization = !Settings.bEnableVisualization;
 	}
+
 	UE_LOG(LogTemp, Log, TEXT("YcDamage Visualization: %s"), Settings.bEnableVisualization ? TEXT("ON") : TEXT("OFF"));
 }
 
@@ -133,6 +132,7 @@ void UYcDamageDebugSubsystem::HandleShowProcessCommand(const TArray<FString>& Ar
 	{
 		Settings.bShowCalculationProcess = !Settings.bShowCalculationProcess;
 	}
+
 	UE_LOG(LogTemp, Log, TEXT("YcDamage Show Process: %s"), Settings.bShowCalculationProcess ? TEXT("ON") : TEXT("OFF"));
 }
 
@@ -146,6 +146,7 @@ void UYcDamageDebugSubsystem::HandleShowComponentOrderCommand(const TArray<FStri
 	{
 		Settings.bShowComponentOrder = !Settings.bShowComponentOrder;
 	}
+
 	UE_LOG(LogTemp, Log, TEXT("YcDamage Show Components: %s"), Settings.bShowComponentOrder ? TEXT("ON") : TEXT("OFF"));
 }
 
@@ -156,6 +157,7 @@ void UYcDamageDebugSubsystem::HandleDurationCommand(const TArray<FString>& Args)
 		Settings.VisualizationDuration = FCString::Atof(*Args[0]);
 		Settings.VisualizationDuration = FMath::Max(0.1f, Settings.VisualizationDuration);
 	}
+
 	UE_LOG(LogTemp, Log, TEXT("YcDamage Visualization Duration: %.2f seconds"), Settings.VisualizationDuration);
 }
 #endif

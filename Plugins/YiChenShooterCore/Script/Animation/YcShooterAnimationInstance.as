@@ -11,6 +11,8 @@ class UYcShooterAnimationInstance : UAnimInstance
 	ACharacter Character;
 
 	UPROPERTY(Category = "Animation")
+	float MaxWalkSpeed;
+	UPROPERTY(Category = "Animation")
 	float GroundSpeed;
 	UPROPERTY(Category = "Animation")
 	float MoveDirection;
@@ -59,7 +61,7 @@ class UYcShooterAnimationInstance : UAnimInstance
 		if (IsValid(Character))
 		{
 			AnimComponent = Character.GetComponentByClass(UYcShooterAnimComponent);
-			QuickBarComponent = Character.GetComponentByClass(UYcQuickBarComponent);
+			QuickBarComponent = UYcQuickBarComponent::FindQuickBarComponent(Character);
 		}
 	}
 
@@ -74,6 +76,10 @@ class UYcShooterAnimationInstance : UAnimInstance
 		{
 			GetWeaponValues();
 			CalculateWorldOffsetScope();
+		}
+		else if (Character != nullptr)
+		{
+			QuickBarComponent = UYcQuickBarComponent::FindQuickBarComponent(Character);
 		}
 	}
 
@@ -92,6 +98,7 @@ class UYcShooterAnimationInstance : UAnimInstance
 		bLowered = AnimComponent.IsLowered();
 		WeaponSawyRotation = AnimComponent.GetCurrentWeaponSwayRotation();
 		MoveActionValue = AnimComponent.GetMoveActionValue();
+		MaxWalkSpeed = AnimComponent.GetMaxWalkSpeed();
 	}
 
 	UFUNCTION()

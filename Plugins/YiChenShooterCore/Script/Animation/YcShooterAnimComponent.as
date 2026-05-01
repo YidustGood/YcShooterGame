@@ -34,6 +34,19 @@ class UYcShooterAnimComponent : UPawnComponent
 		AbilityComp = UAbilitySystemComponent::Get(Panw.PlayerState);
 		return AbilityComp;
 	}
+	/**
+	 * 获取角色的最大行走速度
+	 * @return 最大行走速度
+	 */
+	UFUNCTION()
+	float GetMaxWalkSpeed()
+	{
+		if (!IsValid(CharacterMovement))
+		{
+			return 0.0f;
+		}
+		return CharacterMovement.MaxWalkSpeed;
+	}
 
 	/**
 	 * 根据运动组件的速度来设置速度和地面速度。

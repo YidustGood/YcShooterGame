@@ -16,6 +16,16 @@ class AYcShooterCharacterBase : AYcCharacter
 	UFUNCTION(BlueprintOverride)
 	void BeginPlay()
 	{
+		SetActorHiddenInGame(true);
+		FActorInitStateChangedBPDelegate InitStateChangedDelegate;
+		InitStateChangedDelegate.BindUFunction(this, n"OnInitStateGameplayReady");
+		PawnExtComponent.K2_RegisterAndCallForInitStateChange(GameplayTags::InitState_GameplayReady, InitStateChangedDelegate);
+	}
+
+	UFUNCTION(BlueprintEvent)
+	void OnInitStateGameplayReady(const FActorInitStateChangedParams&in Params)
+	{
+		SetActorHiddenInGame(false);
 	}
 
 	UFUNCTION(BlueprintOverride)

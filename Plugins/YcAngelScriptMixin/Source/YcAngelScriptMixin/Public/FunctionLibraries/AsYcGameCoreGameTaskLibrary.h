@@ -58,19 +58,18 @@ public:
 		);
 	}
 
-	// // @Dropped
-	// /**
-	//  * 激活AsyncAction,在AS中有些AsyncAction不会自动激活,可使用这个函数调用激活,但是需要注意处理多次激活的问题
-	//  * @param AsyncAction 要激活的AsyncAction
-	//  */
-	// UFUNCTION(ScriptCallable, Category = "Ability|Tasks")
-	// static void ActivateAsyncAction(UBlueprintAsyncActionBase* AsyncAction)
-	// {
-	// 	if(!IsValid(AsyncAction))
-	// 	{
-	// 		UE_LOG(LogTemp, Error, TEXT("UAsCommonGameTaskLibrary::ActivateAsyncAction->AsyncAction invalid."));
-	// 		return;
-	// 	}
-	// 	AsyncAction->Activate();
-	// }
+	/**
+	 * 激活AsyncAction,在AS中有些AsyncAction不会自动激活,可使用这个函数调用激活,但是需要注意处理多次激活的问题
+	 * @param AsyncAction 要激活的AsyncAction
+	 */
+	UFUNCTION(ScriptCallable, Category = "Ability|Tasks")
+	static void ActivateAsyncAction(UBlueprintAsyncActionBase* AsyncAction)
+	{
+		if(!IsValid(AsyncAction))
+		{
+			UE_LOG(LogTemp, Error, TEXT("UAsCommonGameTaskLibrary::ActivateAsyncAction->AsyncAction invalid."));
+			return;
+		}
+		AsyncAction->Activate();
+	}
 };

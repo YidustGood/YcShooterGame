@@ -94,11 +94,16 @@ class UYcGameplayAbility_KnifeAttack : UYcGameplayAbility_WeaponBase
 		// 初始化刀模型
 		if (KnifeMesh == nullptr)
 		{
+			// @TODO 这里目前是简单的遍历获得刀模型, 目前只会在首次攻击时调用, 如果确实是需要那么再做性能优化, 注意一定要给刀模型添加Tag(KnifeMesh)
 			TArray<USkeletalMeshComponent> Children = ArmsMesh.GetChildrenComponentsByClass(USkeletalMeshComponent, true);
-			if (Children.Num() > 0)
+			for (auto& Child : Children)
 			{
-				KnifeMesh = Children[0];
-				InitAttackPointsName();
+				if (Child.ComponentHasTag(n"KnifeMesh"))
+				{
+					KnifeMesh = Child;
+					InitAttackPointsName();
+					break;
+				}
 			}
 		}
 		PlayAttachAnim();
@@ -113,12 +118,12 @@ class UYcGameplayAbility_KnifeAttack : UYcGameplayAbility_WeaponBase
 		PlayMontageCallbackProxy.OnNotifyBegin.AddUFunction(this, n"StartKnifeAttack");
 		PlayMontageCallbackProxy.OnNotifyEnd.AddUFunction(this, n"EndKnifeAttack");
 
-		// //@TODO 加入刀在攻击时本体需要有动画就在这里发送给刀Actor处理, 具体动画干脆由具体Actor选择, FP和TP是不一样的
-		// // 通知FP刀Actor执行检视动画
-		// FGameplayEventData Payload;
-		// Payload.EventTag = GameplayTags::InputTag_Weapon_Inspect;
-		// Payload.OptionalObject = InspectActionVisual.FPWeaponAnimMontage.Get();
-		// AbilitySystem::SendGameplayEventToActor(GetAvatarActorFromActorInfo(), GameplayTags::InputTag_Weapon_Inspect, Payload);
+		//@TODO 加入刀在攻击时本体需要有动画就在这里发送给刀Actor处理, 具体动画干脆由具体Actor选择, FP和TP是不一样的
+		// 通知FP刀Actor执行检视动画
+		FGameplayEventData Payload;
+		Payload.EventTag = GameplayTags::InputTag_Weapon_Fire;
+		Payload.OptionalObject = MeleeAction.FPWeaponAnimMontage.Get();
+		AbilitySystem::SendGameplayEventToActor(GetAvatarActorFromActorInfo(), GameplayTags::InputTag_Weapon_Fire, Payload);
 	}
 
 	UFUNCTION()

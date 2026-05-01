@@ -2,18 +2,12 @@
 
 #include "DynamicScreenUI/YcDynamicScreenWidgetBase.h"
 
+#include "DynamicScreenUI/YcDynamicScreenUITags.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
-#include "NativeGameplayTags.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcDynamicScreenWidgetBase)
 
-namespace YcDynamicScreenUITags
-{
-	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_UI_DYNAMIC_UPDATE, "UI.Dynamic.Update");
-	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_UI_DYNAMIC_HIDE, "UI.Dynamic.Hide");
-}
-
-void UYcDynamicScreenWidgetBase::InitializeDynamicScreenWidget(FName InWidgetKey)
+void UYcDynamicScreenWidgetBase::InitializeDynamicScreenWidget(const FName InWidgetKey)
 {
 	DynamicWidgetKey = InWidgetKey;
 	RegisterDynamicMessageListeners();
@@ -50,11 +44,11 @@ void UYcDynamicScreenWidgetBase::RegisterDynamicMessageListeners()
 
 	UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(GetWorld());
 	DynamicUpdateHandle = MessageSubsystem.RegisterListener<FYcDynamicPlayerScreenUIMessage>(
-		YcDynamicScreenUITags::TAG_UI_DYNAMIC_UPDATE,
+		YcDynamicScreenUITags::UI_Dynamic_Update,
 		this,
 		&ThisClass::OnDynamicScreenWidgetUpdated);
 	DynamicHideHandle = MessageSubsystem.RegisterListener<FYcDynamicPlayerScreenUIMessage>(
-		YcDynamicScreenUITags::TAG_UI_DYNAMIC_HIDE,
+		YcDynamicScreenUITags::UI_Dynamic_Hide,
 		this,
 		&ThisClass::OnDynamicScreenWidgetHidden);
 	bDynamicListenersRegistered = true;

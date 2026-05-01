@@ -5,20 +5,11 @@
 #include "CommonActivatableWidget.h"
 #include "DynamicScreenUI/YcDynamicScreenWidgetBase.h"
 #include "DynamicScreenUI/YcManagedPlayerScreenSlot.h"
+#include "DynamicScreenUI/YcDynamicScreenUITags.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameFramework/PlayerController.h"
-#include "NativeGameplayTags.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcPlayerScreenUIComponent)
-
-namespace YcDynamicScreenUITags
-{
-	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_UI_DYNAMIC_REQUEST_SHOW, "UI.Dynamic.Request.Show");
-	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_UI_DYNAMIC_REQUEST_UPDATE, "UI.Dynamic.Request.Update");
-	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_UI_DYNAMIC_REQUEST_HIDE, "UI.Dynamic.Request.Hide");
-	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_UI_DYNAMIC_UPDATE, "UI.Dynamic.Update");
-	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_UI_DYNAMIC_HIDE, "UI.Dynamic.Hide");
-}
 
 UYcPlayerScreenUIComponent::UYcPlayerScreenUIComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -114,7 +105,7 @@ void UYcPlayerScreenUIComponent::EnqueueShowDynamicWidgetRequest(const FYcDynami
 
 	FYcDynamicPlayerScreenUIShowRequest RoutedRequest = Request;
 	RoutedRequest.TargetPlayerController = PlayerController;
-	UGameplayMessageSubsystem::Get(GetWorld()).BroadcastMessage(YcDynamicScreenUITags::TAG_UI_DYNAMIC_REQUEST_SHOW, RoutedRequest);
+	UGameplayMessageSubsystem::Get(GetWorld()).BroadcastMessage(YcDynamicScreenUITags::UI_Dynamic_Request_Show, RoutedRequest);
 }
 
 void UYcPlayerScreenUIComponent::EnqueueUpdateDynamicWidgetRequest(FName WidgetKey, const FInstancedStruct& Payload)
@@ -129,7 +120,7 @@ void UYcPlayerScreenUIComponent::EnqueueUpdateDynamicWidgetRequest(FName WidgetK
 	Request.TargetPlayerController = PlayerController;
 	Request.WidgetKey = WidgetKey;
 	Request.Payload = Payload;
-	UGameplayMessageSubsystem::Get(GetWorld()).BroadcastMessage(YcDynamicScreenUITags::TAG_UI_DYNAMIC_REQUEST_UPDATE, Request);
+	UGameplayMessageSubsystem::Get(GetWorld()).BroadcastMessage(YcDynamicScreenUITags::UI_Dynamic_Request_Update, Request);
 }
 
 void UYcPlayerScreenUIComponent::EnqueueHideDynamicWidgetRequest(FName WidgetKey, const FInstancedStruct& Payload)
@@ -144,7 +135,7 @@ void UYcPlayerScreenUIComponent::EnqueueHideDynamicWidgetRequest(FName WidgetKey
 	Request.TargetPlayerController = PlayerController;
 	Request.WidgetKey = WidgetKey;
 	Request.Payload = Payload;
-	UGameplayMessageSubsystem::Get(GetWorld()).BroadcastMessage(YcDynamicScreenUITags::TAG_UI_DYNAMIC_REQUEST_HIDE, Request);
+	UGameplayMessageSubsystem::Get(GetWorld()).BroadcastMessage(YcDynamicScreenUITags::UI_Dynamic_Request_Hide, Request);
 }
 
 void UYcPlayerScreenUIComponent::HandleScreenSlotWidgetPushed(FName WidgetKey, UCommonActivatableWidget* UserWidget)
@@ -229,7 +220,7 @@ void UYcPlayerScreenUIComponent::BroadcastDynamicWidgetUpdate(FName WidgetKey, c
 	FYcDynamicPlayerScreenUIMessage Message;
 	Message.WidgetKey = WidgetKey;
 	Message.Payload = Payload;
-	UGameplayMessageSubsystem::Get(GetWorld()).BroadcastMessage(YcDynamicScreenUITags::TAG_UI_DYNAMIC_UPDATE, Message);
+	UGameplayMessageSubsystem::Get(GetWorld()).BroadcastMessage(YcDynamicScreenUITags::UI_Dynamic_Update, Message);
 }
 
 void UYcPlayerScreenUIComponent::BroadcastDynamicWidgetHide(FName WidgetKey, const FInstancedStruct& Payload)
@@ -242,7 +233,7 @@ void UYcPlayerScreenUIComponent::BroadcastDynamicWidgetHide(FName WidgetKey, con
 	FYcDynamicPlayerScreenUIMessage Message;
 	Message.WidgetKey = WidgetKey;
 	Message.Payload = Payload;
-	UGameplayMessageSubsystem::Get(GetWorld()).BroadcastMessage(YcDynamicScreenUITags::TAG_UI_DYNAMIC_HIDE, Message);
+	UGameplayMessageSubsystem::Get(GetWorld()).BroadcastMessage(YcDynamicScreenUITags::UI_Dynamic_Hide, Message);
 }
 
 UYcManagedPlayerScreenSlot* UYcPlayerScreenUIComponent::ResolveScreenSlot(FName WidgetKey)
@@ -279,15 +270,15 @@ void UYcPlayerScreenUIComponent::RegisterRouteListeners()
 
 	UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(GetWorld());
 	DynamicShowRequestHandle = MessageSubsystem.RegisterListener<FYcDynamicPlayerScreenUIShowRequest>(
-		YcDynamicScreenUITags::TAG_UI_DYNAMIC_REQUEST_SHOW,
+		YcDynamicScreenUITags::UI_Dynamic_Request_Show,
 		this,
 		&ThisClass::OnDynamicShowRequestReceived);
 	DynamicUpdateRequestHandle = MessageSubsystem.RegisterListener<FYcDynamicPlayerScreenUIRouteMessage>(
-		YcDynamicScreenUITags::TAG_UI_DYNAMIC_REQUEST_UPDATE,
+		YcDynamicScreenUITags::UI_Dynamic_Request_Update,
 		this,
 		&ThisClass::OnDynamicUpdateRequestReceived);
 	DynamicHideRequestHandle = MessageSubsystem.RegisterListener<FYcDynamicPlayerScreenUIRouteMessage>(
-		YcDynamicScreenUITags::TAG_UI_DYNAMIC_REQUEST_HIDE,
+		YcDynamicScreenUITags::UI_Dynamic_Request_Hide,
 		this,
 		&ThisClass::OnDynamicHideRequestReceived);
 	bRouteListenersRegistered = true;

@@ -22,8 +22,12 @@ class YICHENSAVECORE_API UYcSaveBackendProvider : public UObject
     GENERATED_BODY()
 
 public:
+    /** 同步加载指定 Profile 根对象。 */
+    virtual EYcSaveBackendResult LoadProfileRootSync(const FYcProfileSaveKey& ProfileKey, FYcProfileSaveRoot& OutRoot, FString& OutReason) PURE_VIRTUAL(UYcSaveBackendProvider::LoadProfileRootSync, return EYcSaveBackendResult::Failed;);
+    /** 同步保存指定 Profile 根对象。 */
+    virtual bool SaveProfileRootSync(const FYcProfileSaveKey& ProfileKey, const FYcProfileSaveRoot& Root, FString& OutReason) PURE_VIRTUAL(UYcSaveBackendProvider::SaveProfileRootSync, return false;);
     /** 异步加载指定 Profile 根对象。 */
-    virtual void LoadProfileRootAsync(const FYcProfileKey& ProfileKey, const FYcOnLoadProfileRoot& Completion) PURE_VIRTUAL(UYcSaveBackendProvider::LoadProfileRootAsync, );
+    virtual void LoadProfileRootAsync(const FYcProfileSaveKey& ProfileKey, const FYcOnLoadProfileRoot& Completion) PURE_VIRTUAL(UYcSaveBackendProvider::LoadProfileRootAsync, );
     /** 异步保存指定 Profile 根对象。 */
-    virtual void SaveProfileRootAsync(const FYcProfileKey& ProfileKey, const FYcProfileSaveRoot& Root, const FYcOnSaveProfileRoot& Completion) PURE_VIRTUAL(UYcSaveBackendProvider::SaveProfileRootAsync, );
+    virtual void SaveProfileRootAsync(const FYcProfileSaveKey& ProfileKey, const FYcProfileSaveRoot& Root, const FYcOnSaveProfileRoot& Completion) PURE_VIRTUAL(UYcSaveBackendProvider::SaveProfileRootAsync, );
 };

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2025 YiChen. All Rights Reserved.
+// Copyright (c) 2025 YiChen. All Rights Reserved.
 
 #include "System/YcProfileSaveSubsystem.h"
 
@@ -13,8 +13,7 @@
 
 namespace
 {
-    // SaveCore 根协议版本号（用于全局快照级演进）。
-    constexpr int32 CurrentSnapshotVersion = 1;
+    constexpr int32 CurrentSnapshotVersion = 2;
 
     int64 GetNowUnixTime()
     {
@@ -44,14 +43,12 @@ UYcProfileSaveSubsystem* UYcProfileSaveSubsystem::Get(const UObject* WorldContex
 void UYcProfileSaveSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Super::Initialize(Collection);
-    // 启动时预创建后端，避免首次读写时才懒加载。
     EnsureBackendProvider();
 }
 
 void UYcProfileSaveSubsystem::Deinitialize()
 {
     FString Reason;
-    // 退出前尽力落盘脏档，避免数据丢失。
     SaveDirtyProfilesSync(Reason);
     DirtyProfiles.Empty();
     ContextByProfile.Empty();
@@ -59,17 +56,342 @@ void UYcProfileSaveSubsystem::Deinitialize()
     Super::Deinitialize();
 }
 
-void UYcProfileSaveSubsystem::RegisterProfileContext(const FYcProfileKey& ProfileKey, UObject* ContextObject)
+bool UYcProfileSaveSubsystem::BuildProfileKey(const FYcProfileIdentity& ProfileIdentity, FYcProfileSaveKey& OutProfileKey, FString& OutReason) const
 {
-    if (!ProfileKey.IsValid() || !IsValid(ContextObject))
+    OutProfileKey = FYcProfileSaveKey(ProfileIdentity);
+    if (!OutProfileKey.IsValid())
+    {
+        OutReason = FString::Printf(TEXT("Invalid profile identity: '%s'."), *ProfileIdentity.ToDebugString());
+        return false;
+    }
+
+    OutReason.Reset();
+    return true;
+}
+
+void UYcProfileSaveSubsystem::RegisterProfileContext(const FYcProfileIdentity& ProfileIdentity, UObject* ContextObject)
+{
+    FYcProfileSaveKey ProfileKey;
+    FString Reason;
+    if (!BuildProfileKey(ProfileIdentity, ProfileKey, Reason))
+    {
+        UE_LOG(LogYcSaveCore, Warning, TEXT("RegisterProfileContext failed: %s"), *Reason);
+        return;
+    }
+
+    RegisterProfileContextByKey(ProfileKey, ContextObject);
+}
+
+void UYcProfileSaveSubsystem::UnregisterProfileContext(const FYcProfileIdentity& ProfileIdentity, UObject* ContextObject)
+{
+    FYcProfileSaveKey ProfileKey;
+    FString Reason;
+    if (!BuildProfileKey(ProfileIdentity, ProfileKey, Reason))
     {
         return;
     }
 
-    ContextByProfile.Add(ProfileKey, ContextObject);
+    UnregisterProfileContextByKey(ProfileKey, ContextObject);
 }
 
-void UYcProfileSaveSubsystem::UnregisterProfileContext(const FYcProfileKey& ProfileKey, UObject* ContextObject)
+void UYcProfileSaveSubsystem::LoadProfileAsync(const FYcProfileIdentity& ProfileIdentity, const FYcOnProfileLoadCompleted& Completion)
+{
+    FYcProfileSaveKey ProfileKey;
+    FString Reason;
+    if (!BuildProfileKey(ProfileIdentity, ProfileKey, Reason))
+    {
+        Completion.ExecuteIfBound(false, Reason);
+        return;
+    }
+
+    LoadProfileAsyncByKey(ProfileKey, Completion);
+}
+
+void UYcProfileSaveSubsystem::SaveProfileAsync(const FYcProfileIdentity& ProfileIdentity, const FYcOnProfileSaveCompleted& Completion)
+{
+    FYcProfileSaveKey ProfileKey;
+    FString Reason;
+    if (!BuildProfileKey(ProfileIdentity, ProfileKey, Reason))
+    {
+        Completion.ExecuteIfBound(false, Reason);
+        return;
+    }
+
+    SaveProfileAsyncByKey(ProfileKey, Completion);
+}
+
+void UYcProfileSaveSubsystem::SaveDirtyProfilesAsync(const FYcOnProfileSaveCompleted& Completion)
+{
+    SaveDirtyProfilesAsyncByKeyArray(DirtyProfiles.Array(), Completion);
+}
+
+void UYcProfileSaveSubsystem::LoadProfileRootAsync(const FYcProfileIdentity& ProfileIdentity, const FYcOnLoadProfileRoot& Completion)
+{
+    FYcProfileSaveKey ProfileKey;
+    FString Reason;
+    if (!BuildProfileKey(ProfileIdentity, ProfileKey, Reason))
+    {
+        Completion.ExecuteIfBound(EYcSaveBackendResult::Failed, FYcProfileSaveRoot(), Reason);
+        return;
+    }
+
+    LoadProfileRootAsyncByKey(ProfileKey, Completion);
+}
+
+void UYcProfileSaveSubsystem::SaveProfileRootAsync(const FYcProfileIdentity& ProfileIdentity, const FYcProfileSaveRoot& Root, const FYcOnSaveProfileRoot& Completion)
+{
+    FYcProfileSaveKey ProfileKey;
+    FString Reason;
+    if (!BuildProfileKey(ProfileIdentity, ProfileKey, Reason))
+    {
+        Completion.ExecuteIfBound(false, Reason);
+        return;
+    }
+
+    SaveProfileRootAsyncByKey(ProfileKey, Root, Completion);
+}
+
+bool UYcProfileSaveSubsystem::LoadProfileSync(const FYcProfileIdentity& ProfileIdentity, FString& OutReason)
+{
+    FYcProfileSaveKey ProfileKey;
+    if (!BuildProfileKey(ProfileIdentity, ProfileKey, OutReason))
+    {
+        return false;
+    }
+
+    return LoadProfileSyncByKey(ProfileKey, OutReason);
+}
+
+bool UYcProfileSaveSubsystem::SaveProfileSync(const FYcProfileIdentity& ProfileIdentity, FString& OutReason)
+{
+    FYcProfileSaveKey ProfileKey;
+    if (!BuildProfileKey(ProfileIdentity, ProfileKey, OutReason))
+    {
+        return false;
+    }
+
+    return SaveProfileSyncByKey(ProfileKey, OutReason);
+}
+
+EYcSaveBackendResult UYcProfileSaveSubsystem::LoadProfileRootSync(const FYcProfileIdentity& ProfileIdentity, FYcProfileSaveRoot& OutRoot, FString& OutReason)
+{
+    FYcProfileSaveKey ProfileKey;
+    if (!BuildProfileKey(ProfileIdentity, ProfileKey, OutReason))
+    {
+        return EYcSaveBackendResult::Failed;
+    }
+
+    return LoadProfileRootSyncByKey(ProfileKey, OutRoot, OutReason);
+}
+
+bool UYcProfileSaveSubsystem::SaveProfileRootSync(const FYcProfileIdentity& ProfileIdentity, const FYcProfileSaveRoot& Root, FString& OutReason)
+{
+    FYcProfileSaveKey ProfileKey;
+    if (!BuildProfileKey(ProfileIdentity, ProfileKey, OutReason))
+    {
+        return false;
+    }
+
+    return SaveProfileRootSyncByKey(ProfileKey, Root, OutReason);
+}
+
+void UYcProfileSaveSubsystem::MarkProfileDirty(const FYcProfileIdentity& ProfileIdentity)
+{
+    FYcProfileSaveKey ProfileKey;
+    FString Reason;
+    if (BuildProfileKey(ProfileIdentity, ProfileKey, Reason))
+    {
+        MarkProfileDirtyByKey(ProfileKey);
+    }
+}
+
+void UYcProfileSaveSubsystem::ClearProfileDirty(const FYcProfileIdentity& ProfileIdentity)
+{
+    FYcProfileSaveKey ProfileKey;
+    FString Reason;
+    if (BuildProfileKey(ProfileIdentity, ProfileKey, Reason))
+    {
+        ClearProfileDirtyByKey(ProfileKey);
+    }
+}
+
+bool UYcProfileSaveSubsystem::IsProfileDirty(const FYcProfileIdentity& ProfileIdentity) const
+{
+    FYcProfileSaveKey ProfileKey;
+    FString Reason;
+    return BuildProfileKey(ProfileIdentity, ProfileKey, Reason) && IsProfileDirtyByKey(ProfileKey);
+}
+
+void UYcProfileSaveSubsystem::RegisterProfileContextByKey(const FYcProfileSaveKey& ProfileKey, UObject* ContextObject)
+{
+    if (ProfileKey.IsValid() && IsValid(ContextObject))
+    {
+        ContextByProfile.Add(ProfileKey, ContextObject);
+    }
+}
+
+void UYcProfileSaveSubsystem::LoadProfileAsyncByKey(const FYcProfileSaveKey& ProfileKey, const FYcOnProfileLoadCompleted& Completion)
+{
+    if (!ProfileKey.IsValid())
+    {
+        Completion.ExecuteIfBound(false, TEXT("Invalid profile key."));
+        return;
+    }
+
+    UObject* ContextObject = ResolveContext(ProfileKey);
+    if (!IsValid(ContextObject))
+    {
+        Completion.ExecuteIfBound(false, FString::Printf(TEXT("No context registered for profile '%s'."), *ProfileKey.ToDebugString()));
+        return;
+    }
+
+    LoadProfileRootAsyncByKey(ProfileKey,
+        FYcOnLoadProfileRoot::CreateWeakLambda(this, [this, ProfileKey, WeakContext = TWeakObjectPtr<UObject>(ContextObject), Completion](const EYcSaveBackendResult Result, const FYcProfileSaveRoot& Root, const FString& Reason)
+        {
+            if (Result == EYcSaveBackendResult::NotFound)
+            {
+                Completion.ExecuteIfBound(false, TEXT("Profile not found."));
+                return;
+            }
+
+            if (Result != EYcSaveBackendResult::Success)
+            {
+                Completion.ExecuteIfBound(false, Reason.IsEmpty() ? TEXT("Backend load failed.") : Reason);
+                return;
+            }
+
+            UObject* ResolvedContext = WeakContext.Get();
+            if (!IsValid(ResolvedContext))
+            {
+                Completion.ExecuteIfBound(false, FString::Printf(TEXT("No context registered for profile '%s'."), *ProfileKey.ToDebugString()));
+                return;
+            }
+
+            FString ApplyReason;
+            if (!ApplyRootToContext(ProfileKey, ResolvedContext, Root, ApplyReason))
+            {
+                Completion.ExecuteIfBound(false, ApplyReason);
+                return;
+            }
+
+            ClearProfileDirtyByKey(ProfileKey);
+            Completion.ExecuteIfBound(true, FString());
+        }));
+}
+
+void UYcProfileSaveSubsystem::SaveProfileAsyncByKey(const FYcProfileSaveKey& ProfileKey, const FYcOnProfileSaveCompleted& Completion)
+{
+    if (!ProfileKey.IsValid())
+    {
+        Completion.ExecuteIfBound(false, TEXT("Invalid profile key."));
+        return;
+    }
+
+    UObject* ContextObject = ResolveContext(ProfileKey);
+    if (!IsValid(ContextObject))
+    {
+        Completion.ExecuteIfBound(false, FString::Printf(TEXT("No context registered for profile '%s'."), *ProfileKey.ToDebugString()));
+        return;
+    }
+
+    FYcProfileSaveRoot Root;
+    FString BuildReason;
+    if (!BuildRootFromContext(ProfileKey, ContextObject, Root, BuildReason))
+    {
+        Completion.ExecuteIfBound(false, BuildReason);
+        return;
+    }
+
+    SaveProfileRootAsyncByKey(ProfileKey, Root,
+        FYcOnSaveProfileRoot::CreateWeakLambda(this, [this, ProfileKey, Completion](const bool bSuccess, const FString& Reason)
+        {
+            if (bSuccess)
+            {
+                ClearProfileDirtyByKey(ProfileKey);
+            }
+            Completion.ExecuteIfBound(bSuccess, Reason);
+        }));
+}
+
+void UYcProfileSaveSubsystem::SaveDirtyProfilesAsyncByKeyArray(const TArray<FYcProfileSaveKey>& ProfileKeys, const FYcOnProfileSaveCompleted& Completion)
+{
+    struct FAsyncSaveDirtyProfilesState
+    {
+        TArray<FYcProfileSaveKey> Keys;
+        int32 CurrentIndex = 0;
+        bool bAllSucceeded = true;
+        FString FirstReason;
+    };
+
+    TSharedRef<FAsyncSaveDirtyProfilesState> State = MakeShared<FAsyncSaveDirtyProfilesState>();
+    State->Keys = ProfileKeys;
+
+    TSharedRef<TFunction<void()>> Step = MakeShared<TFunction<void()>>();
+    *Step = [this, State, Step, Completion]()
+    {
+        if (State->CurrentIndex >= State->Keys.Num())
+        {
+            Completion.ExecuteIfBound(State->bAllSucceeded, State->FirstReason);
+            return;
+        }
+
+        const FYcProfileSaveKey ProfileKey = State->Keys[State->CurrentIndex++];
+        SaveProfileAsyncByKey(ProfileKey,
+            FYcOnProfileSaveCompleted::CreateWeakLambda(this, [this, State, Step, Completion, ProfileKey](const bool bSuccess, const FString& Reason)
+            {
+                if (!bSuccess)
+                {
+                    State->bAllSucceeded = false;
+                    if (State->FirstReason.IsEmpty())
+                    {
+                        State->FirstReason = FString::Printf(TEXT("Profile '%s' save failed: %s"), *ProfileKey.ToDebugString(), *Reason);
+                    }
+                }
+
+                (*Step)();
+            }));
+    };
+
+    (*Step)();
+}
+
+void UYcProfileSaveSubsystem::LoadProfileRootAsyncByKey(const FYcProfileSaveKey& ProfileKey, const FYcOnLoadProfileRoot& Completion)
+{
+    if (!ProfileKey.IsValid())
+    {
+        Completion.ExecuteIfBound(EYcSaveBackendResult::Failed, FYcProfileSaveRoot(), TEXT("Invalid profile key."));
+        return;
+    }
+
+    EnsureBackendProvider();
+    if (!BackendProvider)
+    {
+        Completion.ExecuteIfBound(EYcSaveBackendResult::Failed, FYcProfileSaveRoot(), TEXT("Backend provider is null."));
+        return;
+    }
+
+    BackendProvider->LoadProfileRootAsync(ProfileKey, Completion);
+}
+
+void UYcProfileSaveSubsystem::SaveProfileRootAsyncByKey(const FYcProfileSaveKey& ProfileKey, const FYcProfileSaveRoot& Root, const FYcOnSaveProfileRoot& Completion)
+{
+    if (!ProfileKey.IsValid())
+    {
+        Completion.ExecuteIfBound(false, TEXT("Invalid profile key."));
+        return;
+    }
+
+    EnsureBackendProvider();
+    if (!BackendProvider)
+    {
+        Completion.ExecuteIfBound(false, TEXT("Backend provider is null."));
+        return;
+    }
+
+    BackendProvider->SaveProfileRootAsync(ProfileKey, Root, Completion);
+}
+
+void UYcProfileSaveSubsystem::UnregisterProfileContextByKey(const FYcProfileSaveKey& ProfileKey, UObject* ContextObject)
 {
     if (!ProfileKey.IsValid())
     {
@@ -85,28 +407,7 @@ void UYcProfileSaveSubsystem::UnregisterProfileContext(const FYcProfileKey& Prof
     }
 }
 
-void UYcProfileSaveSubsystem::LoadProfileAsync(const FYcProfileKey& ProfileKey, const FYcOnProfileLoadCompleted& Completion)
-{
-    FString Reason;
-    const bool bLoaded = LoadProfileSync(ProfileKey, Reason);
-    Completion.ExecuteIfBound(bLoaded, Reason);
-}
-
-void UYcProfileSaveSubsystem::SaveProfileAsync(const FYcProfileKey& ProfileKey, const FYcOnProfileSaveCompleted& Completion)
-{
-    FString Reason;
-    const bool bSaved = SaveProfileSync(ProfileKey, Reason);
-    Completion.ExecuteIfBound(bSaved, Reason);
-}
-
-void UYcProfileSaveSubsystem::SaveDirtyProfilesAsync(const FYcOnProfileSaveCompleted& Completion)
-{
-    FString Reason;
-    const bool bSaved = SaveDirtyProfilesSync(Reason);
-    Completion.ExecuteIfBound(bSaved, Reason);
-}
-
-bool UYcProfileSaveSubsystem::LoadProfileSync(const FYcProfileKey& ProfileKey, FString& OutReason)
+bool UYcProfileSaveSubsystem::LoadProfileSyncByKey(const FYcProfileSaveKey& ProfileKey, FString& OutReason)
 {
     if (!ProfileKey.IsValid())
     {
@@ -122,8 +423,7 @@ bool UYcProfileSaveSubsystem::LoadProfileSync(const FYcProfileKey& ProfileKey, F
     }
 
     FYcProfileSaveRoot LoadedRoot;
-    // 第一步：只从后端拿根对象。
-    const EYcSaveBackendResult LoadResult = LoadProfileRootSync(ProfileKey, LoadedRoot, OutReason);
+    const EYcSaveBackendResult LoadResult = LoadProfileRootSyncByKey(ProfileKey, LoadedRoot, OutReason);
     if (LoadResult == EYcSaveBackendResult::NotFound)
     {
         OutReason = TEXT("Profile not found.");
@@ -139,18 +439,17 @@ bool UYcProfileSaveSubsystem::LoadProfileSync(const FYcProfileKey& ProfileKey, F
         return false;
     }
 
-    // 第二步：将根对象分发给各业务域并应用到 Context。
     if (!ApplyRootToContext(ProfileKey, ContextObject, LoadedRoot, OutReason))
     {
         return false;
     }
 
-    ClearProfileDirty(ProfileKey);
+    ClearProfileDirtyByKey(ProfileKey);
     OutReason.Reset();
     return true;
 }
 
-bool UYcProfileSaveSubsystem::SaveProfileSync(const FYcProfileKey& ProfileKey, FString& OutReason)
+bool UYcProfileSaveSubsystem::SaveProfileSyncByKey(const FYcProfileSaveKey& ProfileKey, FString& OutReason)
 {
     if (!ProfileKey.IsValid())
     {
@@ -166,19 +465,17 @@ bool UYcProfileSaveSubsystem::SaveProfileSync(const FYcProfileKey& ProfileKey, F
     }
 
     FYcProfileSaveRoot Root;
-    // 第一步：从 Context 汇总各业务域载荷。
     if (!BuildRootFromContext(ProfileKey, ContextObject, Root, OutReason))
     {
         return false;
     }
 
-    // 第二步：将根对象写入后端。
-    if (!SaveProfileRootSync(ProfileKey, Root, OutReason))
+    if (!SaveProfileRootSyncByKey(ProfileKey, Root, OutReason))
     {
         return false;
     }
 
-    ClearProfileDirty(ProfileKey);
+    ClearProfileDirtyByKey(ProfileKey);
     OutReason.Reset();
     return true;
 }
@@ -187,13 +484,11 @@ bool UYcProfileSaveSubsystem::SaveDirtyProfilesSync(FString& OutReason)
 {
     bool bAllSucceeded = true;
     FString FirstReason;
-
-    TArray<FYcProfileKey> DirtyKeys = DirtyProfiles.Array();
-    // 使用快照数组遍历，避免遍历时集合变更。
-    for (const FYcProfileKey& ProfileKey : DirtyKeys)
+    const TArray<FYcProfileSaveKey> DirtyKeys = DirtyProfiles.Array();
+    for (const FYcProfileSaveKey& ProfileKey : DirtyKeys)
     {
         FString LocalReason;
-        if (!SaveProfileSync(ProfileKey, LocalReason))
+        if (!SaveProfileSyncByKey(ProfileKey, LocalReason))
         {
             bAllSucceeded = false;
             if (FirstReason.IsEmpty())
@@ -207,7 +502,7 @@ bool UYcProfileSaveSubsystem::SaveDirtyProfilesSync(FString& OutReason)
     return bAllSucceeded;
 }
 
-EYcSaveBackendResult UYcProfileSaveSubsystem::LoadProfileRootSync(const FYcProfileKey& ProfileKey, FYcProfileSaveRoot& OutRoot, FString& OutReason)
+EYcSaveBackendResult UYcProfileSaveSubsystem::LoadProfileRootSyncByKey(const FYcProfileSaveKey& ProfileKey, FYcProfileSaveRoot& OutRoot, FString& OutReason)
 {
     if (!ProfileKey.IsValid())
     {
@@ -222,22 +517,10 @@ EYcSaveBackendResult UYcProfileSaveSubsystem::LoadProfileRootSync(const FYcProfi
         return EYcSaveBackendResult::Failed;
     }
 
-    // 当前为“异步接口 + 同步等待回调赋值”桥接模式。
-    EYcSaveBackendResult LoadResult = EYcSaveBackendResult::Failed;
-    FString BackendReason;
-    BackendProvider->LoadProfileRootAsync(ProfileKey,
-        FYcOnLoadProfileRoot::CreateLambda([&LoadResult, &OutRoot, &BackendReason](const EYcSaveBackendResult Result, const FYcProfileSaveRoot& Root, const FString& Reason)
-        {
-            LoadResult = Result;
-            OutRoot = Root;
-            BackendReason = Reason;
-        }));
-
-    OutReason = BackendReason;
-    return LoadResult;
+    return BackendProvider->LoadProfileRootSync(ProfileKey, OutRoot, OutReason);
 }
 
-bool UYcProfileSaveSubsystem::SaveProfileRootSync(const FYcProfileKey& ProfileKey, const FYcProfileSaveRoot& Root, FString& OutReason)
+bool UYcProfileSaveSubsystem::SaveProfileRootSyncByKey(const FYcProfileSaveKey& ProfileKey, const FYcProfileSaveRoot& Root, FString& OutReason)
 {
     if (!ProfileKey.IsValid())
     {
@@ -252,21 +535,10 @@ bool UYcProfileSaveSubsystem::SaveProfileRootSync(const FYcProfileKey& ProfileKe
         return false;
     }
 
-    // 当前为“异步接口 + 同步等待回调赋值”桥接模式。
-    bool bSaveSuccess = false;
-    FString SaveReason;
-    BackendProvider->SaveProfileRootAsync(ProfileKey, Root,
-        FYcOnSaveProfileRoot::CreateLambda([&bSaveSuccess, &SaveReason](const bool bSuccess, const FString& Reason)
-        {
-            bSaveSuccess = bSuccess;
-            SaveReason = Reason;
-        }));
-
-    OutReason = SaveReason;
-    return bSaveSuccess;
+    return BackendProvider->SaveProfileRootSync(ProfileKey, Root, OutReason);
 }
 
-void UYcProfileSaveSubsystem::MarkProfileDirty(const FYcProfileKey& ProfileKey)
+void UYcProfileSaveSubsystem::MarkProfileDirtyByKey(const FYcProfileSaveKey& ProfileKey)
 {
     if (ProfileKey.IsValid())
     {
@@ -274,7 +546,7 @@ void UYcProfileSaveSubsystem::MarkProfileDirty(const FYcProfileKey& ProfileKey)
     }
 }
 
-void UYcProfileSaveSubsystem::ClearProfileDirty(const FYcProfileKey& ProfileKey)
+void UYcProfileSaveSubsystem::ClearProfileDirtyByKey(const FYcProfileSaveKey& ProfileKey)
 {
     if (ProfileKey.IsValid())
     {
@@ -282,12 +554,12 @@ void UYcProfileSaveSubsystem::ClearProfileDirty(const FYcProfileKey& ProfileKey)
     }
 }
 
-bool UYcProfileSaveSubsystem::IsProfileDirty(const FYcProfileKey& ProfileKey) const
+bool UYcProfileSaveSubsystem::IsProfileDirtyByKey(const FYcProfileSaveKey& ProfileKey) const
 {
     return DirtyProfiles.Contains(ProfileKey);
 }
 
-UObject* UYcProfileSaveSubsystem::ResolveContext(const FYcProfileKey& ProfileKey) const
+UObject* UYcProfileSaveSubsystem::ResolveContext(const FYcProfileSaveKey& ProfileKey) const
 {
     if (const TObjectPtr<UObject>* Found = ContextByProfile.Find(ProfileKey))
     {
@@ -315,7 +587,6 @@ void UYcProfileSaveSubsystem::EnsureBackendProvider()
 
     if (!BackendClass)
     {
-        // 未配置时回退到本地 SaveGame 后端。
         BackendClass = UYcSaveBackend_LocalSaveGame::StaticClass();
     }
 
@@ -326,9 +597,10 @@ void UYcProfileSaveSubsystem::EnsureBackendProvider()
     }
 }
 
-bool UYcProfileSaveSubsystem::BuildRootFromContext(const FYcProfileKey& ProfileKey, UObject* ContextObject, FYcProfileSaveRoot& OutRoot, FString& OutReason) const
+bool UYcProfileSaveSubsystem::BuildRootFromContext(const FYcProfileSaveKey& ProfileKey, UObject* ContextObject, FYcProfileSaveRoot& OutRoot, FString& OutReason) const
 {
     OutRoot = FYcProfileSaveRoot();
+    OutRoot.Environment = ProfileKey.Environment;
     OutRoot.AccountId = ProfileKey.AccountId;
     OutRoot.ProfileId = ProfileKey.ProfileId;
     OutRoot.SnapshotVersion = CurrentSnapshotVersion;
@@ -336,16 +608,10 @@ bool UYcProfileSaveSubsystem::BuildRootFromContext(const FYcProfileKey& ProfileK
 
     TArray<const UYcSaveDomainProvider*> Providers;
     GatherDomainProviders(Providers);
-
     for (const UYcSaveDomainProvider* Provider : Providers)
     {
-        if (!Provider)
+        if (!Provider || !Provider->CanHandleContext(ContextObject))
         {
-            continue;
-        }
-        if (!Provider->CanHandleContext(ContextObject))
-        {
-            // 仅让“可处理当前 Context”的域参与构建。
             continue;
         }
 
@@ -366,7 +632,6 @@ bool UYcProfileSaveSubsystem::BuildRootFromContext(const FYcProfileKey& ProfileK
 
     OutRoot.Domains.Sort([](const FYcProfileDomainPayload& A, const FYcProfileDomainPayload& B)
     {
-        // 固定顺序，避免同内容快照顺序抖动。
         return A.DomainKey.LexicalLess(B.DomainKey);
     });
 
@@ -374,11 +639,15 @@ bool UYcProfileSaveSubsystem::BuildRootFromContext(const FYcProfileKey& ProfileK
     return true;
 }
 
-bool UYcProfileSaveSubsystem::ApplyRootToContext(const FYcProfileKey& ProfileKey, UObject* ContextObject, const FYcProfileSaveRoot& Root, FString& OutReason) const
+bool UYcProfileSaveSubsystem::ApplyRootToContext(const FYcProfileSaveKey& ProfileKey, UObject* ContextObject, const FYcProfileSaveRoot& Root, FString& OutReason) const
 {
-    if (Root.AccountId != ProfileKey.AccountId || Root.ProfileId != ProfileKey.ProfileId)
+    if (Root.Environment != ProfileKey.Environment || Root.AccountId != ProfileKey.AccountId || Root.ProfileId != ProfileKey.ProfileId)
     {
-        OutReason = FString::Printf(TEXT("Profile key mismatch. expected='%s', root='%s::%s'"), *ProfileKey.ToDebugString(), *Root.AccountId, *Root.ProfileId);
+        OutReason = FString::Printf(TEXT("Profile key mismatch. expected='%s', root='%d::%s::%s'"),
+            *ProfileKey.ToDebugString(),
+            static_cast<int32>(Root.Environment),
+            *Root.AccountId,
+            *Root.ProfileId);
         return false;
     }
 
@@ -402,12 +671,10 @@ bool UYcProfileSaveSubsystem::ApplyRootToContext(const FYcProfileKey& ProfileKey
             const FString MissingReason = FString::Printf(TEXT("Missing provider for domain '%s'."), *DomainPayload.DomainKey.ToString());
             if (UnknownDomainPolicy == EYcSaveUnknownDomainPolicy::Strict)
             {
-                // 严格模式：未知域直接失败。
                 OutReason = MissingReason;
                 return false;
             }
 
-            // 宽松模式：跳过未知域，保证主流程可继续。
             UE_LOG(LogYcSaveCore, Warning, TEXT("ApplyRootToContext: %s profile='%s' policy=Lenient. Domain skipped."),
                 *MissingReason, *ProfileKey.ToDebugString());
             continue;
@@ -438,8 +705,6 @@ bool UYcProfileSaveSubsystem::ApplyRootToContext(const FYcProfileKey& ProfileKey
 void UYcProfileSaveSubsystem::GatherDomainProviders(TArray<const UYcSaveDomainProvider*>& OutProviders) const
 {
     OutProviders.Empty();
-
-    // 从注册表读取 Provider 类型，并转为 CDO 供只读调用。
     const TArray<TSubclassOf<UYcSaveDomainProvider>> ProviderClasses = YcSaveDomainRegistry::GetRegisteredProviderClasses();
     for (const TSubclassOf<UYcSaveDomainProvider> ProviderClass : ProviderClasses)
     {

@@ -13,7 +13,8 @@ public class YiChenSaveCore : ModuleRules
             {
                 "Core",
                 "CoreUObject",
-                "Engine"
+                "Engine",
+                "YiChenAccountCore"
             }
         );
 

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "System/YcAccountTypes.h"
 #include "YcSaveCoreTypes.generated.h"
 
 UENUM(BlueprintType)
@@ -16,21 +17,34 @@ enum class EYcSaveBackendResult : uint8
     Failed
 };
 
-/** Profile 唯一键：账号 + 档位。 */
+/** Profile 唯一键：环境 + 账号 + 档位。 */
 USTRUCT(BlueprintType)
-struct YICHENSAVECORE_API FYcProfileKey
+struct YICHENSAVECORE_API FYcProfileSaveKey
 {
     GENERATED_BODY()
 
     /** 默认构造。 */
-    FYcProfileKey() = default;
+    FYcProfileSaveKey() = default;
 
     /** 便捷构造。 */
-    FYcProfileKey(const FString& InAccountId, const FString& InProfileId)
-        : AccountId(InAccountId)
+    FYcProfileSaveKey(const EYcAccountEnvironment InEnvironment, const FString& InAccountId, const FString& InProfileId)
+        : Environment(InEnvironment)
+        , AccountId(InAccountId)
         , ProfileId(InProfileId)
     {
     }
+
+    /** 从 Profile 身份构造。 */
+    explicit FYcProfileSaveKey(const FYcProfileIdentity& ProfileIdentity)
+        : Environment(ProfileIdentity.AccountIdentity.Environment)
+        , AccountId(ProfileIdentity.AccountIdentity.AccountId)
+        , ProfileId(ProfileIdentity.ProfileId)
+    {
+    }
+
+    /** 环境标识。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Save")
+    EYcAccountEnvironment Environment = EYcAccountEnvironment::Unknown;
 
     /** 账号标识。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Save")
@@ -40,29 +54,34 @@ struct YICHENSAVECORE_API FYcProfileKey
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Save")
     FString ProfileId;
 
-    /** 是否为有效键（账号与档位都非空）。 */
+    /** 是否为有效键（环境、账号与档位都非空）。 */
     bool IsValid() const
     {
-        return !AccountId.IsEmpty() && !ProfileId.IsEmpty();
+        return Environment != EYcAccountEnvironment::Unknown && !AccountId.IsEmpty() && !ProfileId.IsEmpty();
     }
 
     /** 调试输出文本。 */
     FString ToDebugString() const
     {
-        return FString::Printf(TEXT("%s::%s"), *AccountId, *ProfileId);
+        return FString::Printf(TEXT("%d::%s::%s"), static_cast<int32>(Environment), *AccountId, *ProfileId);
     }
 
     /** 键相等判断。 */
-    bool operator==(const FYcProfileKey& Other) const
+    bool operator==(const FYcProfileSaveKey& Other) const
     {
-        return AccountId == Other.AccountId && ProfileId == Other.ProfileId;
+        return Environment == Other.Environment
+            && AccountId == Other.AccountId
+            && ProfileId == Other.ProfileId;
     }
 };
 
-FORCEINLINE uint32 GetTypeHash(const FYcProfileKey& Key)
+FORCEINLINE uint32 GetTypeHash(const FYcProfileSaveKey& Key)
 {
-    // 组合账号和档位哈希，便于作为 TMap/TSet 键使用。
-    return HashCombine(GetTypeHash(Key.AccountId), GetTypeHash(Key.ProfileId));
+    // 组合环境、账号和档位哈希，便于作为 TMap/TSet 键使用。
+    uint32 Hash = GetTypeHash(static_cast<uint8>(Key.Environment));
+    Hash = HashCombine(Hash, GetTypeHash(Key.AccountId));
+    Hash = HashCombine(Hash, GetTypeHash(Key.ProfileId));
+    return Hash;
 }
 
 /** 单个业务域载荷。 */
@@ -89,6 +108,10 @@ USTRUCT(BlueprintType)
 struct YICHENSAVECORE_API FYcProfileSaveRoot
 {
     GENERATED_BODY()
+
+    /** 运行环境。 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Save")
+    EYcAccountEnvironment Environment = EYcAccountEnvironment::Unknown;
 
     /** 账号标识。 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Save")

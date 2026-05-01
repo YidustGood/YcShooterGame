@@ -39,44 +39,63 @@ public:
     static UYcProfileSaveSubsystem* Get(const UObject* WorldContextObject);
 
     /** 注册 Profile 对应的运行时上下文。 */
-    void RegisterProfileContext(const FYcProfileKey& ProfileKey, UObject* ContextObject);
+    void RegisterProfileContext(const FYcProfileIdentity& ProfileIdentity, UObject* ContextObject);
     /** 注销 Profile 对应的运行时上下文。 */
-    void UnregisterProfileContext(const FYcProfileKey& ProfileKey, UObject* ContextObject);
+    void UnregisterProfileContext(const FYcProfileIdentity& ProfileIdentity, UObject* ContextObject);
 
     /** 异步加载指定 Profile。 */
-    void LoadProfileAsync(const FYcProfileKey& ProfileKey, const FYcOnProfileLoadCompleted& Completion);
+    void LoadProfileAsync(const FYcProfileIdentity& ProfileIdentity, const FYcOnProfileLoadCompleted& Completion);
     /** 异步保存指定 Profile。 */
-    void SaveProfileAsync(const FYcProfileKey& ProfileKey, const FYcOnProfileSaveCompleted& Completion);
+    void SaveProfileAsync(const FYcProfileIdentity& ProfileIdentity, const FYcOnProfileSaveCompleted& Completion);
     /** 异步保存全部脏 Profile。 */
     void SaveDirtyProfilesAsync(const FYcOnProfileSaveCompleted& Completion);
+    /** 异步读取根对象。 */
+    void LoadProfileRootAsync(const FYcProfileIdentity& ProfileIdentity, const FYcOnLoadProfileRoot& Completion);
+    /** 异步保存根对象。 */
+    void SaveProfileRootAsync(const FYcProfileIdentity& ProfileIdentity, const FYcProfileSaveRoot& Root, const FYcOnSaveProfileRoot& Completion);
 
     /** 同步加载指定 Profile。 */
-    bool LoadProfileSync(const FYcProfileKey& ProfileKey, FString& OutReason);
+    bool LoadProfileSync(const FYcProfileIdentity& ProfileIdentity, FString& OutReason);
     /** 同步保存指定 Profile。 */
-    bool SaveProfileSync(const FYcProfileKey& ProfileKey, FString& OutReason);
+    bool SaveProfileSync(const FYcProfileIdentity& ProfileIdentity, FString& OutReason);
     /** 同步保存全部脏 Profile。 */
     bool SaveDirtyProfilesSync(FString& OutReason);
     /** 仅调用后端读取 Profile 根对象。 */
-    EYcSaveBackendResult LoadProfileRootSync(const FYcProfileKey& ProfileKey, FYcProfileSaveRoot& OutRoot, FString& OutReason);
+    EYcSaveBackendResult LoadProfileRootSync(const FYcProfileIdentity& ProfileIdentity, FYcProfileSaveRoot& OutRoot, FString& OutReason);
     /** 仅调用后端保存 Profile 根对象。 */
-    bool SaveProfileRootSync(const FYcProfileKey& ProfileKey, const FYcProfileSaveRoot& Root, FString& OutReason);
+    bool SaveProfileRootSync(const FYcProfileIdentity& ProfileIdentity, const FYcProfileSaveRoot& Root, FString& OutReason);
 
     /** 标记 Profile 为脏。 */
-    void MarkProfileDirty(const FYcProfileKey& ProfileKey);
+    void MarkProfileDirty(const FYcProfileIdentity& ProfileIdentity);
     /** 清理 Profile 脏标。 */
-    void ClearProfileDirty(const FYcProfileKey& ProfileKey);
+    void ClearProfileDirty(const FYcProfileIdentity& ProfileIdentity);
     /** 判断 Profile 是否为脏。 */
-    bool IsProfileDirty(const FYcProfileKey& ProfileKey) const;
+    bool IsProfileDirty(const FYcProfileIdentity& ProfileIdentity) const;
 
 private:
+    bool BuildProfileKey(const FYcProfileIdentity& ProfileIdentity, FYcProfileSaveKey& OutProfileKey, FString& OutReason) const;
+    void RegisterProfileContextByKey(const FYcProfileSaveKey& ProfileKey, UObject* ContextObject);
+    void UnregisterProfileContextByKey(const FYcProfileSaveKey& ProfileKey, UObject* ContextObject);
+    void LoadProfileAsyncByKey(const FYcProfileSaveKey& ProfileKey, const FYcOnProfileLoadCompleted& Completion);
+    void SaveProfileAsyncByKey(const FYcProfileSaveKey& ProfileKey, const FYcOnProfileSaveCompleted& Completion);
+    void SaveDirtyProfilesAsyncByKeyArray(const TArray<FYcProfileSaveKey>& ProfileKeys, const FYcOnProfileSaveCompleted& Completion);
+    void LoadProfileRootAsyncByKey(const FYcProfileSaveKey& ProfileKey, const FYcOnLoadProfileRoot& Completion);
+    void SaveProfileRootAsyncByKey(const FYcProfileSaveKey& ProfileKey, const FYcProfileSaveRoot& Root, const FYcOnSaveProfileRoot& Completion);
+    bool LoadProfileSyncByKey(const FYcProfileSaveKey& ProfileKey, FString& OutReason);
+    bool SaveProfileSyncByKey(const FYcProfileSaveKey& ProfileKey, FString& OutReason);
+    EYcSaveBackendResult LoadProfileRootSyncByKey(const FYcProfileSaveKey& ProfileKey, FYcProfileSaveRoot& OutRoot, FString& OutReason);
+    bool SaveProfileRootSyncByKey(const FYcProfileSaveKey& ProfileKey, const FYcProfileSaveRoot& Root, FString& OutReason);
+    void MarkProfileDirtyByKey(const FYcProfileSaveKey& ProfileKey);
+    void ClearProfileDirtyByKey(const FYcProfileSaveKey& ProfileKey);
+    bool IsProfileDirtyByKey(const FYcProfileSaveKey& ProfileKey) const;
     /** 从缓存中解析 Profile 对应的 Context。 */
-    UObject* ResolveContext(const FYcProfileKey& ProfileKey) const;
+    UObject* ResolveContext(const FYcProfileSaveKey& ProfileKey) const;
     /** 确保后端实例已创建。 */
     void EnsureBackendProvider();
     /** 从 Context 构建 Profile 根对象。 */
-    bool BuildRootFromContext(const FYcProfileKey& ProfileKey, UObject* ContextObject, FYcProfileSaveRoot& OutRoot, FString& OutReason) const;
+    bool BuildRootFromContext(const FYcProfileSaveKey& ProfileKey, UObject* ContextObject, FYcProfileSaveRoot& OutRoot, FString& OutReason) const;
     /** 将 Profile 根对象应用到 Context。 */
-    bool ApplyRootToContext(const FYcProfileKey& ProfileKey, UObject* ContextObject, const FYcProfileSaveRoot& Root, FString& OutReason) const;
+    bool ApplyRootToContext(const FYcProfileSaveKey& ProfileKey, UObject* ContextObject, const FYcProfileSaveRoot& Root, FString& OutReason) const;
     /** 收集所有已注册 Domain Provider CDO。 */
     void GatherDomainProviders(TArray<const UYcSaveDomainProvider*>& OutProviders) const;
 
@@ -87,11 +106,11 @@ private:
 
     /** ProfileKey -> Context 映射。 */
     UPROPERTY(Transient)
-    TMap<FYcProfileKey, TObjectPtr<UObject>> ContextByProfile;
+    TMap<FYcProfileSaveKey, TObjectPtr<UObject>> ContextByProfile;
 
     /** 脏 Profile 集合。 */
     UPROPERTY(Transient)
-    TSet<FYcProfileKey> DirtyProfiles;
+    TSet<FYcProfileSaveKey> DirtyProfiles;
 
     /** 后端类配置（可切换本地/远端）。 */
     UPROPERTY(Config)

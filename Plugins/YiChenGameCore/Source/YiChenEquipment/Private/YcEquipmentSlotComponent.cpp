@@ -159,6 +159,29 @@ bool UYcEquipmentSlotComponent::ValidateEquipOperation(const FYcInventoryOperati
 		OutReason = TEXT("Equipment.Equip source changed.");
 		return false;
 	}
+
+	const FGameplayTag TargetSlotTag = Operation.SlotTag.IsValid() ? Operation.SlotTag : GetEquipmentSlotTag(Operation.ItemInstance);
+	if (TargetSlotTag.IsValid())
+	{
+		if (UYcInventoryManagerComponent* InventoryManager = GetInventoryManager())
+		{
+			if (UYcInventoryItemInstance* EquippedItem = GetItemInSlot(TargetSlotTag))
+			{
+				FYcInventoryRelocationRequest RelocationRequest;
+				FYcInventoryRelocationPayload_ItemScope Payload;
+				Payload.AnchorItem = EquippedItem;
+				RelocationRequest.Payload.InitializeAs<FYcInventoryRelocationPayload_ItemScope>(Payload);
+				if (!InventoryManager->CanApplyInventoryRelocation(RelocationRequest, OutReason))
+				{
+					if (OutReason.IsEmpty())
+					{
+						OutReason = TEXT("Equipment.Equip existing slot item cannot relocate back to inventory.");
+					}
+					return false;
+				}
+			}
+		}
+	}
 	return true;
 }
 

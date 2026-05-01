@@ -6,12 +6,27 @@
 	UPROPERTY(BindWidget)
 	UImage EquipmentItemImage;
 
+	UPROPERTY(BindWidget)
+	UTextBlock ItemNameText;
+
 	UPROPERTY()
+	FText DefaultItemName = FText::FromString("装备栏");
+
+	UPROPERTY()
+	UDragDropOperation DragDropOperation;
+
+	UPROPERTY(NotVisible)
 	UYcInventoryItemInstance ItemInstance;
 
 	UYcEquipmentSlotComponent EquipmentSlotComponent;
 	FGameplayMessageListenerHandle EquipmentSlotChangedHandle;
 	FGameplayMessageListenerHandle InventoryOperationStateHandle;
+
+	UFUNCTION(BlueprintOverride)
+	void PreConstruct(bool IsDesignTime)
+	{
+		ApplyItemName(DefaultItemName);
+	}
 
 	UFUNCTION(BlueprintOverride)
 	void Construct()
@@ -46,6 +61,25 @@
 	{
 		EquipmentSlotChangedHandle.Unregister();
 		InventoryOperationStateHandle.Unregister();
+	}
+
+	UFUNCTION(BlueprintOverride)
+	void OnDragDetected(FGeometry MyGeometry, FPointerEvent PointerEvent, UDragDropOperation& Operation)
+	{
+		if (ItemInstance == nullptr)
+		{
+			return;
+		}
+
+		CreateDragDropOperation();
+		Operation = DragDropOperation;
+	}
+
+	// 创建拖拽操作, AS不支持创建拖拽操作, 在UMG中实现这个创建函数
+	UFUNCTION(BlueprintEvent)
+	void CreateDragDropOperation()
+	{
+		// 创建拖拽操作
 	}
 
 	UFUNCTION(BlueprintOverride)
@@ -233,7 +267,18 @@
 		{
 			EquipmentItemImage.SetBrushFromMaterial(nullptr);
 			EquipmentItemImage.SetVisibility(ESlateVisibility::Hidden);
+			ApplyItemName(DefaultItemName);
 			return;
+		}
+
+		FYcInventoryItemDefinition ItemDef;
+		if (ItemInstance.GetItemDef(ItemDef))
+		{
+			ApplyItemName(ItemDef.DisplayName);
+		}
+		else
+		{
+			ApplyItemName(DefaultItemName);
 		}
 
 		auto GridFragment = GetItemFragmentGrid();
@@ -248,6 +293,16 @@
 		DynamicMaterial.SetTextureParameterValue(n"ItemIcon", GridFragment.IconTexture);
 		EquipmentItemImage.SetBrushFromMaterial(DynamicMaterial);
 		EquipmentItemImage.SetVisibility(ESlateVisibility::Visible);
+	}
+
+	void ApplyItemName(FText InText)
+	{
+		if (ItemNameText == nullptr)
+		{
+			return;
+		}
+
+		ItemNameText.SetText(InText);
 	}
 
 	FInventoryFragment_Equippable GetEquippableFragment()

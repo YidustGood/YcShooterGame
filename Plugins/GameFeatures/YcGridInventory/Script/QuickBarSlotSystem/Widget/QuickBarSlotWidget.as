@@ -9,12 +9,27 @@
 	UPROPERTY(BindWidget)
 	UImage ItemImage;
 
+	UPROPERTY(BindWidget)
+	UTextBlock ItemNameText;
+
 	UPROPERTY()
+	FText DefaultItemName = FText::FromString("快捷栏");
+
+	UPROPERTY()
+	UDragDropOperation DragDropOperation;
+
+	UPROPERTY(NotVisible)
 	UYcInventoryItemInstance ItemInstance;
 
 	UYcQuickBarComponent QuickBarComponent;
 	FGameplayMessageListenerHandle QuickBarSlotsChangedHandle;
 	FGameplayMessageListenerHandle InventoryOperationStateHandle;
+
+	UFUNCTION(BlueprintOverride)
+	void PreConstruct(bool IsDesignTime)
+	{
+		ApplyItemName(DefaultItemName);
+	}
 
 	UFUNCTION(BlueprintOverride)
 	void Construct()
@@ -52,11 +67,49 @@
 	}
 
 	UFUNCTION(BlueprintOverride)
+	void OnDragDetected(FGeometry MyGeometry, FPointerEvent PointerEvent, UDragDropOperation& Operation)
+	{
+		if (ItemInstance == nullptr)
+		{
+			return;
+		}
+
+		CreateDragDropOperation();
+		Operation = DragDropOperation;
+	}
+
+	// 创建拖拽操作, AS不支持创建拖拽操作, 在UMG中实现这个创建函数
+	UFUNCTION(BlueprintEvent)
+	void CreateDragDropOperation()
+	{
+		// 创建拖拽操作
+	}
+
+	UFUNCTION(BlueprintOverride)
 	bool OnDrop(FGeometry MyGeometry, FPointerEvent PointerEvent, UDragDropOperation Operation)
 	{
 		auto DropItem = Cast<UYcInventoryItemInstance>(Operation.Payload);
 		if (DropItem == nullptr)
 			return true;
+
+		auto EquippableFragment = DropItem.FindItemFragment(FInventoryFragment_Equippable);
+		if (!EquippableFragment.IsValid())
+		{
+			return true;
+		}
+
+		auto QuickBarSlotFragment = YcEquipment::FindEquipmentFragment(
+			EquippableFragment.Get(FInventoryFragment_Equippable).EquipmentDef,
+			FEquipmentFragment_QuickBarSlot);
+		if (!QuickBarSlotFragment.IsValid())
+		{
+			return true;
+		}
+
+		if (QuickBarSlotFragment.Get(FEquipmentFragment_QuickBarSlot).SlotIndex != SlotIndex)
+		{
+			return true;
+		}
 
 		auto InventoryManager = Cast<UYcInventoryManagerComponent>(YcInventory::GetInventoryManagerComponent(GetOwningPlayer()));
 		if (InventoryManager != nullptr)
@@ -239,7 +292,18 @@
 		{
 			ItemImage.SetBrushFromMaterial(nullptr);
 			ItemImage.SetVisibility(ESlateVisibility::Hidden);
+			ApplyItemName(DefaultItemName);
 			return;
+		}
+
+		FYcInventoryItemDefinition ItemDef;
+		if (ItemInstance.GetItemDef(ItemDef))
+		{
+			ApplyItemName(ItemDef.DisplayName);
+		}
+		else
+		{
+			ApplyItemName(DefaultItemName);
 		}
 
 		auto GridFragment = GetItemFragmentGrid();
@@ -254,6 +318,16 @@
 		DynamicMaterial.SetTextureParameterValue(n"ItemIcon", GridFragment.IconTexture);
 		ItemImage.SetBrushFromMaterial(DynamicMaterial);
 		ItemImage.SetVisibility(ESlateVisibility::Visible);
+	}
+
+	void ApplyItemName(FText InText)
+	{
+		if (ItemNameText == nullptr)
+		{
+			return;
+		}
+
+		ItemNameText.SetText(InText);
 	}
 
 	FInventoryFragment_Equippable GetEquippableFragment()

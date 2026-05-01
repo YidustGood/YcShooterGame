@@ -18,8 +18,17 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 	UPROPERTY(DefaultComponent, Attach = FPCharacter, AttachSocket = "head")
 	UCameraComponent FPCamera;
 
+	// 是否启用初始库存
+	UPROPERTY()
+	bool bEnableInitialInventory = true;
+
+	// 初始库存物品列表
 	UPROPERTY()
 	TArray<FDataRegistryId> InitialInventoryItems;
+
+	// 默认激活的快速栏槽位索引
+	UPROPERTY()
+	int32 DefaultActiveQuickBarSlotIndex = 0;
 
 	// 蹲伏相机臂延迟时间, 调整这个值实现平滑蹲伏效果
 	UPROPERTY()
@@ -38,6 +47,7 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 	private UAnimInstance FPCharacterAnimInstance;
 	private UYcInventoryManagerComponent InventoryManagerComp;
 	private UYcQuickBarComponent QuickBarComp;
+	private FGameplayMessageListenerHandle QuickBarSlotRemovedListenerHandle;
 	private FTimerHandle CrouchCameraLagTimerHandle;
 	private bool bInitialInventoryApplied = false;
 	private bool bExperienceReady = false;
@@ -47,6 +57,19 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 	void BeginPlay()
 	{
 		Super::BeginPlay();
+
+		QuickBarSlotRemovedListenerHandle = UGameplayMessageSubsystem::Get().RegisterListener(
+			GameplayTags::Yc_QuickBar_Message_SlotRemoved,
+			this,
+			n"OnQuickBarSlotRemoved",
+			FYcQuickBarSlotRemovedMessage(),
+			EGameplayMessageMatch::ExactMatch);
+	}
+
+	UFUNCTION(BlueprintOverride)
+	void EndPlay(EEndPlayReason EndPlayReason)
+	{
+		QuickBarSlotRemovedListenerHandle.Unregister();
 	}
 
 	UFUNCTION(BlueprintOverride)
@@ -139,6 +162,7 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 	{
 		bExperienceReady = true;
 		TryApplyInitialInventory();
+		QuickBarComp.SetActiveSlotIndex_WithPrediction(DefaultActiveQuickBarSlotIndex);
 	}
 
 	void TryApplyInitialInventory()
@@ -233,7 +257,7 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 		}
 
 		bInitialInventoryApplied = true;
-		QuickBarComp.SetActiveSlotIndex_WithPrediction(0);
+		QuickBarComp.SetActiveSlotIndex_WithPrediction(DefaultActiveQuickBarSlotIndex);
 	}
 
 	UFUNCTION()
@@ -301,5 +325,25 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 
 		float PlayRate = Payload.EventMagnitude == 0 ? 1.0f : Payload.EventMagnitude;
 		FPCharacter.PlayMontage(MontageToPlay, PlayRate);
+	}
+
+	UFUNCTION()
+	void OnQuickBarSlotRemoved(FGameplayTag ActualTag, FYcQuickBarSlotRemovedMessage Data)
+	{
+		if (Data.Owner != GetController())
+		{
+			return;
+		}
+
+		RefreshRuntimeInventoryHandles();
+		if (QuickBarComp == nullptr)
+		{
+			return;
+		}
+
+		if (Data.SlotIndex == QuickBarComp.GetActiveSlotIndex())
+		{
+			QuickBarComp.SetActiveSlotIndex_WithPrediction(DefaultActiveQuickBarSlotIndex);
+		}
 	}
 }

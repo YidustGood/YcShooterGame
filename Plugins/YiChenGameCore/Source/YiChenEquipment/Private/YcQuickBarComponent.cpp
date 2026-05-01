@@ -184,16 +184,49 @@ bool UYcQuickBarComponent::ValidateQuickBarAddOperation(const FYcInventoryOperat
 		OutReason = TEXT("QuickBar.Add item must be in owner inventory.");
 		return false;
 	}
+
+	if (Slots.IsValidIndex(Operation.SlotIndex) && Slots[Operation.SlotIndex] != nullptr)
+	{
+		if (ShouldReturnSlotItemToInventory(Operation.SlotIndex))
+		{
+			if (!CanReturnItemToOwnerInventory(Slots[Operation.SlotIndex], OutReason))
+			{
+				if (OutReason.IsEmpty())
+				{
+					OutReason = TEXT("QuickBar.Add existing slot item cannot return to owner inventory.");
+				}
+				return false;
+			}
+		}
+	}
 	return true;
 }
 
 bool UYcQuickBarComponent::ExecuteQuickBarAddOperation(const FYcInventoryOperation& Operation, FString& OutReason)
 {
+	const bool bShouldReactivateSlot = (ActiveSlotIndex == Operation.SlotIndex);
+
+	if (Slots.IsValidIndex(Operation.SlotIndex) && Slots[Operation.SlotIndex] != nullptr)
+	{
+		if (!RemoveItemFromSlot(Operation.SlotIndex))
+		{
+			OutReason = TEXT("QuickBar.Add failed to remove existing slot item.");
+			return false;
+		}
+	}
+
 	if (!AddItemToSlot(Operation.SlotIndex, Operation.ItemInstance))
 	{
 		OutReason = TEXT("AddItemToSlot failed.");
 		return false;
 	}
+
+	if (bShouldReactivateSlot)
+	{
+		SetActiveSlotIndex_Internal(Operation.SlotIndex);
+		ActivateSlotEquipment(Operation.SlotIndex);
+	}
+
 	OutReason = TEXT("QuickBar add success.");
 	return true;
 }

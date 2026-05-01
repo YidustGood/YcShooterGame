@@ -635,6 +635,25 @@ class UGridInventoryWidget : UUserWidget
 			return true;
 		}
 
+		FYcInventoryOperation SlotReturnOp;
+		if (TryBuildEquipmentUnequipOperation(ItemInst, Inventory, SlotReturnOp) || TryBuildQuickBarRemoveOperation(ItemInst, Inventory, SlotReturnOp))
+		{
+			if (SlotReturnOp.OpType == n"QuickBar.Remove")
+			{
+				FYcQuickBarSlotRemovedMessage RemovedMessage;
+				RemovedMessage.Owner = GetOwningPlayer();
+				RemovedMessage.SlotIndex = SlotReturnOp.SlotIndex;
+				UGameplayMessageSubsystem::Get().BroadcastMessage(GameplayTags::Yc_QuickBar_Message_SlotRemoved, RemovedMessage);
+			}
+
+			auto Router = UYcInventoryOperationRouterComponent::FindOrCreateRouter(GetOwningPlayer());
+			if (Router != nullptr)
+			{
+				Router.SubmitInventoryOperation(Inventory, SlotReturnOp, true);
+			}
+			return true;
+		}
+
 		auto ItemStack = GridInventoryManager.GetStackCountByItemInstance(ItemInst);
 
 		if (!GridInventoryManager.CanPlaceGridItemInst(ItemInst, DraggedItemTopLeftTile, false, CurrentRegionId, CurrentPocketIndex))
@@ -668,6 +687,72 @@ class UGridInventoryWidget : UUserWidget
 			Router.SubmitInventoryOperation(Inventory, Op, true);
 		}
 		return true;
+	}
+
+	UFUNCTION()
+	bool TryBuildEquipmentUnequipOperation(UYcInventoryItemInstance ItemInst, UGridInventoryManagerComponent Inventory, FYcInventoryOperation&out OutOp) const
+	{
+		if (ItemInst == nullptr || Inventory == nullptr)
+		{
+			return false;
+		}
+
+		auto EquipmentSlotComp = UYcEquipmentSlotComponent::FindEquipmentSlotComponent(GetOwningPlayer());
+		if (EquipmentSlotComp == nullptr)
+		{
+			return false;
+		}
+
+		auto Slots = EquipmentSlotComp.GetSlots();
+		for (auto Slot : Slots)
+		{
+			if (Slot.ItemInstance != ItemInst)
+			{
+				continue;
+			}
+
+			OutOp.OpType = n"Equipment.Unequip";
+			OutOp.ItemInstance = ItemInst;
+			OutOp.SlotTag = Slot.SlotTag;
+			OutOp.SourceInventory = Inventory;
+			OutOp.TargetInventory = Inventory;
+			return true;
+		}
+
+		return false;
+	}
+
+	UFUNCTION()
+	bool TryBuildQuickBarRemoveOperation(UYcInventoryItemInstance ItemInst, UGridInventoryManagerComponent Inventory, FYcInventoryOperation&out OutOp) const
+	{
+		if (ItemInst == nullptr || Inventory == nullptr)
+		{
+			return false;
+		}
+
+		auto QuickBarComp = UYcQuickBarComponent::FindQuickBarComponent(GetOwningPlayer());
+		if (QuickBarComp == nullptr)
+		{
+			return false;
+		}
+
+		auto Slots = QuickBarComp.GetSlots();
+		for (int32 Index = 0; Index < Slots.Num(); ++Index)
+		{
+			if (Slots[Index] != ItemInst)
+			{
+				continue;
+			}
+
+			OutOp.OpType = n"QuickBar.Remove";
+			OutOp.ItemInstance = ItemInst;
+			OutOp.SlotIndex = Index;
+			OutOp.SourceInventory = Inventory;
+			OutOp.TargetInventory = Inventory;
+			return true;
+		}
+
+		return false;
 	}
 
 	UFUNCTION(BlueprintOverride)

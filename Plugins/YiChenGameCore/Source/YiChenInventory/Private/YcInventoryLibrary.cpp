@@ -35,9 +35,116 @@ TInstancedStruct<FYcInventoryItemFragment> UYcInventoryLibrary::FindItemFragment
 	return FindItemFragment(ItemDef, FragmentStructType);
 }
 
-UYcInventoryManagerComponent* UYcInventoryLibrary::GetInventoryManagerComponent(const AActor* Actor)
+UYcInventoryManagerComponent* UYcInventoryLibrary::GetInventoryManagerComponent(const AActor* InventoryOwnerActor)
 {
-	return UYcInventoryManagerComponent::FindInventoryManager(Actor);
+	return UYcInventoryManagerComponent::FindInventoryManager(InventoryOwnerActor);
+}
+
+bool UYcInventoryLibrary::HasItem(const AActor* InventoryOwnerActor, const FDataRegistryId& ItemDataRegistryId)
+{
+	return GetItemCount(InventoryOwnerActor, ItemDataRegistryId) > 0;
+}
+
+int32 UYcInventoryLibrary::GetItemCount(const AActor* InventoryOwnerActor, const FDataRegistryId& ItemDataRegistryId)
+{
+	if (!InventoryOwnerActor || !ItemDataRegistryId.IsValid())
+	{
+		return 0;
+	}
+
+	UYcInventoryManagerComponent* InventoryManager = GetInventoryManagerComponent(InventoryOwnerActor);
+	if (!InventoryManager)
+	{
+		return 0;
+	}
+
+	FYcInventoryItemDefinition ItemDef;
+	if (!GetItemDefinition(ItemDataRegistryId, ItemDef))
+	{
+		return 0;
+	}
+
+	int32 TotalCount = 0;
+	for (UYcInventoryItemInstance* ItemInstance : InventoryManager->GetAllItemInstance())
+	{
+		if (!IsValid(ItemInstance))
+		{
+			continue;
+		}
+
+		const FYcInventoryItemDefinition* EntryItemDef = ItemInstance->GetItemDef();
+		if (EntryItemDef && EntryItemDef->ItemId == ItemDef.ItemId)
+		{
+			TotalCount += InventoryManager->GetStackCountByItemInstance(ItemInstance);
+		}
+	}
+
+	return TotalCount;
+}
+
+bool UYcInventoryLibrary::ConsumeItem(const AActor* InventoryOwnerActor, const FDataRegistryId& ItemDataRegistryId, int32 Count)
+{
+	if (!InventoryOwnerActor || !ItemDataRegistryId.IsValid() || Count < 0)
+	{
+		return false;
+	}
+
+	if (Count == 0)
+	{
+		return true;
+	}
+
+	UYcInventoryManagerComponent* InventoryManager = GetInventoryManagerComponent(InventoryOwnerActor);
+	if (!InventoryManager)
+	{
+		return false;
+	}
+
+	FYcInventoryItemDefinition ItemDef;
+	if (!GetItemDefinition(ItemDataRegistryId, ItemDef))
+	{
+		return false;
+	}
+
+	if (GetItemCount(InventoryOwnerActor, ItemDataRegistryId) < Count)
+	{
+		return false;
+	}
+
+	int32 RemainingToConsume = Count;
+	for (UYcInventoryItemInstance* ItemInstance : InventoryManager->GetAllItemInstance())
+	{
+		if (!IsValid(ItemInstance))
+		{
+			continue;
+		}
+
+		const FYcInventoryItemDefinition* EntryItemDef = ItemInstance->GetItemDef();
+		if (!EntryItemDef || EntryItemDef->ItemId != ItemDef.ItemId)
+		{
+			continue;
+		}
+
+		const int32 StackCount = InventoryManager->GetStackCountByItemInstance(ItemInstance);
+		if (StackCount <= 0)
+		{
+			continue;
+		}
+
+		const int32 ConsumeThisTime = FMath::Min(StackCount, RemainingToConsume);
+		if (!InventoryManager->ConsumeItemInstance(ItemInstance, ConsumeThisTime))
+		{
+			return false;
+		}
+
+		RemainingToConsume -= ConsumeThisTime;
+		if (RemainingToConsume == 0)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 bool UYcInventoryLibrary::GetItemDefinition(const FDataRegistryId& ItemDataRegistryId, FYcInventoryItemDefinition& OutItemDef)

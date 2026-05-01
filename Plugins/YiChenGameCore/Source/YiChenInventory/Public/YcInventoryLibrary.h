@@ -43,12 +43,43 @@ public:
 	static TInstancedStruct<FYcInventoryItemFragment> FindItemFragmentById(const FDataRegistryId ItemDefId, const UScriptStruct* FragmentStructType);
 	
 	/**
-	 * 从Actor上获取库存管理组件
-	 * @param Actor 目标Actor
+	 * 从库存归属Actor上获取库存管理组件
+	 * @param InventoryOwnerActor 库存归属Actor
 	 * @return 库存管理组件，未找到时返回 nullptr
 	 */
 	UFUNCTION(BlueprintPure, Category = "Inventory")
-	static UYcInventoryManagerComponent* GetInventoryManagerComponent(const AActor* Actor);
+	static UYcInventoryManagerComponent* GetInventoryManagerComponent(const AActor* InventoryOwnerActor);
+
+	/**
+	 * 判断指定库存归属Actor关联的库存中是否拥有某个物品
+	 * 支持直接传入 PlayerController、PlayerState、Pawn/Character
+	 * @param InventoryOwnerActor 库存归属Actor
+	 * @param ItemDataRegistryId 物品的数据注册表ID
+	 * @return true 表示拥有该物品，false 表示未拥有或参数无效
+	 */
+	UFUNCTION(BlueprintPure, Category = "Inventory")
+	static bool HasItem(const AActor* InventoryOwnerActor, const FDataRegistryId& ItemDataRegistryId);
+
+	/**
+	 * 获取指定库存归属Actor关联的库存中某个物品的总数量
+	 * 返回的是所有堆叠的数量总和，而不是物品实例个数
+	 * @param InventoryOwnerActor 库存归属Actor
+	 * @param ItemDataRegistryId 物品的数据注册表ID
+	 * @return 物品总数量，未找到或参数无效时返回0
+	 */
+	UFUNCTION(BlueprintPure, Category = "Inventory")
+	static int32 GetItemCount(const AActor* InventoryOwnerActor, const FDataRegistryId& ItemDataRegistryId);
+
+	/**
+	 * 消耗指定库存归属Actor关联库存中的某个物品
+	 * 支持直接传入 PlayerController、PlayerState、Pawn/Character
+	 * @param InventoryOwnerActor 库存归属Actor
+	 * @param ItemDataRegistryId 物品的数据注册表ID
+	 * @param Count 要消耗的数量，不可小于0
+	 * @return true 表示成功消耗，false 表示库存不足、参数无效或执行失败
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory")
+	static bool ConsumeItem(const AActor* InventoryOwnerActor, const FDataRegistryId& ItemDataRegistryId, int32 Count);
 	
 	/**
 	 * 通过DataRegistryId获取物品定义

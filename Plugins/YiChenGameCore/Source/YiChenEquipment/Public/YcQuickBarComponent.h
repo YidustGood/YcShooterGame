@@ -16,6 +16,7 @@ struct FYcInventoryProjectedState;
 
 YICHENEQUIPMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Yc_QuickBar_Message_SlotsChanged);
 YICHENEQUIPMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Yc_QuickBar_Message_ActiveIndexChanged);
+YICHENEQUIPMENT_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Yc_QuickBar_Message_SlotRemoved);
 
 /**
  * ============================================================================
@@ -384,4 +385,17 @@ struct FYcQuickBarActiveIndexChangedMessage
 
 	UPROPERTY(BlueprintReadOnly, Category = QuickBar)
 	int32 ActiveIndex = -1;
+};
+
+/** QuickBar插槽被卸下时的消息 */
+USTRUCT(BlueprintType)
+struct FYcQuickBarSlotRemovedMessage
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, Category = QuickBar)
+	TObjectPtr<AActor> Owner = nullptr;
+
+	UPROPERTY(BlueprintReadWrite, Category = QuickBar)
+	int32 SlotIndex = -1;
 };

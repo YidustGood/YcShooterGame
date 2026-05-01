@@ -38,6 +38,7 @@
 
 UE_DEFINE_GAMEPLAY_TAG(TAG_Yc_QuickBar_Message_SlotsChanged, "Yc.QuickBar.Message.SlotsChanged");
 UE_DEFINE_GAMEPLAY_TAG(TAG_Yc_QuickBar_Message_ActiveIndexChanged, "Yc.QuickBar.Message.ActiveIndexChanged");
+UE_DEFINE_GAMEPLAY_TAG(TAG_Yc_QuickBar_Message_SlotRemoved, "Yc.QuickBar.Message.SlotRemoved");
 
 namespace
 {

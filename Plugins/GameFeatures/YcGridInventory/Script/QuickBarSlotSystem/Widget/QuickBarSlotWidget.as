@@ -126,6 +126,12 @@
 		if (ItemInstance == nullptr)
 			return FEventReply::Unhandled();
 
+		// 发送槽位移除消息
+		FYcQuickBarSlotRemovedMessage RemovedMessage;
+		RemovedMessage.Owner = GetOwningPlayer();
+		RemovedMessage.SlotIndex = SlotIndex;
+		UGameplayMessageSubsystem::Get().BroadcastMessage(GameplayTags::Yc_QuickBar_Message_SlotRemoved, RemovedMessage);
+
 		auto InventoryManager = Cast<UYcInventoryManagerComponent>(YcInventory::GetInventoryManagerComponent(GetOwningPlayer()));
 		if (InventoryManager != nullptr)
 		{

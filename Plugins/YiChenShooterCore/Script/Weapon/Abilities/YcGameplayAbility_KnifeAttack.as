@@ -150,6 +150,26 @@ class UYcGameplayAbility_KnifeAttack : UYcGameplayAbility_WeaponBase
 		UniqueHits = Hits;
 		ProcessHits();
 	}
+	// 广播本地命中反馈
+	void BroadcastLocalHitFeedback(const FHitResult& Hit)
+	{
+		if (!IsLocallyControlled())
+		{
+			return;
+		}
+
+		auto Hitter = GetControllerFromActorInfo();
+		if (Hitter == nullptr || Hit.Actor == nullptr)
+		{
+			return;
+		}
+
+		FHitCharacterMessage HitMessage;
+		HitMessage.Hitter = Hitter;
+		HitMessage.HitResult = Hit;
+
+		UGameplayMessageSubsystem::Get().BroadcastMessage(GameplayTags::GameplayCue_Character_DamageTaken, HitMessage);
+	}
 
 	// 攻击蒙太奇通知开始时调用
 	UFUNCTION()
@@ -251,6 +271,7 @@ class UYcGameplayAbility_KnifeAttack : UYcGameplayAbility_WeaponBase
 					continue;
 				UniqueHits.Add(Hit);
 				ActorHited.Add(Hit.Actor, 1);
+				BroadcastLocalHitFeedback(Hit);
 			}
 		}
 		UpdateTracePoints();

@@ -34,6 +34,11 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 	UPROPERTY()
 	float CrouchCameraLagDelayTime = 0.3f;
 
+	// 监听在第一人称手臂模型播放蒙太奇动画的GameplayEvent, 必须用成员变量+UPROPERTY持有, 否则会被Garbage Collector回收
+	UPROPERTY(NotVisible)
+	UAbilityAsync_WaitGameplayEvent WaitGameplayEvent_PlayFPAnim;
+
+	default FPSpringArm.CameraLagSpeed = 36.0f; // 速度设置快一点避免产生明显镜头延迟和拉扯感
 	default FPSpringArm.TargetArmLength = 0.0f;
 	default FPSpringArm.bDoCollisionTest = false;
 	default FPSpringArm.bUsePawnControlRotation = true;
@@ -69,6 +74,7 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 	UFUNCTION(BlueprintOverride)
 	void EndPlay(EEndPlayReason EndPlayReason)
 	{
+		WaitGameplayEvent_PlayFPAnim.Cancel();
 		QuickBarSlotRemovedListenerHandle.Unregister();
 	}
 
@@ -308,9 +314,9 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 	UFUNCTION()
 	void ListenFPCharacterPlayMontageEvent()
 	{
-		auto WaitPlayFPMontageEvent = AngelscriptAbilityAsync::WaitGameplayEventToActor(this, GameplayTags::GameplayEvent_Character_PlayMontageFP);
-		WaitPlayFPMontageEvent.EventReceived.AddUFunction(this, n"PlayFPCharacterMontage");
-		AsYcGameCoreGameTask::ActivateAsyncAction(WaitPlayFPMontageEvent);
+		WaitGameplayEvent_PlayFPAnim = AngelscriptAbilityAsync::WaitGameplayEventToActor(this, GameplayTags::GameplayEvent_Character_PlayMontageFP);
+		WaitGameplayEvent_PlayFPAnim.EventReceived.AddUFunction(this, n"PlayFPCharacterMontage");
+		AsYcGameCoreGameTask::ActivateAsyncAction(WaitGameplayEvent_PlayFPAnim);
 	}
 
 	UFUNCTION()

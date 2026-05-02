@@ -53,6 +53,12 @@ class UYcArmorbarBasic : UUserWidget
 	/** 目标护甲量百分比（0-1） */
 	private float TargetArmorPercent = 1.0f;
 
+	/** 当前护甲值 */
+	private float CurrentArmorValue = 0.0f;
+
+	/** 当前最大护甲值 */
+	private float MaxArmorValue = 0.0f;
+
 	// ========================================
 	// 生命周期
 	// ========================================
@@ -106,23 +112,31 @@ class UYcArmorbarBasic : UUserWidget
 	UFUNCTION()
 	private void OnArmorEquipped(FGameplayTag ActualTag, FYcArmorMessage Data)
 	{
-		// 只关心自己的护甲量变化
-		if (GetOwningPlayer().GetControlledPawn() != Data.TargetActor)
+		APlayerController OwnerController = GetOwningPlayer();
+		APawn ControlledPawn = OwnerController != nullptr ? OwnerController.GetControlledPawn() : nullptr;
+		if (ControlledPawn == nullptr)
 			return;
 
-		// 计算新的护甲量百分比
-		float ArmorPercent = Data.NewValue / Data.MaxArmor;
-		UpdateArmorBar(ArmorPercent);
+		// 只关心自己的护甲量变化
+		if (ControlledPawn != Data.TargetActor)
+			return;
+
+		UpdateArmorState(Data.NewValue, Data.MaxArmor);
 	}
 
 	UFUNCTION()
 	private void OnArmorUnequipped(FGameplayTag ActualTag, FYcArmorMessage Data)
 	{
-		// 只关心自己的护甲量变化
-		if (GetOwningPlayer().GetControlledPawn() != Data.TargetActor)
+		APlayerController OwnerController = GetOwningPlayer();
+		APawn ControlledPawn = OwnerController != nullptr ? OwnerController.GetControlledPawn() : nullptr;
+		if (ControlledPawn == nullptr)
 			return;
 
-		UpdateArmorBar(0);
+		// 只关心自己的护甲量变化
+		if (ControlledPawn != Data.TargetActor)
+			return;
+
+		UpdateArmorState(0.0f, 0.0f);
 	}
 
 	UFUNCTION(BlueprintOverride)
@@ -174,13 +188,34 @@ class UYcArmorbarBasic : UUserWidget
 	UFUNCTION()
 	private void OnArmorChanged(FGameplayTag ActualTag, FYcArmorMessage Data)
 	{
-		// 只关心自己的护甲量变化
-		if (GetOwningPlayer().GetControlledPawn() != Data.TargetActor)
+		APlayerController OwnerController = GetOwningPlayer();
+		APawn ControlledPawn = OwnerController != nullptr ? OwnerController.GetControlledPawn() : nullptr;
+		if (ControlledPawn == nullptr)
 			return;
 
-		// @TODO 需要以护甲最大耐久为基准计算护甲量百分比,当前实现是基于护甲量的
-		// 计算新的护甲量百分比
-		float ArmorPercent = Data.NewValue / 100.0f;
+		// 只关心自己的护甲量变化
+		if (ControlledPawn != Data.TargetActor)
+			return;
+
+		UpdateArmorState(Data.NewValue, Data.MaxArmor);
+	}
+
+	/**
+	 * 更新护甲状态
+	 * @param ArmorValue 当前护甲值
+	 * @param InMaxArmor 最大护甲值
+	 */
+	private void UpdateArmorState(float ArmorValue, float InMaxArmor)
+	{
+		CurrentArmorValue = Math::Max(ArmorValue, 0.0f);
+		MaxArmorValue = Math::Max(InMaxArmor, 0.0f);
+
+		float ArmorPercent = 0.0f;
+		if (MaxArmorValue > 0.0f)
+		{
+			ArmorPercent = CurrentArmorValue / MaxArmorValue;
+		}
+
 		UpdateArmorBar(ArmorPercent);
 	}
 
@@ -240,8 +275,10 @@ class UYcArmorbarBasic : UUserWidget
 		}
 		else
 		{
-			// 显示整数格式：100
-			int ArmorInt = Math::RoundToInt(ArmorPercent * 100);
+			// 显示整数格式：当前护甲值；如果没有最大值信息则回退为百分制数值
+			int ArmorInt = MaxArmorValue > 0.0f
+				? Math::RoundToInt(CurrentArmorValue)
+				: Math::RoundToInt(ArmorPercent * 100);
 			ArmorText.SetText(FText::FromString(f"{ArmorInt}"));
 		}
 	}

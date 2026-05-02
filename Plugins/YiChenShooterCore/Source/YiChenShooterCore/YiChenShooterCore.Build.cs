@@ -26,6 +26,9 @@ public class YiChenShooterCore : ModuleRules
 			new string[]
 			{
 				"Core",
+				"GameplayAbilities",
+				"GameplayTags",
+				"StructUtils",
 				"YiChenAbility", 
 				"ModularGameplay", 
 				"YiChenEquipment",
@@ -46,8 +49,7 @@ public class YiChenShooterCore : ModuleRules
 				"YiChenGameCore",
 				"YiChenGameplay",
 				"YiChenCombatCore",
-				"GameplayAbilities",
-				"GameplayTags",
+				"YiChenDamage",
 				"GameplayMessageRuntime",
 				"YiChenTeams",
 				"YiChenInventory",

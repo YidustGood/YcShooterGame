@@ -84,6 +84,13 @@ const FYcEquipmentDefinition* UYcEquipmentInstance::GetEquipmentDef()
 	return EquipmentDef;
 }
 
+const FYcEquipmentDefinition* UYcEquipmentInstance::GetEquipmentDef() const
+{
+	if (EquipmentDef) return EquipmentDef;
+	const_cast<UYcEquipmentInstance*>(this)->UpdateEquipmentDef();
+	return EquipmentDef;
+}
+
 bool UYcEquipmentInstance::K2_GetEquipmentDef(FYcEquipmentDefinition& OutEquipmentDef)
 {
 	if (!GetEquipmentDef()) return false;

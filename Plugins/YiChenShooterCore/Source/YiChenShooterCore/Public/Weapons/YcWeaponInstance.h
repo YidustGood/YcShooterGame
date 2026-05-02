@@ -2,10 +2,23 @@
 
 #pragma once
 
+#include "GameplayTagContainer.h"
+#include "YiChenAbility/Public/YcAbilitySourceInterface.h"
 #include "YiChenEquipment/Public/YcEquipmentInstance.h"
 #include "YcWeaponInstance.generated.h"
 
 class UYcWeaponVisualData;
+class UPhysicalMaterial;
+struct FYcGameplayEffectContext;
+
+USTRUCT()
+struct YICHENSHOOTERCORE_API FYcWeaponDamageProfileView
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TMap<FGameplayTag, float> HitZoneDamageMultipliers;
+};
 
 /**
  * UYcWeaponInstance - 武器实例基类
@@ -18,7 +31,7 @@ class UYcWeaponVisualData;
  * - 管理输入设备属性（如手柄震动等）
  */
 UCLASS()
-class YICHENSHOOTERCORE_API UYcWeaponInstance : public UYcEquipmentInstance
+class YICHENSHOOTERCORE_API UYcWeaponInstance : public UYcEquipmentInstance, public IYcAbilitySourceInterface
 {
 	GENERATED_BODY()
 public:
@@ -63,6 +76,16 @@ public:
 	 */
 	UFUNCTION(BlueprintPure)
 	float GetTimeSinceLastInteractedWith() const;
+
+	//~IYcAbilitySourceInterface interface
+	virtual float GetDistanceAttenuation(float Distance, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const override;
+	virtual float GetPhysicalMaterialMultiplier(const UPhysicalMaterial* PhysicalMaterial, const FGameplayTagContainer* SourceTags = nullptr,
+		const FGameplayTagContainer* TargetTags = nullptr) const override;
+	virtual float GetPhysicalMaterialMultiplier(const FYcGameplayEffectContext& EffectContext, const UPhysicalMaterial* PhysicalMaterial,
+		const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const override;
+	virtual FGameplayTag GetHitZoneFromPhysicalMaterial(const UPhysicalMaterial* PhysicalMaterial) const override;
+	virtual FGameplayTag GetHitZoneFromPhysicalMaterial(const FYcGameplayEffectContext& EffectContext, const UPhysicalMaterial* PhysicalMaterial) const override;
+	//~End of IYcAbilitySourceInterface interface
 	
 private:
 	/**
@@ -86,4 +109,8 @@ private:
 	
 public:
 	FORCEINLINE UYcWeaponVisualData* GetWeaponVisualData() const { return WeaponVisualData; };
+
+protected:
+	virtual bool BuildCurrentDamageProfileView(const FYcGameplayEffectContext* EffectContext, FYcWeaponDamageProfileView& OutView) const;
+	virtual bool BuildDefaultDamageProfileView(FYcWeaponDamageProfileView& OutView) const;
 };

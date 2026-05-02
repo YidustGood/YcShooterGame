@@ -3,6 +3,8 @@
 #pragma once
 
 #include "Abilities/GameplayAbilityTargetTypes.h"
+#include "GameplayTagContainer.h"
+#include "StructUtils/InstancedStruct.h"
 #include "YcGameplayAbilityTargetData_SingleTargetHit.generated.h"
 
 /**
@@ -92,6 +94,14 @@ struct YICHENSHOOTERCORE_API FYcGameplayAbilityTargetData_SingleTargetHit : publ
 	 */
 	UPROPERTY()
 	int32 CartridgeID;
+
+	/** 本次命中的伤害类型标签 */
+	UPROPERTY()
+	FGameplayTag DamageTypeTag;
+
+	/** 本次命中的扩展运行时 Payload */
+	UPROPERTY()
+	TArray<FInstancedStruct> RuntimePayloads;
 
 	// ==================== 网络序列化 ====================
 	

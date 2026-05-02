@@ -9,7 +9,6 @@
 #include "Weapons/Attachments/YcWeaponAttachmentComponent.h"
 #include "Weapons/Attachments/YcAttachmentTypes.h"
 #include "YiChenEquipment/Public/YcEquipmentDefinition.h"
-#include "Physics/YcPhysicalMaterialWithTags.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameFramework/Pawn.h"
@@ -128,60 +127,11 @@ float UYcHitScanWeaponInstance::GetDistanceAttenuation(float Distance, const FGa
 	return FMath::Clamp(DamageMultiplier, 0.0f, 1.0f);
 }
 
-float UYcHitScanWeaponInstance::GetPhysicalMaterialMultiplier(const UPhysicalMaterial* PhysicalMaterial,
-	const FGameplayTagContainer* SourceTags, const FGameplayTagContainer* TargetTags) const
+bool UYcHitScanWeaponInstance::BuildDefaultDamageProfileView(FYcWeaponDamageProfileView& OutView) const
 {
-	// 默认倍率为 1.0（基础伤害）
-	float DamageMultiplier = 1.0f;
-
-	// 尝试转换为带 Tag 的物理材质
-	const UYcPhysicalMaterialWithTags* TaggedMaterial = Cast<UYcPhysicalMaterialWithTags>(PhysicalMaterial);
-	if (!TaggedMaterial || TaggedMaterial->Tags.IsEmpty())
-	{
-		// 如果不是带 Tag 的物理材质，或者没有 Tag，返回默认倍率
-		return DamageMultiplier;
-	}
-
-	// 遍历命中区域伤害倍率映射表，查找匹配的 Tag
-	for (const auto& Pair : ComputedStats.HitZoneDamageMultipliers)
-	{
-		const FGameplayTag& ZoneTag = Pair.Key;
-		const float Multiplier = Pair.Value;
-
-		// 检查物理材质是否包含此区域 Tag
-		if (TaggedMaterial->Tags.HasTag(ZoneTag))
-		{
-			// 找到匹配的 Tag，使用对应的倍率
-			DamageMultiplier = Multiplier;
-			break; // 使用第一个匹配的倍率
-		}
-	}
-
-	return DamageMultiplier;
-}
-
-FGameplayTag UYcHitScanWeaponInstance::GetHitZoneFromPhysicalMaterial(const UPhysicalMaterial* PhysicalMaterial) const
-{
-	// 尝试转换为带 Tag 的物理材质
-	const UYcPhysicalMaterialWithTags* TaggedMaterial = Cast<UYcPhysicalMaterialWithTags>(PhysicalMaterial);
-	if (!TaggedMaterial || TaggedMaterial->Tags.IsEmpty())
-	{
-		return FGameplayTag();
-	}
-
-	// 遍历命中区域伤害倍率映射表，查找匹配的 Tag
-	for (const auto& Pair : ComputedStats.HitZoneDamageMultipliers)
-	{
-		const FGameplayTag& ZoneTag = Pair.Key;
-
-		// 检查物理材质是否包含此区域 Tag
-		if (TaggedMaterial->Tags.HasTag(ZoneTag))
-		{
-			return ZoneTag;
-		}
-	}
-
-	return FGameplayTag();
+	OutView = FYcWeaponDamageProfileView();
+	OutView.HitZoneDamageMultipliers = ComputedStats.HitZoneDamageMultipliers;
+	return true;
 }
 
 

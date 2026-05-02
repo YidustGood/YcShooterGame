@@ -8,6 +8,7 @@
 
 class UObject;
 class UPhysicalMaterial;
+struct FYcGameplayEffectContext;
 /**
  * 技能效果计算源接口
  * 为技能效果提供源对象信息，用于计算距离衰减和物理材质衰减等效果修正
@@ -48,10 +49,29 @@ class YICHENABILITY_API IYcAbilitySourceInterface
 												const FGameplayTagContainer* TargetTags = nullptr) const = 0;
 
 	/**
+	 * 计算基于物理材质的伤害乘数（上下文感知版本）
+	 * 默认回退到无上下文版本，供需要读取运行时 Payload 的武器实现覆写。
+	 */
+	virtual float GetPhysicalMaterialMultiplier(const FYcGameplayEffectContext& EffectContext, const UPhysicalMaterial* PhysicalMaterial,
+		const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const
+	{
+		return GetPhysicalMaterialMultiplier(PhysicalMaterial, SourceTags, TargetTags);
+	}
+
+	/**
 	 * 从物理材质映射到命中部位标签
 	 * 用于多部位护甲系统，根据击中的物理材质确定伤害应该作用于哪个部位
 	 * @param PhysicalMaterial 击中的物理材质
 	 * @return 命中部位标签（如 HitZone.Head, HitZone.Body），无法映射时返回空标签
 	 */
 	virtual FGameplayTag GetHitZoneFromPhysicalMaterial(const UPhysicalMaterial* PhysicalMaterial) const { return FGameplayTag(); }
+
+	/**
+	 * 从物理材质映射到命中部位标签（上下文感知版本）
+	 * 默认回退到无上下文版本，供需要读取运行时 Payload 的武器实现覆写。
+	 */
+	virtual FGameplayTag GetHitZoneFromPhysicalMaterial(const FYcGameplayEffectContext& EffectContext, const UPhysicalMaterial* PhysicalMaterial) const
+	{
+		return GetHitZoneFromPhysicalMaterial(PhysicalMaterial);
+	}
 };

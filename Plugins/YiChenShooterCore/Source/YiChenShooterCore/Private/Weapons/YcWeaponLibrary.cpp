@@ -16,6 +16,7 @@
 #include "Weapons/YcHitScanWeaponInstance.h"
 #include "Weapons/YcWeaponActor.h"
 #include "Weapons/Attachments/YcAttachmentTypes.h"
+#include "AbilitySystem/Abilities/YcGameplayAbilityTargetData_SingleTargetHit.h"
 #include "Weapons/Fragments/YcEquipmentFragment_ReticleConfig.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcWeaponLibrary)
@@ -234,6 +235,22 @@ AYcWeaponActor* UYcWeaponLibrary::GetPlayerThirdPersonWeaponActor(AActor* OwnerA
 	if (!EquipmentInst) return nullptr;
 	
 	return Cast<AYcWeaponActor>(EquipmentInst->FindSpawnedActorByTag(TEXT("TPWeapon")));
+}
+
+FGameplayAbilityTargetDataHandle UYcWeaponLibrary::MakeSingleTargetHitTargetData(
+	const FHitResult& HitResult,
+	const TArray<FInstancedStruct>& RuntimePayloads,
+	const FGameplayTag DamageTypeTag,
+	const int32 CartridgeID)
+{
+	FGameplayAbilityTargetDataHandle TargetData;
+	FYcGameplayAbilityTargetData_SingleTargetHit* NewTargetData = new FYcGameplayAbilityTargetData_SingleTargetHit();
+	NewTargetData->HitResult = HitResult;
+	NewTargetData->CartridgeID = CartridgeID;
+	NewTargetData->DamageTypeTag = DamageTypeTag;
+	NewTargetData->RuntimePayloads = RuntimePayloads;
+	TargetData.Add(NewTargetData);
+	return TargetData;
 }
 
 void UYcWeaponLibrary::LoadWeaponAttachmentDataAssetAsync(UObject* WorldContextObject)

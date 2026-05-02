@@ -22,6 +22,15 @@ void FYcGameplayAbilityTargetData_SingleTargetHit::AddTargetDataToContext(FGamep
 		// 将弹匣ID传递到效果上下文
 		// 后续的伤害计算、效果应用等逻辑可以通过 Context 访问这个值
 		TypedContext->CartridgeID = CartridgeID;
+		if (DamageTypeTag.IsValid())
+		{
+			TypedContext->SetDamageTypeTag(DamageTypeTag);
+		}
+
+		for (const FInstancedStruct& Payload : RuntimePayloads)
+		{
+			TypedContext->AddOrReplaceRuntimePayload(Payload);
+		}
 	}
 }
 
@@ -36,6 +45,9 @@ bool FYcGameplayAbilityTargetData_SingleTargetHit::NetSerialize(FArchive& Ar, cl
 	// - 如果 Ar.IsSaving()：将 CartridgeID 写入存档
 	// - 如果 Ar.IsLoading()：从存档读取 CartridgeID
 	Ar << CartridgeID;
+	DamageTypeTag.NetSerialize(Ar, Map, bOutSuccess);
+
+	// RuntimePayloads 当前用于本地/权威端执行链路，不参与网络序列化。
 
 	return true;
 }

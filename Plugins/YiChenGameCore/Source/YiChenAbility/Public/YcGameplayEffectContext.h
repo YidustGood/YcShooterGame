@@ -4,6 +4,7 @@
 
 #include "GameplayEffectTypes.h"
 #include "GameplayTagContainer.h"
+#include "StructUtils/InstancedStruct.h"
 #include "YcGameplayEffectContext.generated.h"
 
 class AActor;
@@ -49,6 +50,30 @@ struct YICHENABILITY_API FYcGameplayEffectContext : public FGameplayEffectContex
 	 * @return 源对象实现的IYcAbilitySourceInterface接口
 	 */
 	const IYcAbilitySourceInterface* GetAbilitySource() const;
+
+	/** 添加或替换运行时 Payload（按 Struct 类型唯一） */
+	void AddOrReplaceRuntimePayload(const FInstancedStruct& InPayload);
+
+	/** 按 Struct 类型查找运行时 Payload */
+	const FInstancedStruct* FindRuntimePayload(const UScriptStruct* PayloadType) const;
+
+	template<typename PayloadType>
+	void AddOrReplaceRuntimePayload(const PayloadType& InPayload)
+	{
+		FInstancedStruct Payload;
+		Payload.InitializeAs<PayloadType>(InPayload);
+		AddOrReplaceRuntimePayload(Payload);
+	}
+
+	template<typename PayloadType>
+	const PayloadType* FindRuntimePayload() const
+	{
+		if (const FInstancedStruct* Found = FindRuntimePayload(PayloadType::StaticStruct()))
+		{
+			return Found->GetPtr<PayloadType>();
+		}
+		return nullptr;
+	}
 
 	/** 复制FGameplayEffectContext，包括深拷贝HitResult */
 	virtual FGameplayEffectContext* Duplicate() const override
@@ -102,6 +127,14 @@ public:
 	 * 获取伤害类型标签
 	 */
 	const FGameplayTag& GetDamageTypeTag() const { return DamageTypeTag; }
+
+	/**
+	 * 运行时 Payload 容器
+	 * 用于承载一次攻击的扩展上下文（如近战背刺、蓄力、连击段等）
+	 * 当前默认不做网络序列化，供本地/权威端执行链路消费
+	 */
+	UPROPERTY()
+	TArray<FInstancedStruct> RuntimePayloads;
 
 protected:
 	/**

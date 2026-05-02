@@ -15,6 +15,7 @@ public class YiChenAbility : ModuleRules
                 "GameplayAbilities",
                 "GameplayTags",
                 "GameplayTasks",
+                "StructUtils",
                 "YiChenGameCore",
             }
         );

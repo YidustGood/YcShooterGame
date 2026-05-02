@@ -98,7 +98,7 @@ void UYcDamageExecution::InitializeParams(FYcAttributeSummaryParams& Params, con
 		{
 			if (const UPhysicalMaterial* PhysMat = TypedContext->GetPhysicalMaterial())
 			{
-				DamageParams.HitZone = AbilitySource->GetHitZoneFromPhysicalMaterial(PhysMat);
+				DamageParams.HitZone = AbilitySource->GetHitZoneFromPhysicalMaterial(*TypedContext, PhysMat);
 			}
 		}
 	}

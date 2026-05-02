@@ -28,6 +28,8 @@ bool FYcGameplayEffectContext::NetSerialize(FArchive& Ar, class UPackageMap* Map
 
 	// Not serialized for post-activation use:
 	// CartridgeID
+	
+	// @TODO 是否需要处理RuntimePayloads的NetSerialize
 
 	return true;
 }
@@ -41,6 +43,49 @@ void FYcGameplayEffectContext::SetAbilitySource(const IYcAbilitySourceInterface*
 const IYcAbilitySourceInterface* FYcGameplayEffectContext::GetAbilitySource() const
 {
 	return Cast<IYcAbilitySourceInterface>(AbilitySourceObject.Get());
+}
+
+void FYcGameplayEffectContext::AddOrReplaceRuntimePayload(const FInstancedStruct& InPayload)
+{
+	if (!InPayload.IsValid())
+	{
+		return;
+	}
+
+	const UScriptStruct* PayloadType = InPayload.GetScriptStruct();
+	if (!PayloadType)
+	{
+		return;
+	}
+
+	for (FInstancedStruct& ExistingPayload : RuntimePayloads)
+	{
+		if (ExistingPayload.GetScriptStruct() == PayloadType)
+		{
+			ExistingPayload = InPayload;
+			return;
+		}
+	}
+
+	RuntimePayloads.Add(InPayload);
+}
+
+const FInstancedStruct* FYcGameplayEffectContext::FindRuntimePayload(const UScriptStruct* PayloadType) const
+{
+	if (!PayloadType)
+	{
+		return nullptr;
+	}
+
+	for (const FInstancedStruct& Payload : RuntimePayloads)
+	{
+		if (Payload.GetScriptStruct() == PayloadType)
+		{
+			return &Payload;
+		}
+	}
+
+	return nullptr;
 }
 
 const UPhysicalMaterial* FYcGameplayEffectContext::GetPhysicalMaterial() const

@@ -45,7 +45,7 @@ void UYcDamageComponent_MaterialMultiplier::Execute_Implementation(FYcAttributeS
 		{
 			const FGameplayTagContainer* AggSourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
 			const FGameplayTagContainer* AggTargetTags = Spec.CapturedTargetTags.GetAggregatedTags();
-			MaterialMultiplier = AbilitySource->GetPhysicalMaterialMultiplier(PhysMat, AggSourceTags, AggTargetTags);
+			MaterialMultiplier = AbilitySource->GetPhysicalMaterialMultiplier(*TypedContext, PhysMat, AggSourceTags, AggTargetTags);
 		}
 	}
 

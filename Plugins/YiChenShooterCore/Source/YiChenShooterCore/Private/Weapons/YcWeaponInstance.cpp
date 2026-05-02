@@ -2,6 +2,8 @@
 
 #include "Weapons/YcWeaponInstance.h"
 
+#include "YcGameplayEffectContext.h"
+#include "Physics/YcPhysicalMaterialWithTags.h"
 #include "Weapons/YcWeaponLibrary.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcWeaponInstance)
@@ -46,4 +48,123 @@ float UYcWeaponInstance::GetTimeSinceLastInteractedWith() const
 {
 	// 计算上一次装备到上一次射击的时间间隔
 	return FMath::Max(TimeLastEquipped, TimeLastFired) ;
+}
+
+float UYcWeaponInstance::GetDistanceAttenuation(float Distance, const FGameplayTagContainer* SourceTags,
+	const FGameplayTagContainer* TargetTags) const
+{
+	return 1.0f;
+}
+
+float UYcWeaponInstance::GetPhysicalMaterialMultiplier(const UPhysicalMaterial* PhysicalMaterial, const FGameplayTagContainer* SourceTags,
+	const FGameplayTagContainer* TargetTags) const
+{
+	FYcWeaponDamageProfileView ProfileView;
+	if (!PhysicalMaterial || !BuildCurrentDamageProfileView(nullptr, ProfileView))
+	{
+		return 1.0f;
+	}
+
+	const UYcPhysicalMaterialWithTags* TaggedMaterial = Cast<UYcPhysicalMaterialWithTags>(PhysicalMaterial);
+	if (!TaggedMaterial || TaggedMaterial->Tags.IsEmpty())
+	{
+		return 1.0f;
+	}
+
+	for (const auto& Pair : ProfileView.HitZoneDamageMultipliers)
+	{
+		if (TaggedMaterial->Tags.HasTag(Pair.Key))
+		{
+			return Pair.Value;
+		}
+	}
+
+	return 1.0f;
+}
+
+float UYcWeaponInstance::GetPhysicalMaterialMultiplier(const FYcGameplayEffectContext& EffectContext, const UPhysicalMaterial* PhysicalMaterial,
+	const FGameplayTagContainer* SourceTags, const FGameplayTagContainer* TargetTags) const
+{
+	FYcWeaponDamageProfileView ProfileView;
+	if (!PhysicalMaterial || !BuildCurrentDamageProfileView(&EffectContext, ProfileView))
+	{
+		return 1.0f;
+	}
+
+	const UYcPhysicalMaterialWithTags* TaggedMaterial = Cast<UYcPhysicalMaterialWithTags>(PhysicalMaterial);
+	if (!TaggedMaterial || TaggedMaterial->Tags.IsEmpty())
+	{
+		return 1.0f;
+	}
+
+	for (const auto& Pair : ProfileView.HitZoneDamageMultipliers)
+	{
+		if (TaggedMaterial->Tags.HasTag(Pair.Key))
+		{
+			return Pair.Value;
+		}
+	}
+
+	return 1.0f;
+}
+
+FGameplayTag UYcWeaponInstance::GetHitZoneFromPhysicalMaterial(const UPhysicalMaterial* PhysicalMaterial) const
+{
+	FYcWeaponDamageProfileView ProfileView;
+	if (!PhysicalMaterial || !BuildCurrentDamageProfileView(nullptr, ProfileView))
+	{
+		return FGameplayTag();
+	}
+
+	const UYcPhysicalMaterialWithTags* TaggedMaterial = Cast<UYcPhysicalMaterialWithTags>(PhysicalMaterial);
+	if (!TaggedMaterial || TaggedMaterial->Tags.IsEmpty())
+	{
+		return FGameplayTag();
+	}
+
+	for (const auto& Pair : ProfileView.HitZoneDamageMultipliers)
+	{
+		if (TaggedMaterial->Tags.HasTag(Pair.Key))
+		{
+			return Pair.Key;
+		}
+	}
+
+	return FGameplayTag();
+}
+
+FGameplayTag UYcWeaponInstance::GetHitZoneFromPhysicalMaterial(const FYcGameplayEffectContext& EffectContext, const UPhysicalMaterial* PhysicalMaterial) const
+{
+	FYcWeaponDamageProfileView ProfileView;
+	if (!PhysicalMaterial || !BuildCurrentDamageProfileView(&EffectContext, ProfileView))
+	{
+		return FGameplayTag();
+	}
+
+	const UYcPhysicalMaterialWithTags* TaggedMaterial = Cast<UYcPhysicalMaterialWithTags>(PhysicalMaterial);
+	if (!TaggedMaterial || TaggedMaterial->Tags.IsEmpty())
+	{
+		return FGameplayTag();
+	}
+
+	for (const auto& Pair : ProfileView.HitZoneDamageMultipliers)
+	{
+		if (TaggedMaterial->Tags.HasTag(Pair.Key))
+		{
+			return Pair.Key;
+		}
+	}
+
+	return FGameplayTag();
+}
+
+bool UYcWeaponInstance::BuildCurrentDamageProfileView(const FYcGameplayEffectContext* EffectContext, FYcWeaponDamageProfileView& OutView) const
+{
+	return BuildDefaultDamageProfileView(OutView);
+}
+
+bool UYcWeaponInstance::BuildDefaultDamageProfileView(FYcWeaponDamageProfileView& OutView) const
+{
+	OutView = FYcWeaponDamageProfileView();
+	return false;
 }

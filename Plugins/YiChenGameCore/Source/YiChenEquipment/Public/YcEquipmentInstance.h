@@ -159,6 +159,7 @@ public:
 	 * @return 装备定义指针，如果不存在则返回nullptr
 	 */
 	const FYcEquipmentDefinition* GetEquipmentDef();
+	const FYcEquipmentDefinition* GetEquipmentDef() const;
 	
 	/**
 	 * 蓝图版本：获取装备定义
@@ -279,7 +280,7 @@ public:
 	 * @return 找到的Fragment指针，如果不存在则返回nullptr
 	 */
 	template <typename FragmentType>
-	const FragmentType* GetTypedFragment()
+	const FragmentType* GetTypedFragment() const
 	{
 		if (!GetEquipmentDef()) return nullptr;
 		return EquipmentDef->GetTypedFragment<FragmentType>();

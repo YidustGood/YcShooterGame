@@ -3,7 +3,6 @@
 #pragma once
 
 #include "GameplayTagContainer.h"
-#include "YcAbilitySourceInterface.h"
 #include "YcWeaponInstance.h"
 #include "Weapons/Fragments/YcFragment_WeaponStats.h"
 #include "Tickable.h"
@@ -111,7 +110,7 @@ struct YICHENSHOOTERCORE_API FYcComputedWeaponStats
  * - 用于更新扩散恢复、后坐力恢复等状态
  */
 UCLASS()
-class YICHENSHOOTERCORE_API UYcHitScanWeaponInstance : public UYcWeaponInstance , public IYcAbilitySourceInterface, public FTickableGameObject
+class YICHENSHOOTERCORE_API UYcHitScanWeaponInstance : public UYcWeaponInstance, public FTickableGameObject
 {
 	GENERATED_BODY()
 
@@ -133,14 +132,8 @@ public:
 	virtual UWorld* GetTickableGameObjectWorld() const override { return GetWorld(); }
 	//~ End of FTickableGameObject 接口
 	
-	//~IYcAbilitySourceInterface interface
 	/** 获取伤害衰减系数 */
 	virtual float GetDistanceAttenuation(float Distance, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const override;
-	/** 获取不同物理材质的伤害乘数 */
-	virtual float GetPhysicalMaterialMultiplier(const UPhysicalMaterial* PhysicalMaterial, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr) const override;
-	/** 从物理材质映射到命中部位标签 */
-	virtual FGameplayTag GetHitZoneFromPhysicalMaterial(const UPhysicalMaterial* PhysicalMaterial) const override;
-	//~End of IYcAbilitySourceInterface interface
 
 	// ==================== 射击事件 ====================
 	
@@ -364,6 +357,8 @@ public:
 
 
 private:
+	virtual bool BuildDefaultDamageProfileView(FYcWeaponDamageProfileView& OutView) const override;
+
 	/** 更新扩散状态 */
 	void UpdateSpread(float DeltaSeconds);
 

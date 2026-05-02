@@ -2,7 +2,11 @@
 
 #pragma once
 
+#include "Engine/EngineTypes.h"
+#include "Abilities/GameplayAbilityTargetTypes.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "GameplayTagContainer.h"
+#include "StructUtils/InstancedStruct.h"
 #include "Fragments/YcEquipmentFragment.h"
 #include "YcWeaponLibrary.generated.h"
 
@@ -192,7 +196,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Fragment")
 	static AYcWeaponActor* GetPlayerThirdPersonWeaponActor(AActor* OwnerActor);
-	
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Ability")
+	static FGameplayAbilityTargetDataHandle MakeSingleTargetHitTargetData(
+		const FHitResult& HitResult,
+		const TArray<FInstancedStruct>& RuntimePayloads,
+		const FGameplayTag DamageTypeTag,
+		const int32 CartridgeID = -1
+		);
+
 	//@TODO 不应该用这种形式加载所有武器配件
 	/**
 	 * 通过DataRegistryId异步加载物品定义中的所有数据资产

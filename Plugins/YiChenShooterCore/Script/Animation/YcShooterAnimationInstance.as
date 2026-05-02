@@ -13,6 +13,8 @@ class UYcShooterAnimationInstance : UAnimInstance
 	UPROPERTY(Category = "Animation")
 	float MaxWalkSpeed;
 	UPROPERTY(Category = "Animation")
+	float MaxWalkSpeedCrouched;
+	UPROPERTY(Category = "Animation")
 	float GroundSpeed;
 	UPROPERTY(Category = "Animation")
 	float MoveDirection;
@@ -99,6 +101,7 @@ class UYcShooterAnimationInstance : UAnimInstance
 		WeaponSawyRotation = AnimComponent.GetCurrentWeaponSwayRotation();
 		MoveActionValue = AnimComponent.GetMoveActionValue();
 		MaxWalkSpeed = AnimComponent.GetMaxWalkSpeed();
+		MaxWalkSpeedCrouched = AnimComponent.GetMaxWalkSpeedCrouched();
 	}
 
 	UFUNCTION()

@@ -49,6 +49,20 @@ class UYcShooterAnimComponent : UPawnComponent
 	}
 
 	/**
+	 * 获取角色的最大行走速度（蹲下状态）
+	 * @return 最大行走速度（蹲下状态）
+	 */
+	UFUNCTION()
+	float GetMaxWalkSpeedCrouched()
+	{
+		if (!IsValid(CharacterMovement))
+		{
+			return 0.0f;
+		}
+		return CharacterMovement.MaxWalkSpeedCrouched;
+	}
+
+	/**
 	 * 根据运动组件的速度来设置速度和地面速度。
 	 * 地面速度仅由速度的 X 轴和 Y 轴计算得出，因此向上或向下移动都不会影响它。
 	 * @return 地面速度

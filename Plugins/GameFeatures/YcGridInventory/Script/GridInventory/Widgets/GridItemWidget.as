@@ -1,5 +1,15 @@
-﻿// 网格中单个物品的可视化与交互入口（双击/拖拽）
-class UGridItemWidget : UUserWidget
+USTRUCT()
+struct FYcGridItemHoverTooltipData
+{
+	UPROPERTY()
+	UYcInventoryItemInstance ItemInstance;
+
+	UPROPERTY()
+	bool bItemRevealed = false;
+}
+
+// 网格中单个物品的可视化与交互入口（双击/拖拽）
+class UGridItemWidget : UYcHoverTooltipProviderWidget
 {
 	UPROPERTY(BindWidget)
 	USizeBox SB_Background;
@@ -131,17 +141,27 @@ class UGridItemWidget : UUserWidget
 	void OnMouseEnter(FGeometry MyGeometry, FPointerEvent MouseEvent)
 	{
 		BackgroundBorder.SetBrushColor(FLinearColor(0.05, 0.05, 0.05, 1));
+		YcHoverTooltip::NotifyHoverEnter(this, MouseEvent.GetScreenSpacePosition());
 	}
 
 	UFUNCTION(BlueprintOverride)
 	void OnMouseLeave(FPointerEvent MouseEvent)
 	{
 		BackgroundBorder.SetBrushColor(FLinearColor(0, 0, 0, 1));
+		YcHoverTooltip::NotifyHoverLeave(this);
+	}
+
+	UFUNCTION(BlueprintOverride)
+	FEventReply OnMouseMove(FGeometry MyGeometry, FPointerEvent MouseEvent)
+	{
+		YcHoverTooltip::NotifyHoverMove(this, MouseEvent.GetScreenSpacePosition());
+		return Widget::Unhandled();
 	}
 
 	UFUNCTION(BlueprintOverride)
 	FEventReply OnMouseButtonDown(FGeometry InMyGeometry, FPointerEvent InMouseEvent)
 	{
+		YcHoverTooltip::CancelHoverTooltipForWidget(this);
 		FGameplayTag CloseMenuTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextMenu.Close");
 
 		// 右键：打开物品上下文菜单（未识别物品不允许）
@@ -193,6 +213,7 @@ class UGridItemWidget : UUserWidget
 	UFUNCTION(BlueprintOverride)
 	FEventReply OnMouseButtonDoubleClick(FGeometry InMyGeometry, FPointerEvent InMouseEvent)
 	{
+		YcHoverTooltip::CancelHoverTooltipForWidget(this);
 		FKey EffectingButton = InMouseEvent.GetEffectingButton();
 		if (EffectingButton.KeyName != n"LeftMouseButton")
 		{
@@ -220,11 +241,27 @@ class UGridItemWidget : UUserWidget
 		{
 			return;
 		}
+		YcHoverTooltip::CancelHoverTooltipForWidget(this);
 		FGameplayTag CloseMenuTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextMenu.Close");
 		FGridItemContextMenuCloseMessage CloseMsg;
 		UGameplayMessageSubsystem::Get().BroadcastMessage(CloseMenuTag, CloseMsg);
 		CreateDragDropOperation();
 		Operation = DragDropOperation;
+	}
+
+	UFUNCTION(BlueprintOverride)
+	bool CanShowHoverTooltip() const
+	{
+		return HoverTooltipWidgetClass != nullptr && ItemInstance != nullptr && IsItemRevealed();
+	}
+
+	UFUNCTION(BlueprintOverride)
+	FInstancedStruct BuildHoverTooltipPayload() const
+	{
+		FYcGridItemHoverTooltipData Data;
+		Data.ItemInstance = ItemInstance;
+		Data.bItemRevealed = IsItemRevealed();
+		return FInstancedStruct::Make(Data);
 	}
 
 	// 创建拖拽操作, AS不支持创建拖拽操作, 在UMG中实现这个创建函数

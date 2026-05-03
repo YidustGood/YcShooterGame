@@ -1,4 +1,20 @@
-﻿class UEquipmentSlotWidget : UUserWidget
+USTRUCT()
+struct FYcEquipmentSlotHoverTooltipData
+{
+	UPROPERTY()
+	UYcInventoryItemInstance ItemInstance;
+
+	UPROPERTY()
+	FGameplayTag EquipmentSlotTag;
+
+	UPROPERTY()
+	FText SlotDisplayName;
+
+	UPROPERTY()
+	bool bHasItem = false;
+}
+
+class UEquipmentSlotWidget : UYcHoverTooltipProviderWidget
 {
 	UPROPERTY()
 	FGameplayTag EquipmentSlotTag;
@@ -61,6 +77,26 @@
 	{
 		EquipmentSlotChangedHandle.Unregister();
 		InventoryOperationStateHandle.Unregister();
+		YcHoverTooltip::CancelHoverTooltipForWidget(this);
+	}
+
+	UFUNCTION(BlueprintOverride)
+	void OnMouseEnter(FGeometry MyGeometry, FPointerEvent MouseEvent)
+	{
+		YcHoverTooltip::NotifyHoverEnter(this, MouseEvent.GetScreenSpacePosition());
+	}
+
+	UFUNCTION(BlueprintOverride)
+	void OnMouseLeave(FPointerEvent MouseEvent)
+	{
+		YcHoverTooltip::NotifyHoverLeave(this);
+	}
+
+	UFUNCTION(BlueprintOverride)
+	FEventReply OnMouseMove(FGeometry MyGeometry, FPointerEvent MouseEvent)
+	{
+		YcHoverTooltip::NotifyHoverMove(this, MouseEvent.GetScreenSpacePosition());
+		return Widget::Unhandled();
 	}
 
 	UFUNCTION(BlueprintOverride)
@@ -71,6 +107,7 @@
 			return;
 		}
 
+		YcHoverTooltip::CancelHoverTooltipForWidget(this);
 		CreateDragDropOperation();
 		Operation = DragDropOperation;
 	}
@@ -85,6 +122,7 @@
 	UFUNCTION(BlueprintOverride)
 	bool OnDrop(FGeometry MyGeometry, FPointerEvent PointerEvent, UDragDropOperation Operation)
 	{
+		YcHoverTooltip::CancelHoverTooltipForWidget(this);
 		auto DropItem = Cast<UYcInventoryItemInstance>(Operation.Payload);
 		if (DropItem == nullptr)
 			return true;
@@ -124,7 +162,7 @@
 					}
 				}
 
-				ApplyItemVisual(DropItem); // 立即反馈预测视觉
+				ApplyItemVisual(DropItem);
 			}
 			else
 			{
@@ -149,6 +187,7 @@
 	UFUNCTION(BlueprintOverride)
 	FEventReply OnMouseButtonDoubleClick(FGeometry InMyGeometry, FPointerEvent InMouseEvent)
 	{
+		YcHoverTooltip::CancelHoverTooltipForWidget(this);
 		if (ItemInstance == nullptr)
 			return FEventReply::Unhandled();
 
@@ -190,6 +229,23 @@
 			}
 		}
 		return FEventReply::Handled();
+	}
+
+	UFUNCTION(BlueprintOverride)
+	bool CanShowHoverTooltip() const
+	{
+		return HoverTooltipWidgetClass != nullptr && (ItemInstance != nullptr || !DefaultItemName.IsEmpty());
+	}
+
+	UFUNCTION(BlueprintOverride)
+	FInstancedStruct BuildHoverTooltipPayload() const
+	{
+		FYcEquipmentSlotHoverTooltipData Data;
+		Data.ItemInstance = ItemInstance;
+		Data.EquipmentSlotTag = EquipmentSlotTag;
+		Data.SlotDisplayName = DefaultItemName;
+		Data.bHasItem = ItemInstance != nullptr;
+		return FInstancedStruct::Make(Data);
 	}
 
 	UFUNCTION()

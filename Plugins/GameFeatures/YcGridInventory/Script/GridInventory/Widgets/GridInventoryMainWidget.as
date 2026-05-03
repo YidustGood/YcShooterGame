@@ -136,6 +136,7 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	UFUNCTION(BlueprintOverride)
 	bool OnDrop(FGeometry MyGeometry, FPointerEvent PointerEvent, UDragDropOperation Operation)
 	{
+		YcHoverTooltip::CancelHoverTooltipForPlayer(GetOwningPlayer());
 		CloseContextMenu();
 		Print("UGridInventoryMainWidget::OnDrop.");
 		return true;
@@ -253,6 +254,7 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	UFUNCTION(BlueprintOverride)
 	FEventReply OnMouseButtonDown(FGeometry InMyGeometry, FPointerEvent InMouseEvent)
 	{
+		YcHoverTooltip::CancelHoverTooltipForPlayer(GetOwningPlayer());
 		CloseContextMenu();
 		return Widget::Unhandled();
 	}
@@ -470,6 +472,7 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	UFUNCTION()
 	void CloseContextMenu()
 	{
+		YcHoverTooltip::CancelHoverTooltipForPlayer(GetOwningPlayer());
 		if (CurrentContextMenuWidget != nullptr)
 		{
 			CurrentContextMenuWidget.RemoveFromParent();

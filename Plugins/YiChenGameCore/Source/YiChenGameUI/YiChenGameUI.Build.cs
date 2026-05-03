@@ -17,6 +17,7 @@ public class YiChenGameUI : ModuleRules
                 "StructUtils",
                 "UIExtension",
                 "CommonUI",
+                "UMG",
             }
         );
 

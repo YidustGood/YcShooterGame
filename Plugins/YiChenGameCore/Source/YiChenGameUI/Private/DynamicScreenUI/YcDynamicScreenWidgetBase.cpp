@@ -99,3 +99,15 @@ void UYcDynamicScreenWidgetBase::OnDynamicScreenWidgetHidden(FGameplayTag Channe
 	CurrentPayload = Data.Payload;
 	OnDynamicScreenWidgetPayloadHidden();
 }
+
+void UYcDynamicScreenWidgetBase::OnDynamicScreenWidgetInitialized_Implementation()
+{
+}
+
+void UYcDynamicScreenWidgetBase::OnDynamicScreenWidgetPayloadUpdated_Implementation()
+{
+}
+
+void UYcDynamicScreenWidgetBase::OnDynamicScreenWidgetPayloadHidden_Implementation()
+{
+}

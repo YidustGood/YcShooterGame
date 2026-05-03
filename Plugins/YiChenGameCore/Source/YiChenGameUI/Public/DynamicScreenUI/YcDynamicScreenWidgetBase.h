@@ -49,15 +49,15 @@ protected:
 	virtual void NativeDestruct() override;
 
 	/** 动态 Widget 完成框架初始化后的回调。 */
-	UFUNCTION(BlueprintImplementableEvent, Category = "Dynamic Screen UI")
+	UFUNCTION(BlueprintNativeEvent, Category = "Dynamic Screen UI")
 	void OnDynamicScreenWidgetInitialized();
 
 	/** 当前 Payload 被更新后的回调。 */
-	UFUNCTION(BlueprintImplementableEvent, Category = "Dynamic Screen UI")
+	UFUNCTION(BlueprintNativeEvent, Category = "Dynamic Screen UI")
 	void OnDynamicScreenWidgetPayloadUpdated();
 
 	/** 当前 Widget 收到隐藏消息后的回调。 */
-	UFUNCTION(BlueprintImplementableEvent, Category = "Dynamic Screen UI")
+	UFUNCTION(BlueprintNativeEvent, Category = "Dynamic Screen UI")
 	void OnDynamicScreenWidgetPayloadHidden();
 
 private:

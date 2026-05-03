@@ -90,3 +90,6 @@ Plugins/Developer/RiderLink
 YcShooter.uproject.DotSettings.user
 Plugins/GameFeatures/YcGridInventory*/Intermediate/
 Plugins/GameFeatures/YcGridInventory*/Binaries/
+Plugins/GameFeatures/GzGameCombat
+*.lua
+Tools/

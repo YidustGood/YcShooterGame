@@ -15,7 +15,10 @@ class AYcSimpleAICharacter : AYcCharacter
 	UPROPERTY()
 	TSubclassOf<UYcGameplayAbility_DeathBase> DeathAbilityClass;
 
-	default DeathAbilityClass = UYcGameplayAbility_DefaultDeath;
+	UPROPERTY()
+	bool bEnableRagdollWithDeath = true;
+
+	default DeathAbilityClass = UYcGameplayAbility_SimpleAIDeath;
 
 	UFUNCTION(BlueprintOverride)
 	void BeginPlay()
@@ -49,8 +52,26 @@ class AYcSimpleAICharacter : AYcCharacter
 	{
 	}
 
+	UFUNCTION(BlueprintOverride)
+	void OnDeathStarted()
+	{
+		if (bEnableRagdollWithDeath)
+		{
+			EnableRagdoll();
+		}
+	}
+
 	UFUNCTION(BlueprintEvent)
 	void OnDeathFinished_Callback(AActor Actor)
 	{
+	}
+
+	UFUNCTION()
+	void EnableRagdoll()
+	{
+		CharacterMovement.DisableMovement();
+		Mesh.SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
+		Mesh.SetSimulatePhysics(true);
+		CapsuleComponent.SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
 }

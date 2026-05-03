@@ -115,6 +115,14 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "YcGameCore|Health")
 	bool ApplyHealing(float HealAmount);
+
+	/**
+	 * 在服务器权限下为所有者应用伤害效果。
+	 * 优先使用配置的 SetByCaller 伤害 GameplayEffect；若无则回退为直接修改 Damage 属性。
+	 * @param DamageAmount 伤害值
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "YcGameCore|Health")
+	bool ApplyDamage(float DamageAmount);
 	
 	/**
 	 * 开始死亡序列

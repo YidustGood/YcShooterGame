@@ -117,6 +117,50 @@ void UYcCheatManager::Suicide()
 	CheatOutputText(FString::Printf(TEXT("Suicide triggered for Pawn '%s'."), *GetNameSafe(ControlledPawn)));
 }
 
+void UYcCheatManager::DamageSelf(float DamageAmount)
+{
+	if (DamageAmount <= 0.0f)
+	{
+		CheatOutputText(TEXT("DamageSelf failed: DamageAmount must be greater than zero."));
+		return;
+	}
+
+	AYcPlayerController* PlayerController = Cast<AYcPlayerController>(GetOuterAPlayerController());
+	if (!PlayerController)
+	{
+		CheatOutputText(TEXT("DamageSelf failed: no owning PlayerController."));
+		return;
+	}
+
+	if (!PlayerController->HasAuthority())
+	{
+		PlayerController->ServerCheat(FString::Printf(TEXT("DamageSelf %g"), DamageAmount));
+		return;
+	}
+
+	APawn* ControlledPawn = PlayerController->GetPawn();
+	if (!ControlledPawn)
+	{
+		CheatOutputText(TEXT("DamageSelf failed: PlayerController has no controlled Pawn."));
+		return;
+	}
+
+	UYcHealthComponent* HealthComponent = UYcHealthComponent::FindHealthComponent(ControlledPawn);
+	if (!HealthComponent)
+	{
+		CheatOutputText(FString::Printf(TEXT("DamageSelf failed: Pawn '%s' has no HealthComponent."), *GetNameSafe(ControlledPawn)));
+		return;
+	}
+
+	if (!HealthComponent->ApplyDamage(DamageAmount))
+	{
+		CheatOutputText(FString::Printf(TEXT("DamageSelf failed: could not apply %.2f damage to Pawn '%s'."), DamageAmount, *GetNameSafe(ControlledPawn)));
+		return;
+	}
+
+	CheatOutputText(FString::Printf(TEXT("DamageSelf applied %.2f damage to Pawn '%s'."), DamageAmount, *GetNameSafe(ControlledPawn)));
+}
+
 void UYcCheatManager::PlayNextGame(bool bSeamlessTravel)
 {
 	UYcGameSystemStatics::PlayNextGame(this, bSeamlessTravel);

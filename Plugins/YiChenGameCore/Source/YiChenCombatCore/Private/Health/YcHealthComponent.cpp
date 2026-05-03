@@ -176,6 +176,39 @@ bool UYcHealthComponent::ApplyHealing(const float HealAmount)
 	return true;
 }
 
+bool UYcHealthComponent::ApplyDamage(const float DamageAmount)
+{
+	if (DamageAmount <= 0.0f || AbilitySystemComponent == nullptr)
+	{
+		return false;
+	}
+
+	const AActor* Owner = GetOwner();
+	if (!Owner || !Owner->HasAuthority())
+	{
+		return false;
+	}
+
+	const UYcCombatCoreSettings* CombatSettings = GetDefault<UYcCombatCoreSettings>();
+	const TSubclassOf<UGameplayEffect> DamageGE = CombatSettings ? CombatSettings->GetDamageGameplayEffect_SetByCaller() : nullptr;
+
+	if (DamageGE)
+	{
+		FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(DamageGE, 1.0f, AbilitySystemComponent->MakeEffectContext());
+		FGameplayEffectSpec* Spec = SpecHandle.Data.Get();
+		if (Spec)
+		{
+			Spec->SetSetByCallerMagnitude(TAG_Gameplay_Attribute_SetByCaller_Damage, DamageAmount);
+			AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*Spec);
+			return true;
+		}
+	}
+
+	UE_LOG(LogCombatCore, Warning, TEXT("DamageGameplayEffect_SetByCaller is not configured or failed to build spec, fallback to direct Damage attribute mod."));
+	AbilitySystemComponent->ApplyModToAttribute(UYcHealthSet::GetDamageAttribute(), EGameplayModOp::Additive, DamageAmount);
+	return true;
+}
+
 void UYcHealthComponent::StartDeath()
 {
 	if (DeathState != EYcDeathState::NotDead) return;

@@ -54,6 +54,13 @@ public:
 	void Suicide();
 
 	/**
+	 * 扣除当前控制 Pawn 的生命值。
+	 * @param DamageAmount 要扣除的生命值，需大于 0
+	 */
+	UFUNCTION(Exec)
+	void DamageSelf(float DamageAmount);
+
+	/**
 	 * 启动下一局游戏（重新加载当前关卡）
 	 * 内部通过 UYcGameSystemStatics::PlayNextGame 实现，可选择是否使用无缝旅行
 	 * @param bSeamlessTravel 是否尝试使用无缝旅行

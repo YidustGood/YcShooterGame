@@ -37,7 +37,8 @@ public class YiChenSlua : ModuleRules
 				"CoreUObject",
 				"Engine",
 				"Slate",
-				"SlateCore",
+				"SlateCore", "GameplayMessageRuntime",
+				"GameplayTags", "YiChenInventory","DataRegistry"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

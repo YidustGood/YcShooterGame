@@ -31,6 +31,10 @@ public:
 	void Unregister();
 
 	bool IsValid() const { return ID != 0; }
+	
+	// YiChen: 扩展GetId函数
+	int32 GetID() const { return ID; }
+	// ~YiChen: 扩展GetId函数
 
 private:
 	UPROPERTY(Transient)

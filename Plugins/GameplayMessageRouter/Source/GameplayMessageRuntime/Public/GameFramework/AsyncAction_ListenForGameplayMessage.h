@@ -55,6 +55,42 @@ public:
 	bool GetPayload(UPARAM(ref) int32& OutPayload);
 
 	DECLARE_FUNCTION(execGetPayload);
+	
+	// YiChen: slua support
+	// 为Lua提供支持的核心操作实际上就是把结构体数据拷贝构建为一个LuaStruct实例给到Lua侧去使用即可
+	/**
+	 * 获取消息载荷的结构体类型
+	 * @return 当前存储的 Payload 的 UScriptStruct 类型，如果没有则返回 nullptr
+	 */
+	UFUNCTION(BlueprintPure, Category = "Messaging")
+	UScriptStruct* GetPayloadStructType() const { return MessageStructType.Get(); }
+
+	/**
+	 * 检查是否有缓存的 Payload 数据
+	 * @return 是否有有效的 Payload 数据
+	 */
+	UFUNCTION(BlueprintPure, Category = "Messaging")
+	bool HasPayload() const { return ReceivedMessagePayloadPtr != nullptr; }
+
+	/**
+	 * 获取 Payload 数据大小（字节）
+	 * @return Payload 数据大小，如果没有数据则返回 0
+	 */
+	UFUNCTION(BlueprintPure, Category = "Messaging")
+	int32 GetPayloadSize() const 
+	{ 
+		return MessageStructType.IsValid() ? MessageStructType->GetStructureSize() : 0; 
+	}
+
+	/**
+	 * 获取 Payload 缓存数据指针（供 Slua 等脚本语言使用）
+	 * @return Payload 数据指针，如果没有数据则返回 nullptr
+	 */
+	const uint8* GetPayloadData() const 
+	{ 
+		return static_cast<const uint8*>(ReceivedMessagePayloadPtr); 
+	}
+	// ~YiChen: slua support
 
 	virtual void Activate() override;
 	virtual void SetReadyToDestroy() override;

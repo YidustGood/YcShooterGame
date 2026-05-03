@@ -23,6 +23,10 @@ bool UYcInventoryContextActionEvaluator::Evaluate_Implementation(const FYcContex
 
 FText UYcInventoryContextActionEvaluator::ResolveFailReason(const FText& InFailReason) const
 {
+	if (!PlayerFacingFailReason.IsEmpty())
+	{
+		return PlayerFacingFailReason;
+	}
 	if (!InFailReason.IsEmpty())
 	{
 		return InFailReason;
@@ -32,6 +36,10 @@ FText UYcInventoryContextActionEvaluator::ResolveFailReason(const FText& InFailR
 
 FText UYcInventoryContextActionEvaluator::ResolveInvertedFailReason() const
 {
+	if (!PlayerFacingFailReason.IsEmpty())
+	{
+		return PlayerFacingFailReason;
+	}
 	if (!InvertedFailReason.IsEmpty())
 	{
 		return InvertedFailReason;

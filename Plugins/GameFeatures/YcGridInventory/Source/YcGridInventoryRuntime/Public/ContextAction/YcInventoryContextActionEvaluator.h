@@ -154,6 +154,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ContextAction")
 	FText DefaultFailReason = FText::GetEmpty();
 
+	/**
+	 * 玩家可读失败提示（配置后优先展示给玩家）。
+	 * Player-facing fail reason override shown to UI when this evaluator blocks the action.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ContextAction")
+	FText PlayerFacingFailReason = FText::GetEmpty();
+
 	/** 结果翻转开关（通过变失败，失败变通过）。 / Invert final evaluator result (pass->fail, fail->pass). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ContextAction")
 	bool bInvertResult = false;

@@ -15,7 +15,7 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 	UPROPERTY(DefaultComponent, Attach = FPSpringArm)
 	USkeletalMeshComponent FPCharacter;
 
-	UPROPERTY(DefaultComponent, Attach = FPCharacter, AttachSocket = "head")
+	UPROPERTY(DefaultComponent, Attach = FPCharacter, AttachSocket = "SOCKET_Camera")
 	UCameraComponent FPCamera;
 
 	// 是否启用初始库存
@@ -37,6 +37,10 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 	// 监听在第一人称手臂模型播放蒙太奇动画的GameplayEvent, 必须用成员变量+UPROPERTY持有, 否则会被Garbage Collector回收
 	UPROPERTY(NotVisible)
 	UAbilityAsync_WaitGameplayEvent WaitGameplayEvent_PlayFPAnim;
+
+	// 设置1P/3P可视性为仅对Owner可见, 避免其他玩家看到自己的FP模型
+	default Mesh.OwnerNoSee = true;
+	default FPCharacter.OnlyOwnerSee = true;
 
 	default FPSpringArm.CameraLagSpeed = 36.0f; // 速度设置快一点避免产生明显镜头延迟和拉扯感
 	default FPSpringArm.TargetArmLength = 0.0f;

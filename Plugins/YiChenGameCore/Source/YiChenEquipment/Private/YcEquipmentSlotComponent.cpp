@@ -232,6 +232,14 @@ bool UYcEquipmentSlotComponent::ValidateUnequipOperation(const FYcInventoryOpera
 			FYcInventoryRelocationRequest RelocationRequest;
 			FYcInventoryRelocationPayload_ItemScope Payload;
 			Payload.AnchorItem = EquippedItem;
+			if (Operation.TargetInventory == InventoryManager && Operation.GridRegionId.IsValid() && Operation.GridPocketIndex >= 0)
+			{
+				Payload.bUsePreferredPlacement = true;
+				Payload.PreferredRegionId = Operation.GridRegionId;
+				Payload.PreferredPocketIndex = Operation.GridPocketIndex;
+				Payload.PreferredTile = Operation.GridTile;
+				Payload.bPreferredRotated = Operation.bRotated;
+			}
 			RelocationRequest.Payload.InitializeAs<FYcInventoryRelocationPayload_ItemScope>(Payload);
 			if (!InventoryManager->CanApplyInventoryRelocation(RelocationRequest, OutReason))
 			{
@@ -256,6 +264,14 @@ bool UYcEquipmentSlotComponent::ExecuteUnequipOperation(const FYcInventoryOperat
 			FYcInventoryRelocationRequest RelocationRequest;
 			FYcInventoryRelocationPayload_ItemScope Payload;
 			Payload.AnchorItem = EquippedItem;
+			if (Operation.TargetInventory == InventoryManager && Operation.GridRegionId.IsValid() && Operation.GridPocketIndex >= 0)
+			{
+				Payload.bUsePreferredPlacement = true;
+				Payload.PreferredRegionId = Operation.GridRegionId;
+				Payload.PreferredPocketIndex = Operation.GridPocketIndex;
+				Payload.PreferredTile = Operation.GridTile;
+				Payload.bPreferredRotated = Operation.bRotated;
+			}
 			RelocationRequest.Payload.InitializeAs<FYcInventoryRelocationPayload_ItemScope>(Payload);
 			if (!InventoryManager->ApplyInventoryRelocation(RelocationRequest, RelocateReason))
 			{

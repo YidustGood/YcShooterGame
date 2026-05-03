@@ -234,7 +234,7 @@ class UGridInventoryWidget : UUserWidget
 			{
 				FIntPoint PredictedTile;
 				bool bPredictedRotated;
-				if (TryFindPredictedReturnTile(Data.Operation.ItemInstance, PredictedTile, bPredictedRotated))
+				if (TryFindPredictedReturnTile(Data.Operation, PredictedTile, bPredictedRotated))
 				{
 					MoveOrAddPredictedItemWidget(Data.Operation.ItemInstance, PredictedTile);
 				}
@@ -269,22 +269,32 @@ class UGridInventoryWidget : UUserWidget
 		return true;
 	}
 	UFUNCTION()
-	bool TryFindPredictedReturnTile(UYcInventoryItemInstance ItemInstance, FIntPoint&out OutTile, bool&out OutRotated) const
+	bool TryFindPredictedReturnTile(FYcInventoryOperation Op, FIntPoint&out OutTile, bool&out OutRotated) const
 	{
 		OutTile = FIntPoint(0, 0);
 		OutRotated = false;
-		if (GridInventoryManager == nullptr || ItemInstance == nullptr)
+		if (GridInventoryManager == nullptr || Op.ItemInstance == nullptr)
 		{
 			return false;
 		}
 
+		if (Op.TargetInventory == GridInventoryManager
+			&& Op.GridRegionId == CurrentRegionId
+			&& Op.GridPocketIndex == CurrentPocketIndex
+			&& GridInventoryManager.CanPlaceGridItemInst(Op.ItemInstance, Op.GridTile, Op.bRotated, Op.GridRegionId, Op.GridPocketIndex))
+		{
+			OutTile = Op.GridTile;
+			OutRotated = Op.bRotated;
+			return true;
+		}
+
 		TMap<UYcInventoryItemInstance, FIntPoint> Items = GridInventoryManager.GetGridItemsTileMapByRegion(CurrentRegionId, CurrentPocketIndex);
-		if (Items.Find(ItemInstance, OutTile))
+		if (Items.Find(Op.ItemInstance, OutTile))
 		{
 			return true;
 		}
 
-		return GridInventoryManager.FindFirstFitPositionInRegion(ItemInstance.ItemRegistryId, CurrentRegionId, CurrentPocketIndex, OutTile, OutRotated);
+		return GridInventoryManager.FindFirstFitPositionInRegion(Op.ItemInstance.ItemRegistryId, CurrentRegionId, CurrentPocketIndex, OutTile, OutRotated);
 	}
 
 	UFUNCTION()
@@ -333,7 +343,7 @@ class UGridInventoryWidget : UUserWidget
 			{
 				FIntPoint PredictedTile;
 				bool bPredictedRotated;
-				if (TryFindPredictedReturnTile(PendingOp.ItemInstance, PredictedTile, bPredictedRotated))
+				if (TryFindPredictedReturnTile(PendingOp, PredictedTile, bPredictedRotated))
 				{
 					MoveOrAddPredictedItemWidget(PendingOp.ItemInstance, PredictedTile);
 				}
@@ -638,6 +648,16 @@ class UGridInventoryWidget : UUserWidget
 		FYcInventoryOperation SlotReturnOp;
 		if (TryBuildEquipmentUnequipOperation(ItemInst, Inventory, SlotReturnOp) || TryBuildQuickBarRemoveOperation(ItemInst, Inventory, SlotReturnOp))
 		{
+			if (!GridInventoryManager.CanPlaceGridItemInst(ItemInst, DraggedItemTopLeftTile, false, CurrentRegionId, CurrentPocketIndex))
+			{
+				return true;
+			}
+
+			SlotReturnOp.GridTile = DraggedItemTopLeftTile;
+			SlotReturnOp.bRotated = false;
+			SlotReturnOp.GridRegionId = CurrentRegionId;
+			SlotReturnOp.GridPocketIndex = CurrentPocketIndex;
+
 			if (SlotReturnOp.OpType == n"QuickBar.Remove")
 			{
 				FYcQuickBarSlotRemovedMessage RemovedMessage;

@@ -45,6 +45,26 @@ struct YICHENINVENTORY_API FYcInventoryRelocationPayload_ItemScope
 	/** 重排锚点物品实例。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Inventory)
 	TObjectPtr<UYcInventoryItemInstance> AnchorItem = nullptr;
+
+	/** 是否要求回归到指定格子，而不是自动搜索首个可用位置。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Inventory)
+	bool bUsePreferredPlacement = false;
+
+	/** 期望回归到的目标格子。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Inventory)
+	FIntPoint PreferredTile = FIntPoint::ZeroValue;
+
+	/** 期望回归到的目标区域。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Inventory)
+	FGameplayTag PreferredRegionId;
+
+	/** 期望回归到的目标口袋。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Inventory)
+	int32 PreferredPocketIndex = -1;
+
+	/** 期望回归时的旋转状态。 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Inventory)
+	bool bPreferredRotated = false;
 };
 
 /**

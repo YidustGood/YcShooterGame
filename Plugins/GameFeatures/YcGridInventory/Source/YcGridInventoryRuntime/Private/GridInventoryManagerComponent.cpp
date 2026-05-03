@@ -2135,13 +2135,24 @@ bool UGridInventoryManagerComponent::CanApplyInventoryRelocation_Implementation(
 
 	TArray<FUnequipRelocateMove> RelocateMoves;
 	FUnequipRelocateMove EquipMove;
-	const bool bCan = TryBuildUnequipRelocationPlan(EquippedItem, RelocateMoves, EquipMove, OutReason);
+	TOptional<FUnequipRelocateMove> PreferredEquipMove;
+	if (Payload->bUsePreferredPlacement)
+	{
+		FUnequipRelocateMove Move;
+		Move.ItemInstance = EquippedItem;
+		Move.RegionId = Payload->PreferredRegionId;
+		Move.PocketIndex = Payload->PreferredPocketIndex;
+		Move.Tile = Payload->PreferredTile;
+		Move.bRotated = Payload->bPreferredRotated;
+		PreferredEquipMove = Move;
+	}
+	const bool bCan = TryBuildUnequipRelocationPlan(EquippedItem, PreferredEquipMove.IsSet() ? &PreferredEquipMove.GetValue() : nullptr, RelocateMoves, EquipMove, OutReason);
 	if (!bCan)
 	{
 		InvalidateRelocationPlanCache();
 		UE_LOG(LogYcGridInventory, Warning, TEXT("CanApplyInventoryRelocation failed. Item=%s Reason=%s"), *GetNameSafe(Payload->AnchorItem), *OutReason);
 	}
-	else
+	else if (!Payload->bUsePreferredPlacement)
 	{
 		CacheRelocationPlan(EquippedItem, RelocateMoves, EquipMove);
 	}
@@ -2167,14 +2178,29 @@ bool UGridInventoryManagerComponent::ApplyInventoryRelocation_Implementation(con
 
 	TArray<FUnequipRelocateMove> RelocateMoves;
 	FUnequipRelocateMove EquipMove;
-	if (!TryGetCachedRelocationPlan(EquippedItem, RelocateMoves, EquipMove) &&
-		!TryBuildUnequipRelocationPlan(EquippedItem, RelocateMoves, EquipMove, OutReason))
+	TOptional<FUnequipRelocateMove> PreferredEquipMove;
+	if (Payload->bUsePreferredPlacement)
+	{
+		FUnequipRelocateMove Move;
+		Move.ItemInstance = EquippedItem;
+		Move.RegionId = Payload->PreferredRegionId;
+		Move.PocketIndex = Payload->PreferredPocketIndex;
+		Move.Tile = Payload->PreferredTile;
+		Move.bRotated = Payload->bPreferredRotated;
+		PreferredEquipMove = Move;
+	}
+	const bool bUsedCachedPlan = !PreferredEquipMove.IsSet() && TryGetCachedRelocationPlan(EquippedItem, RelocateMoves, EquipMove);
+	if (!bUsedCachedPlan &&
+		!TryBuildUnequipRelocationPlan(EquippedItem, PreferredEquipMove.IsSet() ? &PreferredEquipMove.GetValue() : nullptr, RelocateMoves, EquipMove, OutReason))
 	{
 		InvalidateRelocationPlanCache();
 		UE_LOG(LogYcGridInventory, Warning, TEXT("ApplyInventoryRelocation validate failed. Item=%s Reason=%s"), *GetNameSafe(Payload->AnchorItem), *OutReason);
 		return false;
 	}
-	CacheRelocationPlan(EquippedItem, RelocateMoves, EquipMove);
+	if (!Payload->bUsePreferredPlacement)
+	{
+		CacheRelocationPlan(EquippedItem, RelocateMoves, EquipMove);
+	}
 
 	const TMap<TObjectPtr<UYcInventoryItemInstance>, FItemGridInfo> ItemMapSnapshot = ItemInstanceToTileMap;
 	const TArray<FGridInventoryRegionSlotsStorage> RegionSlotsSnapshot = RegionSlotsStorage;
@@ -2313,6 +2339,14 @@ bool UGridInventoryManagerComponent::FindFirstFitPositionInRegionForItemInst(UYc
 	return false;
 }
 
+void UGridInventoryManagerComponent::PreparePreferredReturnPlacement(const FIntPoint Tile, const FGameplayTag RegionId, const int32 PocketIndex)
+{
+	const FGameplayTag FinalRegionId = ResolvePlacementRegionId(RegionId);
+	CachedTile = Tile;
+	CachedRegionId = FinalRegionId;
+	CachedPocketIndex = ResolvePlacementPocketIndex(FinalRegionId, PocketIndex);
+}
+
 int32 UGridInventoryManagerComponent::GetGridItemArea(UYcInventoryItemInstance* ItemInst) const
 {
 	if (!IsValid(ItemInst))
@@ -2405,7 +2439,72 @@ bool UGridInventoryManagerComponent::TryFindFitInSimRegion(UYcInventoryItemInsta
 	return false;
 }
 
-bool UGridInventoryManagerComponent::TryBuildUnequipRelocationPlan(UYcInventoryItemInstance* EquippedItem, TArray<FUnequipRelocateMove>& OutRelocateMoves, FUnequipRelocateMove& OutEquipMove, FString& OutReason)
+bool UGridInventoryManagerComponent::TryOccupyExactFitInSimRegion(UYcInventoryItemInstance* ItemInst, const FGameplayTag TargetRegionId, TArray<FUnequipRegionPocketSimState>& SimPockets, const int32 PreferredPocketIndex, const FIntPoint PreferredTile, const bool bPreferredRotated)
+{
+	if (!IsValid(ItemInst))
+	{
+		return false;
+	}
+
+	if (!PassesRegionTagConstraintForItemInst(ItemInst, TargetRegionId))
+	{
+		return false;
+	}
+
+	const FItemFragment_GridItem GridFragment = GetItemFragmentGrid(ItemInst->GetItemRegistryId());
+	if (bPreferredRotated && !GridFragment.bCanRotate)
+	{
+		return false;
+	}
+
+	const int32 ItemWidth = bPreferredRotated ? GridFragment.Dimensions.Y : GridFragment.Dimensions.X;
+	const int32 ItemHeight = bPreferredRotated ? GridFragment.Dimensions.X : GridFragment.Dimensions.Y;
+	for (int32 PocketArrayIndex = 0; PocketArrayIndex < SimPockets.Num(); ++PocketArrayIndex)
+	{
+		FUnequipRegionPocketSimState Pocket = SimPockets[PocketArrayIndex];
+		if (Pocket.PocketIndex != PreferredPocketIndex)
+		{
+			continue;
+		}
+
+		if (PreferredTile.X < 0 || PreferredTile.Y < 0 || PreferredTile.X + ItemWidth > Pocket.Columns || PreferredTile.Y + ItemHeight > Pocket.Rows)
+		{
+			return false;
+		}
+
+		for (int32 TestY = PreferredTile.Y; TestY < PreferredTile.Y + ItemHeight; ++TestY)
+		{
+			for (int32 TestX = PreferredTile.X; TestX < PreferredTile.X + ItemWidth; ++TestX)
+			{
+				if (!IsRegionCellAvailable(TargetRegionId, Pocket.PocketIndex, FIntPoint(TestX, TestY)))
+				{
+					return false;
+				}
+				const int32 SlotIndex = TileToIndexInRegion(FIntPoint(TestX, TestY), Pocket.Columns);
+				if (!Pocket.Slots.IsValidIndex(SlotIndex) || Pocket.Slots[SlotIndex].bOccupied)
+				{
+					return false;
+				}
+			}
+		}
+
+		for (int32 FillY = PreferredTile.Y; FillY < PreferredTile.Y + ItemHeight; ++FillY)
+		{
+			for (int32 FillX = PreferredTile.X; FillX < PreferredTile.X + ItemWidth; ++FillX)
+			{
+				const int32 SlotIndex = TileToIndexInRegion(FIntPoint(FillX, FillY), Pocket.Columns);
+				Pocket.Slots[SlotIndex].bOccupied = true;
+			}
+		}
+
+		SimPockets[PocketArrayIndex] = Pocket;
+		return true;
+	}
+
+	return false;
+}
+
+bool UGridInventoryManagerComponent::TryBuildUnequipRelocationPlan(UYcInventoryItemInstance* EquippedItem, const FUnequipRelocateMove* PreferredEquipMove, TArray<FUnequipRelocateMove>& OutRelocateMoves, FUnequipRelocateMove& OutEquipMove, FString& OutReason)
 {
 	OutRelocateMoves.Reset();
 	OutEquipMove = FUnequipRelocateMove();
@@ -2420,7 +2519,46 @@ bool UGridInventoryManagerComponent::TryBuildUnequipRelocationPlan(UYcInventoryI
 	TArray<FGameplayTag> RegionIdsToDisable;
 	if (!GetProvidedRegionIdsFromItem(EquippedItem, RegionIdsToDisable))
 	{
-		// 该装备不提供额外区域时无需重排。
+		if (PreferredEquipMove)
+		{
+			TArray<FUnequipRegionPocketSimState> SimPockets;
+			for (const FGridInventoryRegionRuntimeState& State : RegionStates)
+			{
+				if (!State.bEnabled || State.RegionId != PreferredEquipMove->RegionId)
+				{
+					continue;
+				}
+
+				FUnequipRegionPocketSimState SimState;
+				SimState.PocketIndex = State.PocketIndex;
+				SimState.Priority = State.Priority;
+				SimState.Columns = State.Columns;
+				SimState.Rows = State.Rows;
+				SimState.Slots = GetRegionSlots(State.RegionId, State.PocketIndex);
+				SimPockets.Add(SimState);
+			}
+			SimPockets.Sort([](const FUnequipRegionPocketSimState& A, const FUnequipRegionPocketSimState& B)
+			{
+				return A.Priority < B.Priority;
+			});
+
+			if (!TryOccupyExactFitInSimRegion(EquippedItem, PreferredEquipMove->RegionId, SimPockets, PreferredEquipMove->PocketIndex, PreferredEquipMove->Tile, PreferredEquipMove->bRotated))
+			{
+				OutReason = TEXT("Unequip blocked: preferred grid placement is invalid.");
+				return false;
+			}
+
+			OutEquipMove = *PreferredEquipMove;
+			return true;
+		}
+
+		if (!FindFirstFitPlacementForItemInst(EquippedItem, OutEquipMove.RegionId, OutEquipMove.PocketIndex, OutEquipMove.Tile, OutEquipMove.bRotated))
+		{
+			OutReason = TEXT("Unequip blocked: target inventory has no free grid placement.");
+			return false;
+		}
+
+		OutEquipMove.ItemInstance = EquippedItem;
 		return true;
 	}
 
@@ -2450,6 +2588,11 @@ bool UGridInventoryManagerComponent::TryBuildUnequipRelocationPlan(UYcInventoryI
 
 	for (const FGameplayTag& CandidateRegionId : CandidateRegionIds)
 	{
+		if (PreferredEquipMove && PreferredEquipMove->RegionId.IsValid() && PreferredEquipMove->RegionId != CandidateRegionId)
+		{
+			continue;
+		}
+
 		// 为候选区域构建模拟口袋状态。
 		TArray<FUnequipRegionPocketSimState> SimPockets;
 		for (const FGridInventoryRegionRuntimeState& State : RegionStates)
@@ -2479,7 +2622,17 @@ bool UGridInventoryManagerComponent::TryBuildUnequipRelocationPlan(UYcInventoryI
 		int32 EquipPocketIndex = -1;
 		FIntPoint EquipTile = FIntPoint::ZeroValue;
 		bool bEquipRotated = false;
-		if (!TryFindFitInSimRegion(EquippedItem, CandidateRegionId, SimPockets, EquipPocketIndex, EquipTile, bEquipRotated))
+		if (PreferredEquipMove)
+		{
+			EquipPocketIndex = PreferredEquipMove->PocketIndex;
+			EquipTile = PreferredEquipMove->Tile;
+			bEquipRotated = PreferredEquipMove->bRotated;
+			if (!TryOccupyExactFitInSimRegion(EquippedItem, CandidateRegionId, SimPockets, EquipPocketIndex, EquipTile, bEquipRotated))
+			{
+				continue;
+			}
+		}
+		else if (!TryFindFitInSimRegion(EquippedItem, CandidateRegionId, SimPockets, EquipPocketIndex, EquipTile, bEquipRotated))
 		{
 			continue;
 		}
@@ -2520,7 +2673,9 @@ bool UGridInventoryManagerComponent::TryBuildUnequipRelocationPlan(UYcInventoryI
 		return true;
 	}
 
-	OutReason = TEXT("Unequip blocked: target region has no enough free space for equipment item and provided-region items.");
+	OutReason = PreferredEquipMove != nullptr
+		? TEXT("Unequip blocked: preferred grid placement is invalid or would break relocation.")
+		: TEXT("Unequip blocked: target region has no enough free space for equipment item and provided-region items.");
 	return false;
 }
 

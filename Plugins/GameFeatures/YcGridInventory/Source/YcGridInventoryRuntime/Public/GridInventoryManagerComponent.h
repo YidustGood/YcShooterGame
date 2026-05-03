@@ -483,6 +483,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
 	bool FindFirstFitPositionInRegionForItemInst(UYcInventoryItemInstance* ItemInst, FGameplayTag RegionId, int32 PocketIndex, FIntPoint& Tile, bool& OutRotated);
 
+	/** 预设下一次回归库存时使用的落点。/ Prime placement for the next returned item. */
+	UFUNCTION(BlueprintCallable, Category = "Inventory|Regions")
+	void PreparePreferredReturnPlacement(FIntPoint Tile, FGameplayTag RegionId, int32 PocketIndex);
+
 	/** 调试打印当前槽位占用。/ Print current grid slot occupancy for debugging. */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void DebugPrintSlots();
@@ -579,8 +583,10 @@ private:
 	int32 GetGridItemArea(UYcInventoryItemInstance* ItemInst) const;
 	// 在模拟口袋中尝试为物品寻找可用落位。
 	bool TryFindFitInSimRegion(UYcInventoryItemInstance* ItemInst, FGameplayTag TargetRegionId, TArray<FUnequipRegionPocketSimState>& SimPockets, int32& OutPocketIndex, FIntPoint& OutTile, bool& OutRotated);
+	// 在模拟口袋中尝试将物品放到指定位置。
+	bool TryOccupyExactFitInSimRegion(UYcInventoryItemInstance* ItemInst, FGameplayTag TargetRegionId, TArray<FUnequipRegionPocketSimState>& SimPockets, int32 PreferredPocketIndex, FIntPoint PreferredTile, bool bPreferredRotated);
 	// 基于目标装备物品构建卸装前重排计划并输出失败原因。
-	bool TryBuildUnequipRelocationPlan(UYcInventoryItemInstance* EquippedItem, TArray<FUnequipRelocateMove>& OutRelocateMoves, FUnequipRelocateMove& OutEquipMove, FString& OutReason);
+	bool TryBuildUnequipRelocationPlan(UYcInventoryItemInstance* EquippedItem, const FUnequipRelocateMove* PreferredEquipMove, TArray<FUnequipRelocateMove>& OutRelocateMoves, FUnequipRelocateMove& OutEquipMove, FString& OutReason);
 	// 缓存最近一次可用的卸装重排计划，避免 CanApply/Apply 重复求解。
 	struct FRelocationPlanCache
 	{

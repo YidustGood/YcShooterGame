@@ -263,7 +263,35 @@ bool UYcQuickBarComponent::ValidateQuickBarRemoveOperation(const FYcInventoryOpe
 	}
 	if (ShouldReturnSlotItemToInventory(Operation.SlotIndex))
 	{
-		if (!CanReturnItemToOwnerInventory(Slots[Operation.SlotIndex], OutReason))
+		UYcInventoryItemInstance* SlotItem = Slots[Operation.SlotIndex];
+		UYcInventoryManagerComponent* InventoryManager = UYcInventoryManagerComponent::FindInventoryManager(GetOwner());
+		if (!SlotItem || !InventoryManager)
+		{
+			OutReason = TEXT("QuickBar.Remove owner inventory missing.");
+			return false;
+		}
+
+		if (Operation.TargetInventory == InventoryManager && Operation.GridRegionId.IsValid() && Operation.GridPocketIndex >= 0)
+		{
+			FYcInventoryRelocationRequest RelocationRequest;
+			FYcInventoryRelocationPayload_ItemScope Payload;
+			Payload.AnchorItem = SlotItem;
+			Payload.bUsePreferredPlacement = true;
+			Payload.PreferredRegionId = Operation.GridRegionId;
+			Payload.PreferredPocketIndex = Operation.GridPocketIndex;
+			Payload.PreferredTile = Operation.GridTile;
+			Payload.bPreferredRotated = Operation.bRotated;
+			RelocationRequest.Payload.InitializeAs<FYcInventoryRelocationPayload_ItemScope>(Payload);
+			if (!InventoryManager->CanApplyInventoryRelocation(RelocationRequest, OutReason))
+			{
+				if (OutReason.IsEmpty())
+				{
+					OutReason = TEXT("QuickBar.Remove preferred grid placement is invalid.");
+				}
+				return false;
+			}
+		}
+		else if (!CanReturnItemToOwnerInventory(SlotItem, OutReason))
 		{
 			if (OutReason.IsEmpty())
 			{
@@ -277,6 +305,33 @@ bool UYcQuickBarComponent::ValidateQuickBarRemoveOperation(const FYcInventoryOpe
 
 bool UYcQuickBarComponent::ExecuteQuickBarRemoveOperation(const FYcInventoryOperation& Operation, FString& OutReason)
 {
+	if (ShouldReturnSlotItemToInventory(Operation.SlotIndex))
+	{
+		if (UYcInventoryManagerComponent* InventoryManager = UYcInventoryManagerComponent::FindInventoryManager(GetOwner()))
+		{
+			if (Operation.TargetInventory == InventoryManager && Operation.GridRegionId.IsValid() && Operation.GridPocketIndex >= 0)
+			{
+				FYcInventoryRelocationRequest RelocationRequest;
+				FYcInventoryRelocationPayload_ItemScope Payload;
+				Payload.AnchorItem = Slots.IsValidIndex(Operation.SlotIndex) ? Slots[Operation.SlotIndex] : nullptr;
+				Payload.bUsePreferredPlacement = true;
+				Payload.PreferredRegionId = Operation.GridRegionId;
+				Payload.PreferredPocketIndex = Operation.GridPocketIndex;
+				Payload.PreferredTile = Operation.GridTile;
+				Payload.bPreferredRotated = Operation.bRotated;
+				RelocationRequest.Payload.InitializeAs<FYcInventoryRelocationPayload_ItemScope>(Payload);
+				if (!InventoryManager->ApplyInventoryRelocation(RelocationRequest, OutReason))
+				{
+					if (OutReason.IsEmpty())
+					{
+						OutReason = TEXT("QuickBar.Remove preferred grid placement apply failed.");
+					}
+					return false;
+				}
+			}
+		}
+	}
+
 	if (!RemoveItemFromSlot(Operation.SlotIndex))
 	{
 		OutReason = TEXT("RemoveItemFromSlot failed.");

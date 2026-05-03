@@ -1,18 +1,18 @@
 /**
  * 射击游戏 AI Bot 控制器
- * 
+ *
  * 功能说明：
  * - 管理 AI Bot 的行为树执行
  * - 处理 AI 感知系统（视觉、听觉、伤害感知）
  * - 管理武器装备和快捷栏
  * - 响应队伍变更和死亡事件
- * 
+ *
  * 使用方式：
  * 1. 创建蓝图子类继承此类
  * 2. 配置行为树资产（BTAsset）
  * 3. 配置 AI 感知组件（主要使用 AIPerceptionComponent）
  * 4. 设置视觉、听觉、伤害感知配置
- * 
+ *
  * 注意事项：
  * - 行为树会在 Experience 加载完成后自动启动
  * - Bot 死亡时会自动停止行为树逻辑
@@ -51,6 +51,10 @@ class AYcShooterAIController : AYcAIController
 	UPROPERTY(DefaultComponent)
 	UYcWeaponStateComponent WeaponState;
 
+	private bool bExperienceReady = false;
+	private bool bBehaviorTreeStarted = false;
+	private UYcHealthComponent BoundHealthComp;
+
 	/**
 	 * 游戏开始时调用
 	 * 等待 Experience 加载完成后再初始化 AI 系统
@@ -72,18 +76,14 @@ class AYcShooterAIController : AYcAIController
 	UFUNCTION()
 	private void OnReady()
 	{
-		// 运行行为树（会自动初始化黑板）
-		RunBehaviorTree(BTAsset);
-
-		// 监听 Bot 死亡事件
-		auto HealthComp = GetControlledPawn().GetComponentByClass(UYcHealthComponent);
-		HealthComp.OnDeathStarted.AddUFunction(this, n"OnDeathStarted");
+		bExperienceReady = true;
+		TryInitializeControlledPawn();
 	}
 
 	/**
 	 * Bot 死亡时的回调
 	 * 清理黑板数据并停止 AI 逻辑
-	 * 
+	 *
 	 * @param OwningActor 死亡的 Actor（Bot 的 Pawn）
 	 */
 	UFUNCTION()
@@ -92,7 +92,7 @@ class AYcShooterAIController : AYcAIController
 		// 清除黑板中的敌人目标
 		auto CurrentBlackboard = AIHelper::GetBlackboard(this);
 		CurrentBlackboard.ClearValue(EnemyNameKey);
-		
+
 		// 停止行为树逻辑
 		BrainComponent.StopLogic("Dead");
 	}
@@ -100,18 +100,14 @@ class AYcShooterAIController : AYcAIController
 	/**
 	 * 控制器获得 Pawn 控制权时调用
 	 * 用于 Bot 生成或重生场景
-	 * 
+	 *
 	 * @param PossessedPawn 被控制的 Pawn
 	 */
 	UFUNCTION(BlueprintOverride)
 	void ReceivePossess(APawn PossessedPawn)
 	{
-		// 启动行为树逻辑（如果之前被停止）
-		if (IsValid(BrainComponent))
-		{
-			BrainComponent.StartLogic();
-		}
-		
+		TryInitializeControlledPawn(PossessedPawn);
+
 		// 监听队伍变更事件
 		// 当 Bot 的队伍发生变化时，需要更新 AI 感知系统的敌友判断
 		auto AsyncObserveTeam = AsYcGameCoreAsync::ObserveTeam(this);
@@ -121,20 +117,76 @@ class AYcShooterAIController : AYcAIController
 	/**
 	 * 控制器失去 Pawn 控制权时调用
 	 * 用于 Bot 死亡或被销毁场景
-	 * 
+	 *
 	 * @param UnpossessedPawn 失去控制的 Pawn
 	 */
 	UFUNCTION(BlueprintOverride)
 	void ReceiveUnPossess(APawn UnpossessedPawn)
 	{
+		ClearDeathListener();
+
 		// 执行死亡清理逻辑
 		OnDeathStarted(UnpossessedPawn);
+	}
+
+	private void TryInitializeControlledPawn(APawn InPawn = nullptr)
+	{
+		if (!bExperienceReady)
+		{
+			return;
+		}
+
+		APawn ControlledPawn = InPawn != nullptr ? InPawn : GetControlledPawn();
+		if (ControlledPawn == nullptr)
+		{
+			return;
+		}
+
+		if (!bBehaviorTreeStarted)
+		{
+			// 运行行为树（会自动初始化黑板）
+			RunBehaviorTree(BTAsset);
+			bBehaviorTreeStarted = true;
+		}
+		else if (IsValid(BrainComponent))
+		{
+			// 启动行为树逻辑（如果之前被停止）
+			BrainComponent.StartLogic();
+		}
+
+		BindDeathListener(ControlledPawn);
+	}
+
+	private void BindDeathListener(APawn InPawn)
+	{
+		ClearDeathListener();
+
+		if (InPawn == nullptr)
+		{
+			return;
+		}
+
+		BoundHealthComp = Cast<UYcHealthComponent>(InPawn.GetComponentByClass(UYcHealthComponent));
+		if (BoundHealthComp != nullptr)
+		{
+			BoundHealthComp.OnDeathStarted.AddUFunction(this, n"OnDeathStarted");
+		}
+	}
+
+	private void ClearDeathListener()
+	{
+		if (BoundHealthComp != nullptr)
+		{
+			BoundHealthComp.OnDeathStarted.Unbind(this, n"OnDeathStarted");
+		}
+
+		BoundHealthComp = nullptr;
 	}
 
 	/**
 	 * 队伍变更时的回调
 	 * 请求 AI 感知系统更新刺激监听器，以便重新判断敌友关系
-	 * 
+	 *
 	 * @param bTeamSet 是否成功设置队伍
 	 * @param TeamId 新的队伍 ID
 	 */

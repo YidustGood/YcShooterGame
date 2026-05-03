@@ -5,11 +5,39 @@
 #include "LuaCppBinding.h"
 #include "Engine/GameInstance.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "UObject/UObjectIterator.h"
 
 namespace NS_SLUA
 {
     namespace GameInstanceExtension
     {
+        namespace
+        {
+            UClass* FindSubsystemClassByShortName(const FString& InClassName)
+            {
+                if (InClassName.IsEmpty())
+                {
+                    return nullptr;
+                }
+
+                for (TObjectIterator<UClass> It; It; ++It)
+                {
+                    UClass* CandidateClass = *It;
+                    if (!IsValid(CandidateClass))
+                    {
+                        continue;
+                    }
+
+                    if (CandidateClass->GetName() == InClassName)
+                    {
+                        return CandidateClass;
+                    }
+                }
+
+                return nullptr;
+            }
+        }
+
         // GetSubsystem - 获取 GameInstance 子系统
         // 参数: SubsystemClass - 子系统类的 UClass
         // 返回: 子系统实例或 nil
@@ -60,13 +88,13 @@ namespace NS_SLUA
 
             // 查找子系统类
             FString ClassName = UTF8_TO_TCHAR(TypeName);
-            UClass* SubsystemClass = FindObject<UClass>(ANY_PACKAGE, *ClassName);
+            UClass* SubsystemClass = FindSubsystemClassByShortName(ClassName);
             
             if (!SubsystemClass)
             {
                 // 尝试添加 U 前缀
                 FString PrefixedName = FString::Printf(TEXT("U%s"), *ClassName);
-                SubsystemClass = FindObject<UClass>(ANY_PACKAGE, *PrefixedName);
+                SubsystemClass = FindSubsystemClassByShortName(PrefixedName);
             }
 
             if (SubsystemClass)

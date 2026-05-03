@@ -6,15 +6,11 @@
 #include "LuaCppBinding.h"
 #include "GameplayTagContainer.h"
 #include "LuaState.h"
+#include "YcSluaTypeNames.h"
 #include "YiChenSlua.h"
 
 namespace NS_SLUA
 {
-    // 注册 FGameplayTag 和 FGameplayTagContainer 的类型名称
-    // 这是 Slua 识别自定义结构体的必要步骤
-    DefTypeName(FGameplayTag);
-    DefTypeName(FGameplayTagContainer);
-
     namespace GameplayTagExtension
     {
         //=====================================================================

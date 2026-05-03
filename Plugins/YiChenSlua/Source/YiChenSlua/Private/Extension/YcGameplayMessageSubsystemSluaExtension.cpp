@@ -9,16 +9,13 @@
 #include "LuaState.h"
 #include "LuaVar.h"
 #include "Logging/LogMacros.h"
+#include "YcSluaTypeNames.h"
 
 // 定义日志类别
 DEFINE_LOG_CATEGORY_STATIC(LogYcGameplayMessageSlua, Log, All);
 
 namespace NS_SLUA
 {
-    // 注册类型名称
-    DefTypeName(FGameplayTag);
-    DefTypeName(FGameplayMessageListenerHandle);
-
     // Lua 回调包装器，用于保存 Lua 函数引用
     // 使用 LuaVar 代替裸 lua_State* + luaL_ref，Slua 会自动管理生命周期
     class FLuaMessageCallback

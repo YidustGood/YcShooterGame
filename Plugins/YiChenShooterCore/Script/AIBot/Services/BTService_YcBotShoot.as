@@ -71,7 +71,7 @@ class UBTService_YcBotShoot : UBTService_BlueprintBase
 			return false;
 
 		// 获取当前装备的武器实例
-		auto QuickBar = Pawn.GetComponentByClass(UYcQuickBarComponent);
+		auto QuickBar = UYcQuickBarComponent::FindQuickBarComponent(Pawn);
 		auto WeaponInst = QuickBar.GetActiveEquipmentInstance();
 		if (!IsValid(WeaponInst))
 			return false;

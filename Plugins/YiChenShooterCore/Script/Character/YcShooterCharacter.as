@@ -34,6 +34,10 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 	UPROPERTY()
 	float CrouchCameraLagDelayTime = 0.3f;
 
+	// 死亡时是否开启布娃娃
+	UPROPERTY()
+	bool bEnableRagdollWithDeath = true;
+
 	// 监听在第一人称手臂模型播放蒙太奇动画的GameplayEvent, 必须用成员变量+UPROPERTY持有, 否则会被Garbage Collector回收
 	UPROPERTY(NotVisible)
 	UAbilityAsync_WaitGameplayEvent WaitGameplayEvent_PlayFPAnim;
@@ -355,5 +359,28 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 		{
 			QuickBarComp.SetActiveSlotIndex_WithPrediction(DefaultActiveQuickBarSlotIndex);
 		}
+	}
+
+	UFUNCTION(BlueprintOverride)
+	void OnDeathStarted()
+	{
+		//@TODO 死亡时, 清除所有装备
+		if (bEnableRagdollWithDeath)
+		{
+			EnableRagdoll();
+		}
+		FPCharacter.SetHiddenInGame(true, true);
+		DisableInput(GetYcPlayerController());
+		MoveActionValue = FVector2D();
+	}
+
+	// 启用 ragdoll 功能
+	UFUNCTION()
+	void EnableRagdoll()
+	{
+		CharacterMovement.DisableMovement();
+		Mesh.SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
+		Mesh.SetSimulatePhysics(true);
+		CapsuleComponent.SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
 }

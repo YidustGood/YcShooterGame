@@ -70,7 +70,9 @@ class AYcSimpleAICharacter : AYcCharacter
 	void EnableRagdoll()
 	{
 		CharacterMovement.DisableMovement();
+		Mesh.SetCollisionProfileName(n"Ragdoll");
 		Mesh.SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
+		Mesh.SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECollisionResponse::ECR_Ignore);
 		Mesh.SetSimulatePhysics(true);
 		CapsuleComponent.SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}

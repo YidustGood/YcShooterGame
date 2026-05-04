@@ -29,8 +29,12 @@ class AGridItemContainerBase : AActor
 	UPROPERTY(DefaultComponent)
 	UYcInteractableComponent InteractableComp;
 
-	// 容器在场景中的可视化网格体组件。
+	// 容器在场景中的可视化组件，负责定位和显示容器。
 	UPROPERTY(DefaultComponent)
+	USceneComponent ContainerScene;
+
+	// 容器在场景中的可视化网格体组件。
+	UPROPERTY(DefaultComponent, Attach = ContainerScene)
 	UStaticMeshComponent DisplayMesh;
 
 	default bReplicates = true;

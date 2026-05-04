@@ -79,6 +79,11 @@
         "Name": "YiChenQuest",
         "Type": "Runtime",
         "LoadingPhase": "Default"
+        },
+        {
+        "Name": "YiChenGameCoreEditor",
+        "Type": "Editor",
+        "LoadingPhase": "Default"
         }
           ]
 }

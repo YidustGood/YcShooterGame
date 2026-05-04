@@ -15,6 +15,7 @@ public class YiChenGameplay : ModuleRules
                 "CommonLoadingScreen",
                 "ModularGameplayActors",
                 "DataRegistry",
+                "DeveloperSettings",
                 "YiChenGameCore",
                 "YiChenAbility",
                 "GameFeatures",
@@ -47,6 +48,7 @@ public class YiChenGameplay : ModuleRules
                 "GameplayMessageRuntime",
                 "UIExtension",
                 "PhysicsCore",
+                "Niagara",
                 "AIModule",
                 "OnlineSubsystemUtils",
                 "YiChenCombatCore"

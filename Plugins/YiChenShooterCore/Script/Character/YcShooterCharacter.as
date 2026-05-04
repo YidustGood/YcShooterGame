@@ -9,6 +9,10 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 	UPROPERTY(DefaultComponent)
 	UYcEquipmentSlotComponent EquipmentSlotComp;
 
+	// 上下文效果组件, 用于播放上下文效果(例如踩中不同物理材质表面播放不同的脚步声,生成不同的脚印等功能), 需要设置DefaultContextEffectsLibraries
+	UPROPERTY(DefaultComponent)
+	UYcContextEffectComponent ContextEffectComp;
+
 	UPROPERTY(DefaultComponent)
 	USpringArmComponent FPSpringArm;
 

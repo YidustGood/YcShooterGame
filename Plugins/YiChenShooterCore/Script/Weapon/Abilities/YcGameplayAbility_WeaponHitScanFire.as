@@ -84,10 +84,12 @@ class UYcGameplayAbility_WeaponHitScanFire : UYcGameplayAbility_HitScanWeapon
 		Payload.OptionalObject = FireHipActionVisual.FPWeaponAnimMontage.Get();
 		AbilitySystem::SendGameplayEventToActor(GetAvatarActorFromActorInfo(), GameplayTags::InputTag_Weapon_Fire, Payload);
 
-		// 通知玩家角色播放第一人称模型射击动画
+		// @TODO GameplayEvent_Character_PlayMontageFP标签待修改, 这个应该是1P、3P共用的标签
+		// 通知玩家角色播放1P/3P模型射击动画
 		FGameplayEventData CharacterPayloadFP;
 		CharacterPayloadFP.EventTag = GameplayTags::GameplayEvent_Character_PlayMontageFP;
 		CharacterPayloadFP.OptionalObject = FireHipActionVisual.FPCharacterAnimMontage.Get();
+		CharacterPayloadFP.OptionalObject2 = FireHipActionVisual.TPCharacterAnimMontage.Get();
 		AbilitySystem::SendGameplayEventToActor(GetAvatarActorFromActorInfo(), GameplayTags::GameplayEvent_Character_PlayMontageFP, CharacterPayloadFP);
 
 		// @TODO 后续有事件再来优化一下射击技能的自动结束机制

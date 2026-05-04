@@ -39,6 +39,7 @@ class UGameplayAbility_OpenItemContainer : UYcGameplayAbility
 		ContainerMessage.ContainerInventory = Inventory;
 		ContainerMessage.ContainerWidgetClass = ContainerWidgetClass;
 		ContainerMessage.bIsOpen = true;
+		ContainerMessage.bShouldBlockMovement = true;
 		UGameplayMessageSubsystem::Get().BroadcastMessage(GameplayTags::Yc_Inventory_Message_Grid_Container, ContainerMessage);
 
 		EndAbility();

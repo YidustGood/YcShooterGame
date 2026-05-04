@@ -33,6 +33,7 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	private TArray<UGridInventoryWidget> OwnerRegionWidgets;
 	private UGridItemContextMenuWidget CurrentContextMenuWidget;
 	private TOptional<FGridItemContainerMessage> CachedCurrentContainerMsg;
+	private bool bMovementBlockedByContainerInteraction = false;
 
 	UFUNCTION(BlueprintOverride)
 	void OnInitialized()
@@ -42,6 +43,7 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	UFUNCTION(BlueprintOverride)
 	void OnActivated()
 	{
+		bMovementBlockedByContainerInteraction = false;
 		OwnerInventory = Cast<UGridInventoryManagerComponent>(YcInventory::GetInventoryManagerComponent(GetOwningPlayer()));
 		if (OwnerInventory == nullptr)
 		{
@@ -100,6 +102,8 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	UFUNCTION(BlueprintOverride)
 	void OnDeactivated()
 	{
+		SetMovementBlockedByContainerInteraction(false);
+
 		APlayerController OwningController = GetOwningPlayer();
 		if (OwningController != nullptr)
 		{
@@ -154,6 +158,7 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 
 		if (Data.bIsOpen)
 		{
+			SetMovementBlockedByContainerInteraction(Data.bShouldBlockMovement);
 			CachedCurrentContainerMsg = Data;
 			CurrentContainerWidget = Cast<UGridInventoryWidget>(WidgetBlueprint::CreateWidget(Data.ContainerWidgetClass, GetOwningPlayer()));
 			Canvas.AddChildToCanvas(CurrentContainerWidget);
@@ -167,6 +172,7 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 		}
 		else
 		{
+			SetMovementBlockedByContainerInteraction(false);
 			if (OwnerInventory != nullptr)
 			{
 				OwnerInventory.ServerResetSearchSession();
@@ -479,6 +485,23 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 			CurrentContextMenuWidget = nullptr;
 		}
 	}
+
+	void SetMovementBlockedByContainerInteraction(bool bShouldBlock)
+	{
+		if (bMovementBlockedByContainerInteraction == bShouldBlock)
+		{
+			return;
+		}
+
+		APlayerController OwningController = GetOwningPlayer();
+		if (OwningController == nullptr)
+		{
+			return;
+		}
+
+		OwningController.SetIgnoreMoveInput(bShouldBlock);
+		bMovementBlockedByContainerInteraction = bShouldBlock;
+	}
 }
 
 USTRUCT()
@@ -496,4 +519,5 @@ struct FGridItemContainerMessage
 	UGridInventoryManagerComponent ContainerInventory;
 	TSubclassOf<UGridInventoryWidget> ContainerWidgetClass;
 	bool bIsOpen;
+	bool bShouldBlockMovement = false;
 }

@@ -32,6 +32,27 @@ class UYcGameplayAbility_WeaponHitScanFire : UYcGameplayAbility_HitScanWeapon
 	FGameplayTag GameplayCueTag_Impact;
 	default GameplayCueTag_Impact = GameplayTags::GameplayCue_Weapon_Impact;
 
+	/**
+	 * 枪声响度。
+	 * 数值越大，AI 越容易在更远处感知到这次开火；通常 1.0 可作为常规枪械起点。
+	 */
+	UPROPERTY(EditAnywhere, Category = "AI")
+	float GunshotNoiseLoudness = 1.0f;
+
+	/**
+	 * 枪声最大传播距离（cm）。
+	 * 建议与 AI Hearing Range 配合调整，若这里比 Hearing Range 小，AI 实际能听到的范围会受这里限制。
+	 */
+	UPROPERTY(EditAnywhere, Category = "AI")
+	float GunshotNoiseMaxRange = 3000.0f;
+
+	/**
+	 * 枪声事件使用的 Tag。
+	 * 需要与 AI 感知组件中的 GunshotNoiseTag 配置保持一致，否则 AI 不会把这次噪声当作枪声处理。
+	 */
+	UPROPERTY(EditAnywhere, Category = "AI")
+	FName GunshotNoiseTag = n"WeaponGunshot";
+
 	// 缓存WeaponVisualData资产, 方便获取动画之类的资产供技能使用
 	UPROPERTY(VisibleInstanceOnly)
 	UYcWeaponVisualData WeaponVisualDataCache;
@@ -108,6 +129,7 @@ class UYcGameplayAbility_WeaponHitScanFire : UYcGameplayAbility_HitScanWeapon
 	void OnRangedWeaponTargetDataReady(FGameplayAbilityTargetDataHandle TargetData)
 	{
 		// 射击数据准备完成, 现在开始应用伤害等逻辑
+		ReportGunshotNoise();
 
 		// 从武器实例获取当前的武器基础伤害值设置到DamageGE, 然后应用到命中目标对象上
 		float BaseDamage = GetWeaponInstance().GetComputedStats().BaseDamage;
@@ -138,5 +160,28 @@ class UYcGameplayAbility_WeaponHitScanFire : UYcGameplayAbility_HitScanWeapon
 		{
 			EndAbility();
 		}
+	}
+
+	private void ReportGunshotNoise()
+	{
+		AActor AvatarActor = GetAvatarActorFromActorInfo();
+		if (AvatarActor == nullptr || !AvatarActor.HasAuthority())
+		{
+			return;
+		}
+
+		AActor NoiseInstigator = AvatarActor;
+		AController SourceController = GetControllerFromActorInfo();
+		if (SourceController != nullptr && SourceController.PlayerState != nullptr)
+		{
+			NoiseInstigator = SourceController.PlayerState;
+		}
+
+		UAISense_Hearing::ReportNoiseEvent(
+			AvatarActor.GetActorLocation(),
+			float32(GunshotNoiseLoudness),
+			NoiseInstigator,
+			float32(GunshotNoiseMaxRange),
+			GunshotNoiseTag);
 	}
 }

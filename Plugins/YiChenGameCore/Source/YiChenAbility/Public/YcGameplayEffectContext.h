@@ -57,6 +57,15 @@ struct YICHENABILITY_API FYcGameplayEffectContext : public FGameplayEffectContex
 	/** 按 Struct 类型查找运行时 Payload */
 	const FInstancedStruct* FindRuntimePayload(const UScriptStruct* PayloadType) const;
 
+	/** 设置给 GameplayCue 使用的多命中数据 */
+	void SetCueImpactData(const TArray<FVector>& InImpactPositions, const TArray<FVector>& InImpactNormals, const TArray<uint8>& InImpactSurfaceTypes);
+
+	/** 从上下文中读取给 GameplayCue 使用的多命中数据 */
+	bool GetCueImpactData(TArray<FVector>& OutImpactPositions, TArray<FVector>& OutImpactNormals, TArray<uint8>& OutImpactSurfaceTypes) const;
+
+	/** 是否携带给 GameplayCue 使用的多命中数据 */
+	bool HasCueImpactData() const;
+
 	template<typename PayloadType>
 	void AddOrReplaceRuntimePayload(const PayloadType& InPayload)
 	{
@@ -135,6 +144,21 @@ public:
 	 */
 	UPROPERTY()
 	TArray<FInstancedStruct> RuntimePayloads;
+
+	/**
+	 * 供 GameplayCue 读取的多命中位置数组
+	 * 用于霰弹枪等单次射击多弹丸的表现同步
+	 */
+	UPROPERTY()
+	TArray<FVector> CueImpactPositions;
+
+	/** 供 GameplayCue 读取的多命中法线数组 */
+	UPROPERTY()
+	TArray<FVector> CueImpactNormals;
+
+	/** 供 GameplayCue 读取的多命中表面类型数组（按 uint8 序列化） */
+	UPROPERTY()
+	TArray<uint8> CueImpactSurfaceTypes;
 
 protected:
 	/**

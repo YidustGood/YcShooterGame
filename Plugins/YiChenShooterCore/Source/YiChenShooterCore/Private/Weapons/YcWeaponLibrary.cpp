@@ -17,6 +17,9 @@
 #include "Weapons/YcWeaponActor.h"
 #include "Weapons/Attachments/YcAttachmentTypes.h"
 #include "AbilitySystem/Abilities/YcGameplayAbilityTargetData_SingleTargetHit.h"
+#include "YcGameplayEffectContext.h"
+#include "Health/YcHealthComponent.h"
+#include "YcTeamSubsystem.h"
 #include "Weapons/Fragments/YcEquipmentFragment_ReticleConfig.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcWeaponLibrary)
@@ -251,6 +254,220 @@ FGameplayAbilityTargetDataHandle UYcWeaponLibrary::MakeSingleTargetHitTargetData
 	NewTargetData->RuntimePayloads = RuntimePayloads;
 	TargetData.Add(NewTargetData);
 	return TargetData;
+}
+
+void UYcWeaponLibrary::GetImpactDataFromTargetData(
+	const FGameplayAbilityTargetDataHandle& TargetData,
+	TArray<FVector>& OutImpactPositions,
+	TArray<FVector>& OutImpactNormals,
+	TArray<TEnumAsByte<EPhysicalSurface>>& OutImpactSurfaceTypes)
+{
+	OutImpactPositions.Reset();
+	OutImpactNormals.Reset();
+	OutImpactSurfaceTypes.Reset();
+
+	for (int32 Index = 0; Index < TargetData.Num(); ++Index)
+	{
+		const FGameplayAbilityTargetData* TargetDataPtr = TargetData.Get(Index);
+		if (!TargetDataPtr)
+		{
+			continue;
+		}
+
+		UScriptStruct* TargetDataScriptStruct = TargetDataPtr->GetScriptStruct();
+		if (!TargetDataScriptStruct || !TargetDataScriptStruct->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
+		{
+			continue;
+		}
+
+		const FGameplayAbilityTargetData_SingleTargetHit* SingleTargetHit = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(TargetDataPtr);
+
+		const FHitResult& HitResult = SingleTargetHit->HitResult;
+
+		FVector ImpactPosition = HitResult.ImpactPoint;
+		if (!HitResult.bBlockingHit && ImpactPosition.IsNearlyZero())
+		{
+			ImpactPosition = !HitResult.Location.IsNearlyZero() ? HitResult.Location : HitResult.TraceEnd;
+		}
+
+		FVector ImpactNormal = HitResult.ImpactNormal;
+		if (!HitResult.bBlockingHit && ImpactNormal.IsNearlyZero())
+		{
+			ImpactNormal = (HitResult.TraceEnd - HitResult.TraceStart).GetSafeNormal();
+		}
+
+		TEnumAsByte<EPhysicalSurface> SurfaceType = EPhysicalSurface::SurfaceType_Default;
+		if (const UPhysicalMaterial* PhysicalMaterial = HitResult.PhysMaterial.Get())
+		{
+			SurfaceType = PhysicalMaterial->SurfaceType;
+		}
+
+		OutImpactPositions.Add(ImpactPosition);
+		OutImpactNormals.Add(ImpactNormal);
+		OutImpactSurfaceTypes.Add(SurfaceType);
+	}
+}
+
+bool UYcWeaponLibrary::GetPrimaryHitResultFromTargetData(
+	const FGameplayAbilityTargetDataHandle& TargetData,
+	FHitResult& OutHitResult)
+{
+	bool bHasAnyHit = false;
+
+	for (int32 Index = 0; Index < TargetData.Num(); ++Index)
+	{
+		const FGameplayAbilityTargetData* TargetDataPtr = TargetData.Get(Index);
+		if (!TargetDataPtr)
+		{
+			continue;
+		}
+
+		UScriptStruct* TargetDataScriptStruct = TargetDataPtr->GetScriptStruct();
+		if (!TargetDataScriptStruct || !TargetDataScriptStruct->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
+		{
+			continue;
+		}
+
+		const FGameplayAbilityTargetData_SingleTargetHit* SingleTargetHit = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(TargetDataPtr);
+
+		if (!bHasAnyHit)
+		{
+			OutHitResult = SingleTargetHit->HitResult;
+			bHasAnyHit = true;
+		}
+
+		if (SingleTargetHit->HitResult.bBlockingHit)
+		{
+			OutHitResult = SingleTargetHit->HitResult;
+			return true;
+		}
+	}
+
+	return bHasAnyHit;
+}
+
+bool UYcWeaponLibrary::GetHitFeedbackHitResultFromTargetData(
+	const FGameplayAbilityTargetDataHandle& TargetData,
+	UObject* TeamComparisonSource,
+	FHitResult& OutHitResult)
+{
+	const UYcTeamSubsystem* TeamSubsystem = TeamComparisonSource ? &UYcTeamSubsystem::Get(TeamComparisonSource) : nullptr;
+
+	for (int32 Index = 0; Index < TargetData.Num(); ++Index)
+	{
+		const FGameplayAbilityTargetData* TargetDataPtr = TargetData.Get(Index);
+		if (!TargetDataPtr)
+		{
+			continue;
+		}
+
+		UScriptStruct* TargetDataScriptStruct = TargetDataPtr->GetScriptStruct();
+		if (!TargetDataScriptStruct || !TargetDataScriptStruct->IsChildOf(FGameplayAbilityTargetData_SingleTargetHit::StaticStruct()))
+		{
+			continue;
+		}
+
+		const FGameplayAbilityTargetData_SingleTargetHit* SingleTargetHit = static_cast<const FGameplayAbilityTargetData_SingleTargetHit*>(TargetDataPtr);
+		const FHitResult& HitResult = SingleTargetHit->HitResult;
+
+		AActor* HitActor = HitResult.GetActor();
+		if (!IsValid(HitActor))
+		{
+			continue;
+		}
+
+		if (UYcHealthComponent::FindHealthComponent(HitActor) == nullptr)
+		{
+			continue;
+		}
+
+		if (TeamSubsystem && TeamSubsystem->CompareTeams(TeamComparisonSource, HitActor) == EYcTeamComparison::OnSameTeam)
+		{
+			continue;
+		}
+
+		OutHitResult = HitResult;
+		return true;
+	}
+
+	return false;
+}
+
+FGameplayCueParameters UYcWeaponLibrary::MakeWeaponFireCueParameters(const FGameplayAbilityTargetDataHandle& TargetData)
+{
+	FGameplayCueParameters Parameters;
+
+	TArray<FVector> ImpactPositions;
+	TArray<FVector> ImpactNormals;
+	TArray<TEnumAsByte<EPhysicalSurface>> ImpactSurfaceTypes;
+	GetImpactDataFromTargetData(TargetData, ImpactPositions, ImpactNormals, ImpactSurfaceTypes);
+
+	FHitResult PrimaryHitResult;
+	const bool bHasPrimaryHit = GetPrimaryHitResultFromTargetData(TargetData, PrimaryHitResult);
+	if (bHasPrimaryHit)
+	{
+		Parameters.Location = PrimaryHitResult.ImpactPoint;
+		Parameters.Normal = PrimaryHitResult.ImpactNormal;
+		Parameters.PhysicalMaterial = PrimaryHitResult.PhysMaterial;
+	}
+
+	FGameplayEffectContextHandle ContextHandle(new FYcGameplayEffectContext());
+	if (FYcGameplayEffectContext* EffectContext = FYcGameplayEffectContext::ExtractEffectContext(ContextHandle))
+	{
+		if (bHasPrimaryHit)
+		{
+			EffectContext->AddHitResult(PrimaryHitResult, true);
+		}
+
+		TArray<uint8> SerializedSurfaceTypes;
+		SerializedSurfaceTypes.Reserve(ImpactSurfaceTypes.Num());
+		for (TEnumAsByte<EPhysicalSurface> SurfaceType : ImpactSurfaceTypes)
+		{
+			SerializedSurfaceTypes.Add(static_cast<uint8>(SurfaceType));
+		}
+
+		EffectContext->SetCueImpactData(ImpactPositions, ImpactNormals, SerializedSurfaceTypes);
+	}
+
+	Parameters.EffectContext = ContextHandle;
+	return Parameters;
+}
+
+bool UYcWeaponLibrary::GetImpactDataFromGameplayCueParameters(
+	const FGameplayCueParameters& Parameters,
+	TArray<FVector>& OutImpactPositions,
+	TArray<FVector>& OutImpactNormals,
+	TArray<TEnumAsByte<EPhysicalSurface>>& OutImpactSurfaceTypes)
+{
+	OutImpactPositions.Reset();
+	OutImpactNormals.Reset();
+	OutImpactSurfaceTypes.Reset();
+
+	TArray<uint8> SerializedSurfaceTypes;
+	if (const FYcGameplayEffectContext* EffectContext = FYcGameplayEffectContext::ExtractEffectContext(Parameters.EffectContext))
+	{
+		if (EffectContext->GetCueImpactData(OutImpactPositions, OutImpactNormals, SerializedSurfaceTypes))
+		{
+			OutImpactSurfaceTypes.Reserve(SerializedSurfaceTypes.Num());
+			for (uint8 SurfaceType : SerializedSurfaceTypes)
+			{
+				OutImpactSurfaceTypes.Add(static_cast<EPhysicalSurface>(SurfaceType));
+			}
+			return true;
+		}
+	}
+
+	OutImpactPositions.Add(Parameters.Location);
+	OutImpactNormals.Add(Parameters.Normal);
+
+	TEnumAsByte<EPhysicalSurface> FallbackSurfaceType = EPhysicalSurface::SurfaceType_Default;
+	if (const UPhysicalMaterial* PhysicalMaterial = Parameters.PhysicalMaterial.Get())
+	{
+		FallbackSurfaceType = PhysicalMaterial->SurfaceType;
+	}
+
+	OutImpactSurfaceTypes.Add(FallbackSurfaceType);
+	return true;
 }
 
 void UYcWeaponLibrary::LoadWeaponAttachmentDataAssetAsync(UObject* WorldContextObject)

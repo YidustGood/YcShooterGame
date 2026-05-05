@@ -2,7 +2,7 @@
 class AWeaponFireEffector : AActor
 {
 	UPROPERTY(DefaultComponent, RootComponent)
-	USceneComponent DefaultSceneRoot;
+	USceneComponent FireRoot;
 
 	/**
 	 * 是否为第一人称模式,如果是会设置特效的FirstPersonMode=1.0,会传递给材质这样特效位置才能正确匹配第一人称独立FOV
@@ -94,7 +94,7 @@ class AWeaponFireEffector : AActor
 			}
 			
 			FVector ShellEjectLocation = ShellEjectTransform.GetLocation();
-			NS_ShellEject = Niagara::SpawnSystemAttached(ShellEjectSystem, DefaultSceneRoot, n"None", ShellEjectLocation, AttachRotation, EAttachLocation::KeepRelativeOffset, true);
+			NS_ShellEject = Niagara::SpawnSystemAttached(ShellEjectSystem, FireRoot, n"None", ShellEjectLocation, AttachRotation, EAttachLocation::KeepRelativeOffset, true);
 
 			// 设置ShellEjectMesh,有有效的模型才设置,否则不设置这个变量会使用粒子系统内部默认设置的弹壳模型
 			auto ShellEjectMesh = GetBulletShellMesh();
@@ -129,7 +129,7 @@ class AWeaponFireEffector : AActor
 				return;
 			}
 			
-			NS_MuzzleFlash = Niagara::SpawnSystemAttached(MuzzleFlashSystem, DefaultSceneRoot, n"None", MuzzleTransform.Location, AttachRotation, EAttachLocation::KeepRelativeOffset, true);
+			NS_MuzzleFlash = Niagara::SpawnSystemAttached(MuzzleFlashSystem, FireRoot, n"None", MuzzleTransform.Location, AttachRotation, EAttachLocation::KeepRelativeOffset, true);
 			bMuzzleFlashTrigger = false;
 		}
 		// set first person mode
@@ -139,9 +139,12 @@ class AWeaponFireEffector : AActor
 		// Send trigger update to systems
 		NS_MuzzleFlash.SetNiagaraVariableBool("User.Trigger", bMuzzleFlashTrigger);
 		// 设置特效朝向
-		auto MuzzleFlashDirection = MuzzleTransform.GetLocation() - ImpactPositions[0];
-		MuzzleFlashDirection.Normalize();
-		NS_MuzzleFlash.SetNiagaraVariableVec3("User.Direction", MuzzleFlashDirection);
+		if (!ImpactPositions.IsEmpty())
+		{
+			auto MuzzleFlashDirection = ImpactPositions[0] - MuzzleTransform.GetLocation();
+			MuzzleFlashDirection.Normalize();
+			NS_MuzzleFlash.SetNiagaraVariableVec3("User.Direction", MuzzleFlashDirection);
+		}
 	}
 
 	// 弹道特效
@@ -162,8 +165,13 @@ class AWeaponFireEffector : AActor
 			}
 			
 			FVector Loc = MuzzleTransform.Location + FVector(1, -35, 0); // 起点偏移,根据实际效果适当调整
-			NS_Tracer = Niagara::SpawnSystemAttached(TracerSystem, DefaultSceneRoot, n"None", Loc, AttachRotation, EAttachLocation::KeepRelativeOffset, true);
+			NS_Tracer = Niagara::SpawnSystemAttached(TracerSystem, FireRoot, n"None", Loc, AttachRotation, EAttachLocation::KeepRelativeOffset, true);
 			bTracerTrigger = false;
+		}
+
+		if (ImpactPositions.IsEmpty())
+		{
+			return;
 		}
 		// Update trigger
 		bTracerTrigger = !bTracerTrigger;

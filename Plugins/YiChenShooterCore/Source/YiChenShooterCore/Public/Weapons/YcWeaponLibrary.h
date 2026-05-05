@@ -4,6 +4,7 @@
 
 #include "Engine/EngineTypes.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
+#include "GameplayCueNotifyTypes.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "GameplayTagContainer.h"
 #include "StructUtils/InstancedStruct.h"
@@ -204,6 +205,39 @@ public:
 		const FGameplayTag DamageTypeTag,
 		const int32 CartridgeID = -1
 		);
+
+	/** 从 TargetData 中提取命中表现数组（支持单次射击多弹丸） */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Ability")
+	static void GetImpactDataFromTargetData(
+		const FGameplayAbilityTargetDataHandle& TargetData,
+		TArray<FVector>& OutImpactPositions,
+		TArray<FVector>& OutImpactNormals,
+		TArray<TEnumAsByte<EPhysicalSurface>>& OutImpactSurfaceTypes);
+
+	/** 从 TargetData 中选出主命中结果。优先返回第一个 BlockingHit，否则返回第一个结果。 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Ability")
+	static bool GetPrimaryHitResultFromTargetData(
+		const FGameplayAbilityTargetDataHandle& TargetData,
+		FHitResult& OutHitResult);
+
+	/** 从 TargetData 中选出用于本地命中反馈的命中结果。优先返回命中的有效敌方生命目标。 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Ability")
+	static bool GetHitFeedbackHitResultFromTargetData(
+		const FGameplayAbilityTargetDataHandle& TargetData,
+		UObject* TeamComparisonSource,
+		FHitResult& OutHitResult);
+
+	/** 构建武器开火 GameplayCue 参数，并将多命中数据写入自定义 EffectContext。 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Ability")
+	static FGameplayCueParameters MakeWeaponFireCueParameters(const FGameplayAbilityTargetDataHandle& TargetData);
+
+	/** 从 GameplayCue 参数中提取多命中表现数组。若不存在自定义数据，则回退到单个参数。 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Weapon|Ability")
+	static bool GetImpactDataFromGameplayCueParameters(
+		const FGameplayCueParameters& Parameters,
+		TArray<FVector>& OutImpactPositions,
+		TArray<FVector>& OutImpactNormals,
+		TArray<TEnumAsByte<EPhysicalSurface>>& OutImpactSurfaceTypes);
 
 	//@TODO 不应该用这种形式加载所有武器配件
 	/**

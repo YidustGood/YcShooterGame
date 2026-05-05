@@ -1,6 +1,9 @@
 /** 用于生成武器命中贴花的特效器 */
 class AWeaponDecalsEffector : AActor
 {
+	UPROPERTY(DefaultComponent, RootComponent)
+	USceneComponent DecalRoot;
+
 	UNiagaraComponent Decal;
 	bool bImpactTrigger;
 	TArray<FVector> ImpactPositions;
@@ -24,6 +27,17 @@ class AWeaponDecalsEffector : AActor
 		// 缓存 WeaponVisualData
 		CachedWeaponVisualData = YcWeapon::GetWeaponVisualData(AssociatedWeaponInst);
 
+		if (ImpactPositions.IsEmpty() || ImpactNormals.IsEmpty() || ImpactSurfaceTypes.IsEmpty())
+		{
+			return;
+		}
+
+		if (ImpactPositions.Num() != ImpactNormals.Num() || ImpactPositions.Num() != ImpactSurfaceTypes.Num())
+		{
+			Warning("WeaponDecalsEffector: impact data arrays are not aligned, skip spawning decals.");
+			return;
+		}
+
 		if (!IsValid(Decal) || !Decal.IsActive())
 		{
 			// 从 WeaponVisualData 获取贴花特效
@@ -34,7 +48,14 @@ class AWeaponDecalsEffector : AActor
 				return;
 			}
 
-			Decal = Niagara::SpawnSystemAtLocation(DecalSystem, FVector(0), FRotator(0), FVector(1));
+			Decal = Niagara::SpawnSystemAttached(
+				DecalSystem,
+				DecalRoot,
+				n"None",
+				FVector(0),
+				FRotator(0),
+				EAttachLocation::KeepRelativeOffset,
+				true);
 			bImpactTrigger = false;
 		}
 

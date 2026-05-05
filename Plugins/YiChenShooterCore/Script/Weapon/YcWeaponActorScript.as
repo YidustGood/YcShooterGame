@@ -4,7 +4,7 @@ class AYcWeaponActorScript : AYcWeaponActor
 	/** 武器Actor辅助组件 */
 	UPROPERTY(DefaultComponent)
 	UYcWeaponActorComponent YcWeaponComponent;
-	
+
 	/** 特效管理组件 */
 	UPROPERTY(DefaultComponent)
 	UYcWeaponEffectComponent EffectComponent;
@@ -22,7 +22,7 @@ class AYcWeaponActorScript : AYcWeaponActor
 	void SpawnFireEffects(
 		TArray<FVector> ImpactPositions,
 		TArray<FVector> ImpactNormals,
-		TArray<EPhysicalSurface> ImpactSurfaceTypes)
+		TArray<EPhysicalSurface> ImpactSurfaceTypes) const
 	{
 		if (IsValid(EffectComponent))
 		{

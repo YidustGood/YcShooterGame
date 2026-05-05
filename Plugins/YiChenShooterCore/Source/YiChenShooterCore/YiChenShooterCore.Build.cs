@@ -26,6 +26,7 @@ public class YiChenShooterCore : ModuleRules
 			new string[]
 			{
 				"Core",
+				"PhysicsCore",
 				"GameplayAbilities",
 				"GameplayTags",
 				"StructUtils",

@@ -28,8 +28,12 @@ bool FYcGameplayEffectContext::NetSerialize(FArchive& Ar, class UPackageMap* Map
 
 	// Not serialized for post-activation use:
 	// CartridgeID
-	
-	// @TODO 是否需要处理RuntimePayloads的NetSerialize
+
+	Ar << CueImpactPositions;
+	Ar << CueImpactNormals;
+	Ar << CueImpactSurfaceTypes;
+
+	// @TODO 是否需要处理RuntimePayloads的 NetSerialize
 
 	return true;
 }
@@ -86,6 +90,34 @@ const FInstancedStruct* FYcGameplayEffectContext::FindRuntimePayload(const UScri
 	}
 
 	return nullptr;
+}
+
+void FYcGameplayEffectContext::SetCueImpactData(const TArray<FVector>& InImpactPositions, const TArray<FVector>& InImpactNormals, const TArray<uint8>& InImpactSurfaceTypes)
+{
+	CueImpactPositions = InImpactPositions;
+	CueImpactNormals = InImpactNormals;
+	CueImpactSurfaceTypes = InImpactSurfaceTypes;
+}
+
+bool FYcGameplayEffectContext::GetCueImpactData(TArray<FVector>& OutImpactPositions, TArray<FVector>& OutImpactNormals, TArray<uint8>& OutImpactSurfaceTypes) const
+{
+	if (!HasCueImpactData())
+	{
+		return false;
+	}
+
+	OutImpactPositions = CueImpactPositions;
+	OutImpactNormals = CueImpactNormals;
+	OutImpactSurfaceTypes = CueImpactSurfaceTypes;
+	return true;
+}
+
+bool FYcGameplayEffectContext::HasCueImpactData() const
+{
+	const int32 NumImpacts = CueImpactPositions.Num();
+	return NumImpacts > 0 &&
+		CueImpactNormals.Num() == NumImpacts &&
+		CueImpactSurfaceTypes.Num() == NumImpacts;
 }
 
 const UPhysicalMaterial* FYcGameplayEffectContext::GetPhysicalMaterial() const

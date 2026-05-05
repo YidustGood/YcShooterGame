@@ -12,6 +12,9 @@ struct FSurfaceImpacts
  */
 class AWeaponImpactsEffector : AActor
 {
+	UPROPERTY(DefaultComponent, RootComponent)
+	USceneComponent ImpactRoot;
+
 	// The Distance Threshold between 2 hits to spawn a new system
 	UPROPERTY(EditDefaultsOnly)
 	float DistanceThreshold = 500.0f;
@@ -21,7 +24,7 @@ class AWeaponImpactsEffector : AActor
 
 	// A toggle to switch spawning strategies. When true this blueprint will spawn impacts using a data channel instead of an array.
 	bool bUseDataChannels;
-	
+
 	UPROPERTY(NotVisible, BlueprintReadOnly)
 	TArray<UNiagaraComponent> ImpactNiagaraSysComps;
 
@@ -30,11 +33,11 @@ class AWeaponImpactsEffector : AActor
 	TArray<FVector> ImpactPositions;
 	TArray<FVector> ImpactNormals;
 	FVector MuzzlePosition;
-	
+
 	// 关联的武器实例，用于获取 VisualData
 	UPROPERTY(ExposeOnSpawn, VisibleInstanceOnly)
 	UYcEquipmentInstance AssociatedWeaponInst;
-	
+
 	const UYcWeaponVisualData CachedWeaponVisualData;
 
 	/** 由创建者调用,传递最新的射击/命中信息,以便根据这些数据正确生成特效*/
@@ -51,7 +54,18 @@ class AWeaponImpactsEffector : AActor
 	{
 		// 缓存 WeaponVisualData
 		CachedWeaponVisualData = YcWeapon::GetWeaponVisualData(AssociatedWeaponInst);
-		
+
+		if (ImpactPositions.IsEmpty() || ImpactNormals.IsEmpty() || ImpactSurfaceTypes.IsEmpty())
+		{
+			return;
+		}
+
+		if (ImpactPositions.Num() != ImpactNormals.Num() || ImpactPositions.Num() != ImpactSurfaceTypes.Num())
+		{
+			Warning("WeaponImpactsEffector: impact data arrays are not aligned, skip spawning impacts.");
+			return;
+		}
+
 		AddImpactsToBuckets();
 		SpawnParticlesFromImpacts();
 		ImpactPositions.Empty();
@@ -64,26 +78,31 @@ class AWeaponImpactsEffector : AActor
 	void AddImpactsToBuckets()
 	{
 		// Clear previous impact data from buckets. / 清除桶中先前的击中数据。
-		ImpactBuckets.Reset(ImpactSurfaceTypes.Num());
-		for (int i = 0; i < ImpactSurfaceTypes.Num(); i++)
-		{
-			FSurfaceImpacts NewImpact;
-			NewImpact.ImpactPositions = TArray<FVector>();
-			NewImpact.ImpcatNormals = TArray<FVector>();
-			ImpactBuckets.Add(NewImpact);
-			// Impact.ImpactPositions = TArray<FVector>();
-			// Impact.ImpcatNormals = TArray<FVector>();
-		}
+		ImpactBuckets.Reset();
 
 		// Bucket by surface type, to facilitate spawning different systems for different surfaces
 		for (int i = 0; i < ImpactSurfaceTypes.Num(); i++)
 		{
 			// The surface enum can be used as an index directly, and will handle new entries being added to the enum automatically.
-			if (ImpactBuckets.IsValidIndex(i))
+			int SurfaceIndex = int(ImpactSurfaceTypes[i]);
+			if (SurfaceIndex < 0)
+			{
+				SurfaceIndex = 0;
+			}
+
+			while (ImpactBuckets.Num() <= SurfaceIndex)
+			{
+				FSurfaceImpacts EmptyImpact;
+				EmptyImpact.ImpactPositions = TArray<FVector>();
+				EmptyImpact.ImpcatNormals = TArray<FVector>();
+				ImpactBuckets.Add(EmptyImpact);
+			}
+
+			if (ImpactBuckets.IsValidIndex(SurfaceIndex))
 			{
 				// Add to existing arrays if a bucket is found.
-				ImpactBuckets[i].ImpactPositions.Add(ImpactPositions[i]);
-				ImpactBuckets[i].ImpcatNormals.Add(ImpactNormals[i]);
+				ImpactBuckets[SurfaceIndex].ImpactPositions.Add(ImpactPositions[i]);
+				ImpactBuckets[SurfaceIndex].ImpcatNormals.Add(ImpactNormals[i]);
 			}
 			else
 			{
@@ -91,7 +110,7 @@ class AWeaponImpactsEffector : AActor
 				FSurfaceImpacts NewImpact;
 				NewImpact.ImpactPositions.Add(ImpactPositions[i]);
 				NewImpact.ImpcatNormals.Add(ImpactNormals[i]);
-				ImpactBuckets[i] = NewImpact;
+				ImpactBuckets[SurfaceIndex] = NewImpact;
 			}
 		}
 	}
@@ -123,12 +142,11 @@ class AWeaponImpactsEffector : AActor
 
 	void SpawnFromArrays(EPhysicalSurface SurfaceType)
 	{
-		ImpactNiagaraSysComps.Reserve(SurfaceType);
-		if (!ImpactNiagaraSysComps.IsValidIndex(SurfaceType))
+		while (ImpactNiagaraSysComps.Num() <= int(SurfaceType))
 		{
 			ImpactNiagaraSysComps.Add(nullptr);
 		}
-		
+
 		// 从 WeaponVisualData 获取对应表面的特效
 		UNiagaraSystem CurrentSystemTemplate = GetImpactSystemForSurface(SurfaceType);
 		if (CurrentSystemTemplate == nullptr)
@@ -152,7 +170,14 @@ class AWeaponImpactsEffector : AActor
 		UNiagaraComponent ImpactSystem;
 		if (bNeedSpawnSystem)
 		{
-			ImpactSystem = Niagara::SpawnSystemAtLocation(CurrentSystemTemplate, CurrentPosition);
+			ImpactSystem = Niagara::SpawnSystemAttached(
+				CurrentSystemTemplate,
+				ImpactRoot,
+				n"None",
+				CurrentPosition,
+				FRotator::ZeroRotator,
+				EAttachLocation::KeepWorldPosition,
+				true);
 			ImpactNiagaraSysComps[SurfaceType] = ImpactSystem;
 		}
 		else
@@ -180,29 +205,29 @@ class AWeaponImpactsEffector : AActor
 	{
 		// 蓝图中实现
 	}
-	
+
 	// ========================================
 	// 从 WeaponVisualData 获取特效
 	// ========================================
-	
+
 	/** 根据物理表面类型获取对应的撞击特效 */
 	private UNiagaraSystem GetImpactSystemForSurface(EPhysicalSurface SurfaceType)
 	{
 		if (CachedWeaponVisualData == nullptr)
 			return nullptr;
-		
+
 		// 根据表面类型构建 Tag（需要在 GameplayTags 中定义对应的 Tag）
 		// 例如: Asset.Weapon.VFX.Impact.Concrete, Asset.Weapon.VFX.Impact.Metal 等
 		// 这里使用通用的 Impact Tag，实际项目中可能需要更细粒度的 Tag
 		return CachedWeaponVisualData.GetVFXEffect(GameplayTags::Asset_Weapon_VFX_Impact).Get();
 	}
-	
+
 	/** 获取默认撞击特效（当没有配置特定表面特效时使用） */
 	private UNiagaraSystem GetDefaultImpactSystem()
 	{
 		if (CachedWeaponVisualData == nullptr)
 			return nullptr;
-		
+
 		return CachedWeaponVisualData.GetVFXEffect(GameplayTags::Asset_Weapon_VFX_Impact).Get();
 	}
 }

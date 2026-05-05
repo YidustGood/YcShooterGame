@@ -137,21 +137,47 @@ class UYcGameplayAbility_WeaponHitScanFire : UYcGameplayAbility_HitScanWeapon
 			AbilitySystem::AssignTagSetByCallerMagnitude(MakeOutgoingGameplayEffectSpec(DamageGE), GameplayTags::Weapon_Stat_Damage_Base, BaseDamage);
 		ApplyGameplayEffectSpecToTarget(EffectSpecHandle, TargetData);
 
-		// 广播命中消息, 准星UI可以监听做命中反馈效果
-		auto MessageSubsystem = UGameplayMessageSubsystem::Get();
-		FHitCharacterMessage HitMessage;
-		HitMessage.Hitter = GetControllerFromActorInfo();
-		HitMessage.HitResult = AbilitySystem::GetHitResultFromTargetData(TargetData, 0);
-		MessageSubsystem.BroadcastMessage(GameplayTags::GameplayCue_Character_DamageTaken, HitMessage);
+		FHitResult PrimaryHitResult;
+		bool bHasPrimaryHit = YcWeapon::GetPrimaryHitResultFromTargetData(TargetData, PrimaryHitResult);
 
-		// 处理GameplayCue
-		GCNParameter = GameplayCue::MakeGameplayCueParametersFromHitResult(HitMessage.HitResult);
+		// 广播命中消息, 准星UI只要本次射击任意弹丸命中有效敌方目标就应触发反馈。
+		BroadcastLocalHitFeedback(TargetData);
+
+		// WeaponFire cue 负责消费整组弹丸命中数据。
+		GCNParameter = YcWeapon::MakeWeaponFireCueParameters(TargetData);
 		ExecuteGameplayCueWithParams(GameplayCueTag_Fire, GCNParameter);
 
-		if (HitMessage.HitResult.bBlockingHit)
+		// WeaponImpact cue 保持逐命中语义，便于未来挂接逐命中特效/逻辑。
+		if (bHasPrimaryHit && PrimaryHitResult.bBlockingHit)
 		{
-			ExecuteGameplayCueWithParams(GameplayCueTag_Impact, GCNParameter);
+			auto ImpactCueParameters = GameplayCue::MakeGameplayCueParametersFromHitResult(PrimaryHitResult);
+			ExecuteGameplayCueWithParams(GameplayCueTag_Impact, ImpactCueParameters);
 		}
+	}
+
+	private void BroadcastLocalHitFeedback(FGameplayAbilityTargetDataHandle TargetData)
+	{
+		if (!IsLocallyControlled())
+		{
+			return;
+		}
+
+		AController Hitter = GetControllerFromActorInfo();
+		if (Hitter == nullptr)
+		{
+			return;
+		}
+
+		FHitResult FeedbackHitResult;
+		if (!YcWeapon::GetHitFeedbackHitResultFromTargetData(TargetData, Hitter, FeedbackHitResult))
+		{
+			return;
+		}
+
+		FHitCharacterMessage HitMessage;
+		HitMessage.Hitter = Hitter;
+		HitMessage.HitResult = FeedbackHitResult;
+		UGameplayMessageSubsystem::Get().BroadcastMessage(GameplayTags::GameplayCue_Character_DamageTaken, HitMessage);
 	}
 
 	void CheckAIEndFire()

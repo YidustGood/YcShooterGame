@@ -379,9 +379,9 @@ void UYcGameplayAbility_HitScanWeapon::TraceBulletsInCartridge(const FHitScanWea
 			HitLocation = Impact.ImpactPoint;
 		}
 
-		// 确保OutHits中至少有一个条目
-		// 即使没有命中任何目标，也需要记录射线方向用于弹道特效等
-		if (OutHits.Num() == 0)
+		// 每颗弹丸都至少产出一个结果。
+		// 即使没有命中任何目标，也需要记录射线方向用于弹道特效等。
+		if (AllImpacts.Num() == 0)
 		{
 			if (!Impact.bBlockingHit)
 			{

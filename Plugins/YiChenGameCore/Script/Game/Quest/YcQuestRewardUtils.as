@@ -65,7 +65,7 @@ namespace YcQuestRewardUtils
 			{
 				if (bEnableDebugLog)
 				{
-					Warning(f"[QuestReward] Inventory manager not found. Target={TargetActor.GetName()}");
+					Warning(f"[QuestReward] Grant failed. Target={TargetActor.GetName()} Reason=Inventory manager not found.");
 				}
 				continue;
 			}
@@ -78,8 +78,9 @@ namespace YcQuestRewardUtils
 				}
 
 				const int32 StackCount = Math::Max(1, RewardEntry.StackCount);
-				auto CreatedItem = InventoryManager.AddItem(RewardEntry.ItemRegistryId, StackCount);
-				if (CreatedItem != nullptr)
+				FString FailureReason;
+				const bool bGranted = TryGrantRewardToInventory(InventoryManager, RewardEntry.ItemRegistryId, StackCount, FailureReason);
+				if (bGranted)
 				{
 					++SuccessCount;
 					if (bEnableDebugLog)
@@ -89,11 +90,51 @@ namespace YcQuestRewardUtils
 				}
 				else if (bEnableDebugLog)
 				{
-					Warning(f"[QuestReward] Grant failed. Target={TargetActor.GetName()} Item={RewardEntry.ItemRegistryId.ToString()} Count={StackCount}");
+					const FString EffectiveReason = FailureReason.IsEmpty() ? "Unknown reason." : FailureReason;
+					Warning(f"[QuestReward] Grant failed. Target={TargetActor.GetName()} Item={RewardEntry.ItemRegistryId.ToString()} Count={StackCount} Reason={EffectiveReason}");
 				}
 			}
 		}
 
 		return SuccessCount;
+	}
+
+	bool TryGrantRewardToInventory(UYcInventoryManagerComponent InventoryManager, const FDataRegistryId&in ItemRegistryId, int32 StackCount, FString&out OutFailureReason)
+	{
+		OutFailureReason = "";
+
+		if (InventoryManager == nullptr || !ItemRegistryId.IsValid() || StackCount <= 0)
+		{
+			OutFailureReason = "Invalid inventory target or reward item config.";
+			return false;
+		}
+
+		auto GridInventoryManager = Cast<UGridInventoryManagerComponent>(InventoryManager);
+		if (GridInventoryManager != nullptr)
+		{
+			FGameplayTag RegionId;
+			int32 PocketIndex = -1;
+			FIntPoint Tile = FIntPoint();
+			bool bRotated = false;
+			if (!GridInventoryManager.FindFirstFitPlacement(ItemRegistryId, RegionId, PocketIndex, Tile, bRotated))
+			{
+				OutFailureReason = "Grid inventory has no free space for this item.";
+				return false;
+			}
+
+			const bool bAdded = GridInventoryManager.TryAddGridItemByDefinition(ItemRegistryId, StackCount, Tile, bRotated, RegionId, PocketIndex);
+			if (!bAdded)
+			{
+				OutFailureReason = "Grid inventory placement failed while adding item.";
+			}
+			return bAdded;
+		}
+
+		const bool bAdded = InventoryManager.AddItem(ItemRegistryId, StackCount) != nullptr;
+		if (!bAdded)
+		{
+			OutFailureReason = "Inventory manager rejected the reward item.";
+		}
+		return bAdded;
 	}
 }

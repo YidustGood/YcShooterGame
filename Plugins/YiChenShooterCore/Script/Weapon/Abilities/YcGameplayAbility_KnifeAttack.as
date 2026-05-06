@@ -115,6 +115,7 @@ class UYcGameplayAbility_KnifeAttackBase : UYcGameplayAbility_WeaponBase
 			}
 		}
 		PlayAttachAnim();
+		PlayAbilitySound();
 	}
 
 	void PlayAttachAnim()

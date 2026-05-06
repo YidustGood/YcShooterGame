@@ -86,7 +86,10 @@ class AYcShooterCharacter : AYcShooterCharacterBase
 	UFUNCTION(BlueprintOverride)
 	void EndPlay(EEndPlayReason EndPlayReason)
 	{
-		WaitGameplayEvent_PlayFPAnim.Cancel();
+		if (IsValid(WaitGameplayEvent_PlayFPAnim))
+		{
+			WaitGameplayEvent_PlayFPAnim.Cancel();
+		}
 		QuickBarSlotRemovedListenerHandle.Unregister();
 	}
 

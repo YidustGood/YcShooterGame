@@ -18,7 +18,7 @@ struct YICHENQUEST_API FYcQuestCounterObjectiveSnapshot
     GENERATED_BODY()
 
     /** 当前累计值。 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quest")
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Quest")
     float CurrentValue = 0.0f;
 };
 
@@ -29,11 +29,11 @@ struct YICHENQUEST_API FYcQuestHoldAreaObjectiveSnapshot
     GENERATED_BODY()
 
     /** 当前是否处于驻留状态。 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quest")
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Quest")
     bool bHolding = false;
 
     /** 当前累计驻留秒数。 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quest")
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Quest")
     float HeldSeconds = 0.0f;
 };
 
@@ -93,6 +93,10 @@ public:
     /** 获取当前目标对外公开的进度。 */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
     FYcQuestPublicProgress GetPublicProgress() const;
+
+    /** 在当前目标树中按 ObjectiveId 查找目标节点。 */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
+    UYcQuestObjective* FindObjectiveById(FName InObjectiveId);
 
     /** 将目标标记为完成。 */
     UFUNCTION(BlueprintCallable, Category = "Quest")
@@ -209,6 +213,10 @@ public:
     /** 是否使用事件的 Magnitude 作为推进值；否则每次固定推进 1。 */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Quest")
     bool bUseEventMagnitude = false;
+
+    /** 运行时更新目标值，并刷新公开进度。 */
+    UFUNCTION(BlueprintCallable, Category = "Quest")
+    void SetTargetValueRuntime(UYcQuestSubsystem* QuestSubsystem, const FYcQuestInstanceKey& InstanceKey, float NewTargetValue);
 
 protected:
     virtual void OnActivated_Implementation(UYcQuestSubsystem* QuestSubsystem, const FYcQuestInstanceKey& InstanceKey) override;

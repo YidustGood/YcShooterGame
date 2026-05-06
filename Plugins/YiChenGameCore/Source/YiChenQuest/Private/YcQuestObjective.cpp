@@ -136,6 +136,29 @@ FYcQuestPublicProgress UYcQuestObjective::GetPublicProgress() const
     return RuntimePublicProgress;
 }
 
+UYcQuestObjective* UYcQuestObjective::FindObjectiveById(const FName InObjectiveId)
+{
+    if (!InObjectiveId.IsNone() && ObjectiveId == InObjectiveId)
+    {
+        return this;
+    }
+
+    for (UYcQuestObjective* Child : ChildObjectives)
+    {
+        if (!Child)
+        {
+            continue;
+        }
+
+        if (UYcQuestObjective* Found = Child->FindObjectiveById(InObjectiveId))
+        {
+            return Found;
+        }
+    }
+
+    return nullptr;
+}
+
 void UYcQuestObjective::CompleteObjective(UYcQuestSubsystem* QuestSubsystem, const FYcQuestInstanceKey& InstanceKey)
 {
     if (RuntimeState == EYcQuestObjectiveState::Completed)
@@ -396,6 +419,16 @@ void UYcQuestCounterObjective::OnActivated_Implementation(UYcQuestSubsystem* Que
     Super::OnActivated_Implementation(QuestSubsystem, InstanceKey);
     CurrentValue = 0.0f;
     SetPublicProgress(QuestSubsystem, InstanceKey, DisplayText.ToString(), CurrentValue, TargetValue, 0.0f, bVisibleInPublicProgress);
+}
+
+void UYcQuestCounterObjective::SetTargetValueRuntime(UYcQuestSubsystem* QuestSubsystem, const FYcQuestInstanceKey& InstanceKey, const float NewTargetValue)
+{
+    TargetValue = FMath::Max(1.0f, NewTargetValue);
+    SetPublicProgress(QuestSubsystem, InstanceKey, DisplayText.ToString(), CurrentValue, TargetValue, 0.0f, bVisibleInPublicProgress);
+    if (CurrentValue >= TargetValue)
+    {
+        CompleteObjective(QuestSubsystem, InstanceKey);
+    }
 }
 
 void UYcQuestCounterObjective::OnQuestEvent_Implementation(UYcQuestSubsystem* QuestSubsystem, const FYcQuestInstanceKey& InstanceKey, const FYcQuestEvent& Event)

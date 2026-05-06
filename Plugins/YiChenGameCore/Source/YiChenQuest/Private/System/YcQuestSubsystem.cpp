@@ -354,6 +354,37 @@ bool UYcQuestSubsystem::GetQuestPublicProgressByInstance(const FYcQuestInstanceK
     return true;
 }
 
+bool UYcQuestSubsystem::ServerSetCounterObjectiveTargetValueByInstance(const FYcQuestInstanceKey& InstanceKey, const FName ObjectiveId, const float NewTargetValue)
+{
+    if (!HasServerAuthority(TEXT("ServerSetCounterObjectiveTargetValueByInstance")) || ObjectiveId.IsNone())
+    {
+        return false;
+    }
+
+    UYcQuestInstance* Instance = nullptr;
+    if (!GetQuestInstanceByKey(InstanceKey, Instance) || !Instance)
+    {
+        return false;
+    }
+
+    UYcQuestObjective* RootObjective = Instance->GetRuntimeRootObjective();
+    if (!RootObjective)
+    {
+        return false;
+    }
+
+    UYcQuestObjective* FoundObjective = RootObjective->FindObjectiveById(ObjectiveId);
+    UYcQuestCounterObjective* CounterObjective = Cast<UYcQuestCounterObjective>(FoundObjective);
+    if (!CounterObjective)
+    {
+        return false;
+    }
+
+    CounterObjective->SetTargetValueRuntime(this, InstanceKey, NewTargetValue);
+    RefreshInstanceStateFromObjective(Instance, InstanceKey);
+    return true;
+}
+
 bool UYcQuestSubsystem::ServerSetQuestReplicatedPayloadByInstance(const FYcQuestInstanceKey& InstanceKey, const FInstancedStruct& Payload)
 {
     UYcQuestInstance* Instance = nullptr;
@@ -810,12 +841,16 @@ bool UYcQuestSubsystem::TransitionInstanceState(const FYcQuestInstanceKey& Insta
     UYcQuestInstance* Instance = nullptr;
     if (!GetQuestInstanceByKey(InstanceKey, Instance) || !Instance)
     {
+        UE_LOG(LogYcQuest, Warning, TEXT("[QuestSubsystem] TransitionInstanceState failed: instance not found. QuestId=%s NewState=%d Detail=%s"),
+            *InstanceKey.QuestId.ToString(), static_cast<int32>(NewState), *Detail);
         return false;
     }
 
     const EYcQuestState CurrentState = Instance->GetState();
     if (!IsValidStateTransition(CurrentState, NewState))
     {
+        UE_LOG(LogYcQuest, Warning, TEXT("[QuestSubsystem] TransitionInstanceState rejected. QuestId=%s CurrentState=%d NewState=%d Detail=%s"),
+            *InstanceKey.QuestId.ToString(), static_cast<int32>(CurrentState), static_cast<int32>(NewState), *Detail);
         return false;
     }
 
@@ -830,6 +865,10 @@ bool UYcQuestSubsystem::TransitionInstanceState(const FYcQuestInstanceKey& Insta
     case EYcQuestState::Aborted: Trigger = EYcQuestEffectTrigger::QuestAborted; break;
     default: break;
     }
+
+    UE_LOG(LogYcQuest, Log, TEXT("[QuestSubsystem] TransitionInstanceState success. QuestId=%s CurrentState=%d NewState=%d Trigger=%d Detail=%s"),
+        *InstanceKey.QuestId.ToString(), static_cast<int32>(CurrentState), static_cast<int32>(NewState), static_cast<int32>(Trigger), *Detail);
+
     DispatchQuestEffects(Instance, Trigger, NAME_None, FYcQuestPublicProgress());
     return true;
 }

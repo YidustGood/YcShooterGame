@@ -98,6 +98,10 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest|Query")
     bool GetQuestPublicProgressByInstance(const FYcQuestInstanceKey& InstanceKey, TArray<FYcQuestPublicProgress>& OutProgress) const;
 
+    /** 运行时修改指定任务实例中某个 CounterObjective 的 TargetValue。 */
+    UFUNCTION(BlueprintCallable, Category = "Quest")
+    bool ServerSetCounterObjectiveTargetValueByInstance(const FYcQuestInstanceKey& InstanceKey, FName ObjectiveId, float NewTargetValue);
+
     /** 设置任务实例的复制扩展负载。 */
     UFUNCTION(BlueprintCallable, Category = "Quest|Network")
     bool ServerSetQuestReplicatedPayloadByInstance(const FYcQuestInstanceKey& InstanceKey, const FInstancedStruct& Payload);

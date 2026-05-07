@@ -142,7 +142,18 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	{
 		YcHoverTooltip::CancelHoverTooltipForPlayer(GetOwningPlayer());
 		CloseContextMenu();
-		Print("UGridInventoryMainWidget::OnDrop.");
+		auto ItemInst = Cast<UYcInventoryItemInstance>(Operation.Payload);
+		if (ItemInst == nullptr || OwnerInventory == nullptr)
+		{
+			return true;
+		}
+
+		if (!OwnerInventory.IsItemOperableForCurrentSession(ItemInst))
+		{
+			return true;
+		}
+
+		OwnerInventory.ServerDropInventoryItem(ItemInst);
 		return true;
 	}
 

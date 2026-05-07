@@ -44,7 +44,12 @@ void UYcInteractableComponent::SetInteractionOption(const FYcInteractionOption& 
 	UpdateInteractionOption(NewOption);
 }
 
-FYcInteractionOption UYcInteractableComponent::GetInteractionOption() const
+FYcInteractionOption& UYcInteractableComponent::GetInteractionOption()
+{
+	return Option;
+}
+
+const FYcInteractionOption& UYcInteractableComponent::GetInteractionOptionConst() const
 {
 	return Option;
 }

@@ -14,6 +14,7 @@ struct FGameplayTag;
 struct FDataRegistryId;
 class UYcInventoryItemInstance;
 class UYcInventoryManagerComponent;
+class UPrimaryDataAsset;
 
 /**
  * 库存系统蓝图函数库
@@ -98,6 +99,13 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory", meta = (WorldContext = "WorldContextObject"))
 	static void LoadItemDefDataAssetAsync(UObject* WorldContextObject, const FDataRegistryId& ItemDataRegistryId);
+
+	/**
+	 * 按标签异步加载物品定义中的指定数据资产。
+	 * 加载完成后会通过 AssetTag 对应的 GameplayMessage 广播 FYcDataAssetLifecycleMessage。
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Inventory", meta = (WorldContext = "WorldContextObject"))
+	static bool LoadItemDataAssetByTagAsync(UObject* WorldContextObject, const FDataRegistryId& ItemDataRegistryId, const FGameplayTag& AssetTag);
 	
 	/**
 	 * 通过标签从物品定义中获取已加载的数据资产
@@ -117,6 +125,10 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	static bool GetYcDataAssetEntryByTag(const FYcInventoryItemDefinition& ItemDef, const FGameplayTag& AssetTag, FYcDataAssetEntry& OutDataAssetEntry);
+
+	/** 从拾取库存中提取用于世界展示的主物品。优先实例，其次模板。 */
+	UFUNCTION(BlueprintPure, Category = "Inventory|Pickup")
+	static bool GetPrimaryPickupItemRegistryId(const FYcInventoryPickup& PickupInventory, FDataRegistryId& OutItemDataRegistryId);
 	
 	UFUNCTION(BlueprintPure, Category = "Interaction")
 	static bool GetPickupInventory(const UObject* Object, FYcInventoryPickup& OutPickup);

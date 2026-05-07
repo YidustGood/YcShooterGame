@@ -8,6 +8,8 @@
 
 /** 拾取事件委托 - 当物品被拾取时触发 */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FYcOnPickedUp, AActor*, Instigator);
+/** 拾取库存发生变化时触发。 */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FYcOnPickupInventoryChanged);
 
 /**
  * 为Actor提供可拾取功能的组件
@@ -20,6 +22,7 @@ class YICHENINVENTORY_API UYcPickupableComponent : public UActorComponent, publi
 	GENERATED_BODY()
 public:
 	UYcPickupableComponent();
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
 	// IYcPickupable interface.
 	virtual FYcInventoryPickup GetPickupInventory() const override;
@@ -29,6 +32,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Pickup")
 	FYcOnPickedUp OnPickedUp;
 
+	/** 当拾取库存数据发生变化时触发。 */
+	UPROPERTY(BlueprintAssignable, Category = "Pickup")
+	FYcOnPickupInventoryChanged OnPickupInventoryChanged;
+
 	/** 
 	 * 广播拾取事件
 	 * 此函数由UYcPickupableStatics::AddPickupToInventory调用
@@ -36,9 +43,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Pickup")
 	void BroadcastPickedUp(AActor* Instigator);
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Pickup")
+	void SetStaticInventory(const FYcInventoryPickup& NewStaticInventory);
 	
 private:
+	UFUNCTION()
+	void OnRep_StaticInventory();
+
 	/** 这个拾取物被拾取后向库存添加的内容 -- 对应IYcPickupable接口的 GetPickupInventory() 函数*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Interactable, meta = (AllowPrivateAccess = true))
+	UPROPERTY(ReplicatedUsing = OnRep_StaticInventory, EditAnywhere, BlueprintReadWrite, Category = Interactable, meta = (AllowPrivateAccess = true))
 	FYcInventoryPickup StaticInventory;
 };

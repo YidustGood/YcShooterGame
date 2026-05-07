@@ -359,6 +359,10 @@ public:
 	UFUNCTION(Server, Reliable, BlueprintCallable)
 	void ServerResetSearchSession();
 
+	/** 请求服务端将物品丢弃到场景中。/ Ask server to drop an item into the world. */
+	UFUNCTION(Server, Reliable, BlueprintCallable)
+	void ServerDropInventoryItem(UYcInventoryItemInstance* ItemInst);
+
 	/** 校验交换类操作是否合法（服务端）。/ Validate swap-like operation on server. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory")
 	bool ValidateSwapLikeOperation(const FYcInventoryOperation& InOperation, FString& OutReason);
@@ -374,6 +378,10 @@ public:
 	/** 以统一操作模型执行网格交换。/ Execute grid swap via unified operation model. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory")
 	bool ExecuteSwapGridOperation(UYcInventoryManagerComponent* OnDropInventory, UYcInventoryItemInstance* ItemInst, int32 StackCount, FIntPoint Tile, bool bRotated, UYcInventoryManagerComponent* ExpectedSourceInventory, FString& OutReason, FString& OutSummary);
+
+	/** 默认掉落生成的拾取 Actor 类。/ Pickup actor class used for item drops. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory|Drop")
+	TSubclassOf<AActor> DropPickupActorClass;
 
 	/** 按物品ID查询左上角格子坐标。/ Query top-left tile by item id. */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
@@ -513,6 +521,8 @@ private:
 	void InnerSwapItemPosition(UYcInventoryItemInstance* ItemInst, int32 StackCount, FIntPoint Tile, bool bRotated = false, FGameplayTag RegionId = FGameplayTag(), int32 PocketIndex = -1);
 	// 判断消息归属者是否与本组件归属一致。
 	bool IsOwnerActorMatched(const AActor* MessageOwner, const AActor* LocalOwner) const;
+	AActor* ResolveDropInstigatorActor() const;
+	UClass* ResolveDropPickupActorClass() const;
 	// 获取物品落位坐标与旋转信息。
 	bool TryGetItemPlacementInfo(UYcInventoryItemInstance* ItemInst, FIntPoint& OutTile, bool& bOutRotated) const;
 	// 获取物品完整落位信息（区域/口袋/坐标/旋转）。

@@ -7,7 +7,9 @@
 #include "YcInventoryManagerComponent.h"
 #include "YcPickupable.h"
 #include "YiChenInventory.h"
+#include "Engine/AssetManager.h"
 #include "Fragments/ItemFragment_DataAsset.h"
+#include "GameFramework/GameplayMessageSubsystem.h"
 #include "GameFramework/PlayerState.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcInventoryLibrary)
@@ -197,6 +199,90 @@ void UYcInventoryLibrary::LoadItemDefDataAssetAsync(UObject* WorldContextObject,
 	DataAssetFragment->LoadAllDataAssetAsync(WorldContextObject);
 }
 
+bool UYcInventoryLibrary::LoadItemDataAssetByTagAsync(UObject* WorldContextObject, const FDataRegistryId& ItemDataRegistryId,
+	const FGameplayTag& AssetTag)
+{
+	if (!IsValid(WorldContextObject) || !ItemDataRegistryId.IsValid() || !AssetTag.IsValid())
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadItemDataAssetByTagAsync failed: invalid args. Context=%s Item=%s Tag=%s"),
+			*GetNameSafe(WorldContextObject),
+			*ItemDataRegistryId.ToString(),
+			*AssetTag.ToString());
+		return false;
+	}
+
+	FYcInventoryItemDefinition ItemDef;
+	if (!GetItemDefinition(ItemDataRegistryId, ItemDef))
+	{
+		return false;
+	}
+
+	FYcDataAssetEntry Entry;
+	if (!GetYcDataAssetEntryByTag(ItemDef, AssetTag, Entry))
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadItemDataAssetByTagAsync failed: item %s has no data asset for tag %s."),
+			*ItemDataRegistryId.ToString(),
+			*AssetTag.ToString());
+		return false;
+	}
+
+	const TWeakObjectPtr<UObject> WeakRelatedObject(WorldContextObject);
+	const FPrimaryAssetId AssetId = Entry.DataAssetId;
+	auto BroadcastLoadedMessage = [WeakRelatedObject, AssetTag, AssetId]()
+	{
+		UObject* RelatedObject = WeakRelatedObject.Get();
+		if (!IsValid(RelatedObject))
+		{
+			UE_LOG(LogYcInventory, Warning, TEXT("LoadItemDataAssetByTagAsync skipped broadcast: related object invalid. Asset=%s Tag=%s"),
+				*AssetId.ToString(),
+				*AssetTag.ToString());
+			return;
+		}
+
+		UWorld* World = RelatedObject->GetWorld();
+		if (!World || !World->IsGameWorld())
+		{
+			UE_LOG(LogYcInventory, Warning, TEXT("LoadItemDataAssetByTagAsync skipped broadcast: invalid world. RelatedObject=%s Asset=%s Tag=%s"),
+				*GetNameSafe(RelatedObject),
+				*AssetId.ToString(),
+				*AssetTag.ToString());
+			return;
+		}
+
+		FYcDataAssetLifecycleMessage Message;
+		Message.LoadedDataAsset = Cast<UPrimaryDataAsset>(UAssetManager::Get().GetPrimaryAssetObject(AssetId));
+		Message.RelatedObject = RelatedObject;
+		Message.AssetTag = AssetTag;
+		Message.bIsLoaded = true;
+
+		UGameplayMessageSubsystem::Get(World).BroadcastMessage(AssetTag, Message);
+		UE_LOG(LogYcInventory, Log, TEXT("LoadItemDataAssetByTagAsync broadcasted: RelatedObject=%s Asset=%s Tag=%s LoadedAsset=%s"),
+			*GetNameSafe(RelatedObject),
+			*AssetId.ToString(),
+			*AssetTag.ToString(),
+			*GetNameSafe(Message.LoadedDataAsset));
+	};
+
+	if (Entry.IsDataAssetLoaded())
+	{
+		BroadcastLoadedMessage();
+		return true;
+	}
+
+	FStreamableDelegate OnLoadCompleted;
+	OnLoadCompleted.BindLambda(BroadcastLoadedMessage);
+	const TSharedPtr<FStreamableHandle> LoadHandle = Entry.LoadDataAssetAsync(OnLoadCompleted, false);
+	if (!LoadHandle.IsValid() && !Entry.IsDataAssetLoaded())
+	{
+		UE_LOG(LogYcInventory, Warning, TEXT("LoadItemDataAssetByTagAsync request did not return a valid handle and asset is still not loaded. Context=%s Item=%s Tag=%s Asset=%s"),
+			*GetNameSafe(WorldContextObject),
+			*ItemDataRegistryId.ToString(),
+			*AssetTag.ToString(),
+			*Entry.DataAssetId.ToString());
+	}
+	return true;
+}
+
 UPrimaryDataAsset* UYcInventoryLibrary::GetYcDataAssetByTag(const FYcInventoryItemDefinition& ItemDef,
 	const FGameplayTag& AssetTag)
 {
@@ -221,6 +307,32 @@ bool UYcInventoryLibrary::GetYcDataAssetEntryByTag(const FYcInventoryItemDefinit
 	OutDataAssetEntry = *Entry;
 	
 	return true;
+}
+
+bool UYcInventoryLibrary::GetPrimaryPickupItemRegistryId(const FYcInventoryPickup& PickupInventory,
+	FDataRegistryId& OutItemDataRegistryId)
+{
+	OutItemDataRegistryId = FDataRegistryId();
+
+	for (const FYcPickupInstance& PickupInstance : PickupInventory.Instances)
+	{
+		if (IsValid(PickupInstance.Item) && PickupInstance.Item->GetItemRegistryId().IsValid())
+		{
+			OutItemDataRegistryId = PickupInstance.Item->GetItemRegistryId();
+			return true;
+		}
+	}
+
+	for (const FYcPickupTemplate& PickupTemplate : PickupInventory.Templates)
+	{
+		if (PickupTemplate.ItemRegistryId.IsValid())
+		{
+			OutItemDataRegistryId = PickupTemplate.ItemRegistryId;
+			return true;
+		}
+	}
+
+	return false;
 }
 
 bool UYcInventoryLibrary::GetPickupInventory(const UObject* Object, FYcInventoryPickup& OutPickup)

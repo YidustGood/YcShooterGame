@@ -25,6 +25,8 @@ class AYcShooterController : AYcPlayerController
 	UPROPERTY(DefaultComponent)
 	UGridInventoryManagerComponent GridInventoryManagerComponent;
 
+	default GridInventoryManagerComponent.DropPickupActorClass = AYcDisplayMeshPickupActor;
+
 	// 玩家持久化组件，负责局内外数据读写与结算流程。
 	UPROPERTY(DefaultComponent)
 	UYcPlayerPersistenceComponent Persistence;

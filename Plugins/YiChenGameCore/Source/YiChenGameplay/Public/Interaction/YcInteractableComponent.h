@@ -52,7 +52,11 @@ public:
 
 	/** 获取当前交互配置。 */
 	UFUNCTION(BlueprintPure, Category = "Interaction")
-	FYcInteractionOption GetInteractionOption() const;
+	FYcInteractionOption& GetInteractionOption();
+	
+	/** 获取当前交互配置。(Const版本) */
+	UFUNCTION(BlueprintPure, Category = "Interaction")
+	const FYcInteractionOption& GetInteractionOptionConst() const;
 
 	/**
 	 * 运行时切换当前是否允许交互。

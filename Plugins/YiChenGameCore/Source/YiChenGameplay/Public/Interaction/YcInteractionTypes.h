@@ -80,7 +80,7 @@ public:
 	// 1、将交互时需要激活的能力授予角色
 
 	/** 当角色接近可交互物体时授予的能力类 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TSubclassOf<UGameplayAbility> InteractionAbilityToGrant;
 
 	// - OR -

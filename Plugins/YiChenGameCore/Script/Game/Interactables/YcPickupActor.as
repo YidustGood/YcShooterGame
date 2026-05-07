@@ -12,6 +12,10 @@ class AYcPickupActor : AActor
 	UPROPERTY(DefaultComponent)
 	UYcPickupableComponent YcPickupableComp;
 
+	default bReplicates = true;
+	default bReplicateUsingRegisteredSubObjectList = true;
+	default YcInteractableComp.Option.InteractionAbilityToGrant = UYcGameplayAbility_PickupItem;
+
 	/** 是否在拾取成功后自动销毁Actor（默认开启） */
 	UPROPERTY(EditAnywhere, Category = "Pickup")
 	bool bAutoDestroyOnPickedUp = true;
@@ -33,6 +37,14 @@ class AYcPickupActor : AActor
 		for (auto& ItemTemp : YcPickupableComp.StaticInventory.Templates)
 		{
 			YcInventory::LoadItemDefDataAssetAsync(ItemTemp.ItemRegistryId);
+		}
+
+		for (auto& PickupInstance : YcPickupableComp.StaticInventory.Instances)
+		{
+			if (PickupInstance.Item != nullptr)
+			{
+				YcInventory::LoadItemDefDataAssetAsync(PickupInstance.Item.ItemRegistryId);
+			}
 		}
 	}
 

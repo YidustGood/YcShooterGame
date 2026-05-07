@@ -10,6 +10,8 @@
 #include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
+#include "YcPickupable.h"
+#include "YcPickupableComponent.h"
 #include "YcGridInventoryPlacementRuleLibrary.h"
 #include "YcInventoryItemInstance.h"
 #include "YcInventoryLibrary.h"
@@ -239,6 +241,90 @@ void UGridInventoryManagerComponent::OnEquipmentSlotChanged(const FGameplayTag A
 	SyncPrimaryRegionToLegacySlots();
 	++InventoryGridRevision;
 	OnInventoryGridChanged.Broadcast();
+}
+
+void UGridInventoryManagerComponent::ServerDropInventoryItem_Implementation(UYcInventoryItemInstance* ItemInst)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !IsValid(ItemInst))
+	{
+		return;
+	}
+
+	UGridInventoryManagerComponent* SourceInventory = Cast<UGridInventoryManagerComponent>(ItemInst->GetInventoryManager());
+	if (!SourceInventory)
+	{
+		UE_LOG(LogYcGridInventory, Warning, TEXT("DropItem failed: source inventory missing."));
+		return;
+	}
+
+	if (!IsItemOperableForCurrentSession(ItemInst))
+	{
+		UE_LOG(LogYcGridInventory, Warning, TEXT("DropItem blocked: item is not operable for current session."));
+		return;
+	}
+
+	const int32 StackCount = SourceInventory->GetStackCountByItemInstance(ItemInst);
+	if (StackCount <= 0)
+	{
+		UE_LOG(LogYcGridInventory, Warning, TEXT("DropItem failed: invalid stack count."));
+		return;
+	}
+
+	FGameplayTag SourceRegionId;
+	int32 SourcePocketIndex = -1;
+	SourceInventory->GetItemPlacementRegion(ItemInst, SourceRegionId, SourcePocketIndex);
+
+	FIntPoint SourceTile = FIntPoint::ZeroValue;
+	const TMap<UYcInventoryItemInstance*, FIntPoint> SourceTileMap = SourceInventory->GetGridItemsTileMapByRegion(SourceRegionId, SourcePocketIndex);
+	if (const FIntPoint* FoundTile = SourceTileMap.Find(ItemInst))
+	{
+		SourceTile = *FoundTile;
+	}
+
+	bool bSourceRotated = false;
+	const TMap<UYcInventoryItemInstance*, bool> RotationMap = SourceInventory->GetGridItemRotationMap();
+	if (const bool* FoundRotation = RotationMap.Find(ItemInst))
+	{
+		bSourceRotated = *FoundRotation;
+	}
+
+	if (!SourceInventory->RemoveItemInstance(ItemInst))
+	{
+		UE_LOG(LogYcGridInventory, Warning, TEXT("DropItem failed: unable to remove item from source inventory."));
+		return;
+	}
+
+	UClass* PickupActorClass = ResolveDropPickupActorClass();
+	AActor* InstigatorActor = ResolveDropInstigatorActor();
+	if (!PickupActorClass || !InstigatorActor || !GetWorld())
+	{
+		UE_LOG(LogYcGridInventory, Warning, TEXT("DropItem failed: pickup class or instigator actor missing."));
+		SourceInventory->TryAddGridItemInstance(ItemInst, StackCount, SourceTile, bSourceRotated, SourceRegionId, SourcePocketIndex);
+		return;
+	}
+
+	AActor* PickupActor = GetWorld()->SpawnActor<AActor>(PickupActorClass, InstigatorActor->GetActorLocation(), InstigatorActor->GetActorRotation());
+	if (!PickupActor)
+	{
+		UE_LOG(LogYcGridInventory, Warning, TEXT("DropItem failed: unable to spawn pickup actor."));
+		SourceInventory->TryAddGridItemInstance(ItemInst, StackCount, SourceTile, bSourceRotated, SourceRegionId, SourcePocketIndex);
+		return;
+	}
+
+	UYcPickupableComponent* PickupableComp = PickupActor->FindComponentByClass<UYcPickupableComponent>();
+	if (!PickupableComp)
+	{
+		UE_LOG(LogYcGridInventory, Warning, TEXT("DropItem failed: spawned actor has no pickupable component."));
+		PickupActor->Destroy();
+		SourceInventory->TryAddGridItemInstance(ItemInst, StackCount, SourceTile, bSourceRotated, SourceRegionId, SourcePocketIndex);
+		return;
+	}
+
+	FYcInventoryPickup PickupInventory;
+	FYcPickupInstance PickupInstance;
+	PickupInstance.Item = ItemInst;
+	PickupInventory.Instances.Add(PickupInstance);
+	PickupableComp->SetStaticInventory(PickupInventory);
 }
 
 bool UGridInventoryManagerComponent::IsOwnerActorMatched(const AActor* MessageOwner, const AActor* LocalOwner) const
@@ -2337,6 +2423,36 @@ bool UGridInventoryManagerComponent::FindFirstFitPositionInRegionForItemInst(UYc
 		}
 	}
 	return false;
+}
+
+AActor* UGridInventoryManagerComponent::ResolveDropInstigatorActor() const
+{
+	AActor* OwnerActor = GetOwner();
+	if (!OwnerActor)
+	{
+		return nullptr;
+	}
+
+	if (APawn* OwnerPawn = Cast<APawn>(OwnerActor))
+	{
+		return OwnerPawn;
+	}
+
+	if (AController* OwnerController = Cast<AController>(OwnerActor))
+	{
+		return OwnerController->GetPawn() ? Cast<AActor>(OwnerController->GetPawn()) : OwnerController;
+	}
+
+	return OwnerActor;
+}
+
+UClass* UGridInventoryManagerComponent::ResolveDropPickupActorClass() const
+{
+	if (DropPickupActorClass)
+	{
+		return DropPickupActorClass.Get();
+	}
+	return nullptr;
 }
 
 void UGridInventoryManagerComponent::PreparePreferredReturnPlacement(const FIntPoint Tile, const FGameplayTag RegionId, const int32 PocketIndex)

@@ -17,11 +17,11 @@ struct YICHENINVENTORY_API FInventoryFragment_InitialItemStats : public FYcInven
 	GENERATED_BODY()
 	
 	/** 整数类型的初始属性映射 */
-	UPROPERTY(EditDefaultsOnly, Category="Data")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Data")
 	TMap<FGameplayTag, int32> InitialItemStats;
 	
 	/** 浮点数类型的初始属性映射 */
-	UPROPERTY(EditDefaultsOnly, Category="Data")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Data")
 	TMap<FGameplayTag, float> InitialFloatStats;
 	
 	virtual void OnInstanceCreated(UYcInventoryItemInstance* Instance) const override;

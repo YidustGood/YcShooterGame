@@ -39,7 +39,7 @@ class UGridItemContextMenuEntryWidget : UUserWidget
 					FinalText = FText::FromString(f"{ActionDef.DisplayName.ToString()} ({DisabledReason})");
 				}
 
-				ActionText.SetColorAndOpacity(FLinearColor(1.00, 0.50, 0.06, 1.0f));
+				ActionText.SetColorAndOpacity(FLinearColor(1.00, 1, 1, 1.0f));
 			}
 			else
 			{
@@ -50,14 +50,22 @@ class UGridItemContextMenuEntryWidget : UUserWidget
 
 		if (ActionIcon != nullptr)
 		{
-			ActionIcon.SetBrushFromTexture(ActionDef.Icon);
-			if (!ActionDef.bRuntimeCanExecute)
+			if (ActionDef.Icon != nullptr)
 			{
-				ActionIcon.SetColorAndOpacity(FLinearColor(0.65f, 0.65f, 0.65f, 1.0f));
+				ActionIcon.SetVisibility(ESlateVisibility::Visible);
+				ActionIcon.SetBrushFromTexture(ActionDef.Icon);
+				if (!ActionDef.bRuntimeCanExecute)
+				{
+					ActionIcon.SetColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, 1.0f));
+				}
+				else
+				{
+					ActionIcon.SetColorAndOpacity(FLinearColor::White);
+				}
 			}
 			else
 			{
-				ActionIcon.SetColorAndOpacity(FLinearColor::White);
+				ActionIcon.SetVisibility(ESlateVisibility::Collapsed);
 			}
 		}
 

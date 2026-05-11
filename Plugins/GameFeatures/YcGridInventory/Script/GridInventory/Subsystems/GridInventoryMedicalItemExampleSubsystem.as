@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Medical item context-action example (world subsystem):
  * - Listen context-action request messages from grid-inventory framework.
  * - When request event tag matches heal event, restore health from FItemFragment_Heal.
@@ -12,6 +12,12 @@ class UGridInventoryMedicalItemExampleSubsystem : UScriptWorldSubsystem
 
 	UFUNCTION(BlueprintOverride)
 	void Initialize()
+	{
+		DelayForAs(n"ListenContextActionRequest", 2.f);
+	}
+
+	UFUNCTION()
+	void ListenContextActionRequest()
 	{
 		FGameplayTag RequestTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextAction.Request");
 		ContextActionRequestHandle = UGameplayMessageSubsystem::Get().RegisterListener(

@@ -45,6 +45,3 @@ class UGameplayAbility_OpenItemContainer : UYcGameplayAbility
 		EndAbility();
 	}
 }
-
-
-

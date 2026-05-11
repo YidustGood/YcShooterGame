@@ -7,6 +7,16 @@ class UGridInventoryWidget : UUserWidget
 	UPROPERTY(BindWidget)
 	UCanvasPanel GridCanvasPanel;
 
+	// 可选滚动条：用于给玩家明确的滚动提示
+	UPROPERTY(meta = (BindWidgetOptional))
+	UCanvasPanel ScrollbarCanvas;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	USizeBox ScrollbarThumbSizeBox;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UBorder ScrollbarBorder;
+
 	UPROPERTY()
 	TSubclassOf<UGridItemWidget> ItemWidgetClass;
 
@@ -20,10 +30,24 @@ class UGridInventoryWidget : UUserWidget
 	UPROPERTY()
 	float TileSize;
 
+	// 视口最多显示多少行；<=0 时展示完整网格
+	UPROPERTY()
+	int32 MaxVisibleRows = 0;
+
+	// 鼠标滚轮每次滚动的格子行数
+	UPROPERTY()
+	float ScrollRowsPerWheelStep = 1.0f;
+
 	private int32 Columns;
 	private int32 Rows;
 	private FGameplayTag CurrentRegionId;
 	private int32 CurrentPocketIndex = -1;
+	private float ScrollOffsetY = 0.0f;
+	private bool bDragHovering = false;
+	private bool bScrollbarDragging = false;
+	private float ScrollbarDragGrabOffsetY = 0.0f;
+	private FVector2D LastDragLocalMousePos = FVector2D(0.0f, 0.0f);
+	private TMap<UYcInventoryItemInstance, FIntPoint> ItemWidgetTileMap;
 
 	UPROPERTY()
 	FIntPoint DraggedItemTopLeftTile;
@@ -36,6 +60,8 @@ class UGridInventoryWidget : UUserWidget
 	private bool bForceItemVisualRefresh = false;
 	private TMap<UYcInventoryItemInstance, UGridItemWidget> ItemWidgetMap;
 	private TArray<FYcInventoryOperation> PendingPredictedOps;
+	private float DragAutoScrollSpeed = 600.0f;
+	private float DragAutoScrollEdgePadding = 24.0f;
 
 	FGameplayMessageListenerHandle InventoryChangedHandle;
 	FGameplayMessageListenerHandle OperationStateHandle;
@@ -67,13 +93,12 @@ class UGridInventoryWidget : UUserWidget
 		CachedSearchRevision = -1;
 		bForceItemVisualRefresh = true;
 		ItemWidgetMap.Empty();
+		ItemWidgetTileMap.Empty();
 		PendingPredictedOps.Empty();
 		GridCanvasPanel.ClearChildren();
 
-		auto GridBorderSlot = WidgetLayout::SlotAsCanvasSlot(GridBorder);
-		GridBorderSlot.SetSize(FVector2D(TileSize * Columns, TileSize * Rows));
-
 		CreateLineSegments();
+		ApplyViewportLayout();
 		GridInventoryManager.OnInventoryGridChanged.AddUFunction(this, n"OnInventoryGridChanged");
 	}
 
@@ -101,6 +126,7 @@ class UGridInventoryWidget : UUserWidget
 		InventoryChangedHandle.Unregister();
 		OperationStateHandle.Unregister();
 		ItemWidgetMap.Empty();
+		ItemWidgetTileMap.Empty();
 		PendingPredictedOps.Empty();
 	}
 
@@ -109,17 +135,42 @@ class UGridInventoryWidget : UUserWidget
 	{
 		UpdateInventoryPresentation();
 		UpdateSearchPresentation();
+		UpdateDragAutoScroll(InDeltaTime);
 	}
 
 	UFUNCTION(BlueprintOverride)
 	void OnPaint(FPaintContext& Context) const
 	{
 		auto LocalTopLeft = Slate::GetLocalTopLeft(GridBorder.GetCachedGeometry());
+		float ViewportTop = ScrollOffsetY;
+		float ViewportBottom = ScrollOffsetY + GetViewportPixelHeight();
 		for (int32 i = 0; i < Lines.Num(); i++)
 		{
 			FGridInventoryLine Line = Lines[i];
-			FVector2D PosA = LocalTopLeft + Line.Start;
-			FVector2D PosB = LocalTopLeft + Line.End;
+			FVector2D PosA;
+			FVector2D PosB;
+			if (Math::Abs(Line.Start.X - Line.End.X) <= 0.01f)
+			{
+				float ClampedTop = Math::Max(Line.Start.Y, ViewportTop);
+				float ClampedBottom = Math::Min(Line.End.Y, ViewportBottom);
+				if (ClampedBottom <= ClampedTop)
+				{
+					continue;
+				}
+
+				PosA = LocalTopLeft + FVector2D(Line.Start.X, ClampedTop - ScrollOffsetY);
+				PosB = LocalTopLeft + FVector2D(Line.End.X, ClampedBottom - ScrollOffsetY);
+			}
+			else
+			{
+				if (Line.Start.Y < ViewportTop || Line.Start.Y > ViewportBottom)
+				{
+					continue;
+				}
+
+				PosA = LocalTopLeft + FVector2D(Line.Start.X, Line.Start.Y - ScrollOffsetY);
+				PosB = LocalTopLeft + FVector2D(Line.End.X, Line.End.Y - ScrollOffsetY);
+			}
 			Context.DrawLine(PosA, PosB, FLinearColor(0.5, 0.5, 0.5, 0.5));
 		}
 
@@ -139,9 +190,12 @@ class UGridInventoryWidget : UUserWidget
 				{
 					TintColor = FLinearColor(0, 1, 0, 0.25);
 				}
-				FVector2D Position = FVector2D(DraggedItemTopLeftTile.X * TileSize, DraggedItemTopLeftTile.Y * TileSize);
+				FVector2D Position = FVector2D(DraggedItemTopLeftTile.X * TileSize, DraggedItemTopLeftTile.Y * TileSize - ScrollOffsetY);
 				FVector2D Size = FVector2D(IF_Drag.Dimensions.X * TileSize, IF_Drag.Dimensions.Y * TileSize);
-				Context.DrawBox(Position, Size, TintColor);
+				if (Position.Y + Size.Y > 0.0f && Position.Y < GetViewportPixelHeight())
+				{
+					Context.DrawBox(Position, Size, TintColor);
+				}
 			}
 		}
 
@@ -163,6 +217,7 @@ class UGridInventoryWidget : UUserWidget
 			{
 				float FullWidth = Columns * TileSize;
 				float BarHeight = 4.0f;
+				// 搜索条固定在视口顶部，滚动时也始终可见。
 				Context.DrawBox(LocalTopLeft + FVector2D(0, 0), FVector2D(FullWidth, BarHeight), FLinearColor(0.08f, 0.08f, 0.08f, 0.85f));
 				Context.DrawBox(LocalTopLeft + FVector2D(0, 0), FVector2D(FullWidth * Math::Clamp(Progress01, 0.0f, 1.0f), BarHeight), FLinearColor(0.95f, 0.75f, 0.2f, 0.95f));
 			}
@@ -206,6 +261,353 @@ class UGridInventoryWidget : UUserWidget
 	}
 
 	UFUNCTION()
+	void SetMaxVisibleRows(int32 InMaxVisibleRows)
+	{
+		MaxVisibleRows = Math::Max(0, InMaxVisibleRows);
+		ApplyViewportLayout();
+	}
+
+	UFUNCTION(BlueprintPure)
+	float GetContentPixelWidth() const
+	{
+		return Columns * TileSize;
+	}
+
+	UFUNCTION(BlueprintPure)
+	float GetContentPixelHeight() const
+	{
+		return Rows * TileSize;
+	}
+
+	UFUNCTION(BlueprintPure)
+	float GetViewportPixelHeight() const
+	{
+		int32 VisibleRows = MaxVisibleRows > 0 ? Math::Min(Rows, MaxVisibleRows) : Rows;
+		return VisibleRows * TileSize;
+	}
+
+	UFUNCTION(BlueprintPure)
+	bool IsScrollable() const
+	{
+		return GetMaxScrollOffsetY() > 0.0f;
+	}
+
+	UFUNCTION()
+	private float GetMaxScrollOffsetY() const
+	{
+		return Math::Max(0.0f, GetContentPixelHeight() - GetViewportPixelHeight());
+	}
+
+	UFUNCTION()
+	private void ApplyViewportLayout()
+	{
+		float ViewportWidth = GetContentPixelWidth();
+		float ViewportHeight = GetViewportPixelHeight();
+
+		auto GridBorderSlot = WidgetLayout::SlotAsCanvasSlot(GridBorder);
+		if (GridBorderSlot != nullptr)
+		{
+			GridBorderSlot.SetSize(FVector2D(ViewportWidth, ViewportHeight));
+		}
+
+		auto GridCanvasSlot = WidgetLayout::SlotAsCanvasSlot(GridCanvasPanel);
+		if (GridCanvasSlot != nullptr)
+		{
+			GridCanvasSlot.SetSize(FVector2D(ViewportWidth, ViewportHeight));
+		}
+
+		auto ScrollbarCanvasSlot = WidgetLayout::SlotAsCanvasSlot(ScrollbarCanvas);
+		if (ScrollbarCanvasSlot != nullptr)
+		{
+			ScrollbarCanvasSlot.SetSize(FVector2D(ScrollbarCanvasSlot.GetSize().X, ViewportHeight));
+		}
+
+		SetScrollOffsetY(ScrollOffsetY);
+	}
+
+	UFUNCTION()
+	private void SetScrollOffsetY(float InScrollOffsetY)
+	{
+		ScrollOffsetY = Math::Clamp(InScrollOffsetY, 0.0f, GetMaxScrollOffsetY());
+		ApplyItemWidgetViewportState();
+		UpdateScrollbarVisual();
+	}
+
+	UFUNCTION()
+	private void UpdateScrollbarVisual()
+	{
+		if (ScrollbarCanvas == nullptr)
+		{
+			return;
+		}
+
+		bool bShouldShowScrollbar = IsScrollable();
+		ScrollbarCanvas.SetVisibility(bShouldShowScrollbar ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+		if (!bShouldShowScrollbar || ScrollbarThumbSizeBox == nullptr)
+		{
+			return;
+		}
+
+		auto ThumbSlot = WidgetLayout::SlotAsCanvasSlot(ScrollbarThumbSizeBox);
+		if (ThumbSlot == nullptr)
+		{
+			return;
+		}
+
+		float ThumbHeight;
+		float AvailableTravel;
+		float ThumbTop;
+		GetScrollbarThumbMetrics(ThumbHeight, AvailableTravel, ThumbTop);
+		ScrollbarThumbSizeBox.SetHeightOverride(ThumbHeight);
+
+		ThumbSlot.SetAnchors(FAnchors(0.0f, 0.0f, 0.0f, 0.0f));
+		ThumbSlot.Alignment = FVector2D(0.0f, 0.0f);
+		ThumbSlot.SetSize(FVector2D(ThumbSlot.GetSize().X, ThumbHeight));
+		ThumbSlot.SetPosition(FVector2D(0.0f, ThumbTop));
+	}
+
+	UFUNCTION()
+	private float GetScrollbarTrackHeight() const
+	{
+		return GetViewportPixelHeight();
+	}
+
+	UFUNCTION()
+	private bool TryGetScrollbarLocalPosition(FVector2D ScreenSpacePosition, FVector2D&out OutLocalPos) const
+	{
+		OutLocalPos = FVector2D(0.0f, 0.0f);
+		if (ScrollbarCanvas == nullptr || !IsScrollable())
+		{
+			return false;
+		}
+
+		FGeometry ScrollbarGeometry = ScrollbarCanvas.GetCachedGeometry();
+		OutLocalPos = ScrollbarGeometry.AbsoluteToLocal(ScreenSpacePosition);
+		FVector2D LocalSize = ScrollbarGeometry.GetLocalSize();
+		auto ScrollbarCanvasSlot = WidgetLayout::SlotAsCanvasSlot(ScrollbarCanvas);
+		if (ScrollbarCanvasSlot != nullptr)
+		{
+			FVector2D SlotSize = ScrollbarCanvasSlot.GetSize();
+			if (SlotSize.X > 0.0f)
+			{
+				LocalSize.X = SlotSize.X;
+			}
+			if (SlotSize.Y > 0.0f)
+			{
+				LocalSize.Y = SlotSize.Y;
+			}
+		}
+		return OutLocalPos.X >= 0.0f && OutLocalPos.Y >= 0.0f && OutLocalPos.X <= LocalSize.X && OutLocalPos.Y <= LocalSize.Y;
+	}
+
+	UFUNCTION()
+	private bool GetScrollbarLocalPositionUnbounded(FVector2D ScreenSpacePosition, FVector2D&out OutLocalPos) const
+	{
+		OutLocalPos = FVector2D(0.0f, 0.0f);
+		if (ScrollbarCanvas == nullptr || !IsScrollable())
+		{
+			return false;
+		}
+
+		OutLocalPos = ScrollbarCanvas.GetCachedGeometry().AbsoluteToLocal(ScreenSpacePosition);
+		return true;
+	}
+
+	UFUNCTION()
+	private bool IsScreenSpacePositionOverScrollbarThumb(FVector2D ScreenSpacePosition) const
+	{
+		if (!IsScrollable())
+		{
+			return false;
+		}
+
+		FGeometry ThumbGeometry;
+		if (ScrollbarBorder != nullptr)
+		{
+			ThumbGeometry = ScrollbarBorder.GetCachedGeometry();
+		}
+		else if (ScrollbarThumbSizeBox != nullptr)
+		{
+			ThumbGeometry = ScrollbarThumbSizeBox.GetCachedGeometry();
+		}
+		else
+		{
+			return false;
+		}
+
+		FVector2D ThumbLocalPos = ThumbGeometry.AbsoluteToLocal(ScreenSpacePosition);
+		FVector2D ThumbLocalSize = ThumbGeometry.GetLocalSize();
+		return ThumbLocalPos.X >= 0.0f && ThumbLocalPos.Y >= 0.0f && ThumbLocalPos.X <= ThumbLocalSize.X && ThumbLocalPos.Y <= ThumbLocalSize.Y;
+	}
+
+	UFUNCTION()
+	private void GetScrollbarThumbMetrics(float&out OutThumbHeight, float&out OutAvailableTravel, float&out OutThumbTop) const
+	{
+		float TrackHeight = GetScrollbarTrackHeight();
+		float ViewportHeight = GetViewportPixelHeight();
+		float ContentHeight = Math::Max(GetContentPixelHeight(), 1.0f);
+		OutThumbHeight = Math::Max(24.0f, TrackHeight * (ViewportHeight / ContentHeight));
+		OutThumbHeight = Math::Min(OutThumbHeight, TrackHeight);
+		OutAvailableTravel = Math::Max(0.0f, TrackHeight - OutThumbHeight);
+
+		float ScrollAlpha = 0.0f;
+		float MaxScrollOffset = GetMaxScrollOffsetY();
+		if (MaxScrollOffset > 0.0f)
+		{
+			ScrollAlpha = ScrollOffsetY / MaxScrollOffset;
+		}
+		OutThumbTop = OutAvailableTravel * ScrollAlpha;
+	}
+
+	UFUNCTION()
+	private void SetScrollOffsetFromScrollbarTrack(float LocalY, bool bKeepGrabOffset)
+	{
+		float ThumbHeight;
+		float AvailableTravel;
+		float ThumbTop;
+		GetScrollbarThumbMetrics(ThumbHeight, AvailableTravel, ThumbTop);
+		if (AvailableTravel <= 0.0f)
+		{
+			SetScrollOffsetY(0.0f);
+			return;
+		}
+
+		float DesiredThumbTop = 0.0f;
+		if (bKeepGrabOffset)
+		{
+			DesiredThumbTop = LocalY - ScrollbarDragGrabOffsetY;
+		}
+		else
+		{
+			DesiredThumbTop = LocalY - ThumbHeight * 0.5f;
+			ScrollbarDragGrabOffsetY = ThumbHeight * 0.5f;
+		}
+
+		DesiredThumbTop = Math::Clamp(DesiredThumbTop, 0.0f, AvailableTravel);
+		float ScrollAlpha = DesiredThumbTop / AvailableTravel;
+		SetScrollOffsetY(GetMaxScrollOffsetY() * ScrollAlpha);
+	}
+
+	UFUNCTION()
+	private void UpdateDragAutoScroll(float InDeltaTime)
+	{
+		if (!bDragHovering || !Widget::IsDragDropping() || !IsScrollable())
+		{
+			return;
+		}
+
+		float ViewportHeight = GetViewportPixelHeight();
+		if (LastDragLocalMousePos.Y < DragAutoScrollEdgePadding)
+		{
+			float Strength = 1.0f - Math::Clamp(LastDragLocalMousePos.Y / DragAutoScrollEdgePadding, 0.0f, 1.0f);
+			SetScrollOffsetY(ScrollOffsetY - DragAutoScrollSpeed * Strength * InDeltaTime);
+		}
+		else if (LastDragLocalMousePos.Y > ViewportHeight - DragAutoScrollEdgePadding)
+		{
+			float DistanceToBottom = ViewportHeight - LastDragLocalMousePos.Y;
+			float Strength = 1.0f - Math::Clamp(DistanceToBottom / DragAutoScrollEdgePadding, 0.0f, 1.0f);
+			SetScrollOffsetY(ScrollOffsetY + DragAutoScrollSpeed * Strength * InDeltaTime);
+		}
+	}
+
+	UFUNCTION()
+	private void ScrollTileRectIntoView(FIntPoint Tile, FIntPoint Dimensions)
+	{
+		if (!IsScrollable())
+		{
+			return;
+		}
+
+		float RectTop = Tile.Y * TileSize;
+		float RectBottom = RectTop + Dimensions.Y * TileSize;
+		float ViewportHeight = GetViewportPixelHeight();
+		float TargetScrollOffsetY = ScrollOffsetY;
+
+		if (RectTop < ScrollOffsetY)
+		{
+			TargetScrollOffsetY = RectTop;
+		}
+		else if (RectBottom > ScrollOffsetY + ViewportHeight)
+		{
+			TargetScrollOffsetY = RectBottom - ViewportHeight;
+		}
+
+		SetScrollOffsetY(TargetScrollOffsetY);
+	}
+
+	UFUNCTION()
+	private void ScrollItemIntoView(UYcInventoryItemInstance ItemInstance, FIntPoint Tile)
+	{
+		if (ItemInstance == nullptr)
+		{
+			return;
+		}
+
+		FItemFragment_GridItem GridFragment;
+		if (!TryGetGridFragmentForItem(ItemInstance, GridFragment, "ScrollItemIntoView"))
+		{
+			return;
+		}
+
+		ScrollTileRectIntoView(Tile, GridFragment.Dimensions);
+	}
+
+	UFUNCTION()
+	private bool IsTileRectVisible(FIntPoint Tile, FIntPoint Dimensions) const
+	{
+		float Top = Tile.Y * TileSize;
+		float Bottom = Top + Dimensions.Y * TileSize;
+		return Bottom > ScrollOffsetY && Top < ScrollOffsetY + GetViewportPixelHeight();
+	}
+
+	UFUNCTION()
+	private void ApplyItemWidgetViewportState()
+	{
+		for (auto Entry : ItemWidgetMap)
+		{
+			auto ItemInstance = Entry.Key;
+			auto ItemWidget = Entry.Value;
+			if (ItemInstance == nullptr || ItemWidget == nullptr)
+			{
+				continue;
+			}
+
+			FIntPoint Tile;
+			if (!ItemWidgetTileMap.Find(ItemInstance, Tile))
+			{
+				continue;
+			}
+
+			UpdateItemWidgetLayout(ItemInstance, ItemWidget, Tile);
+		}
+	}
+
+	UFUNCTION()
+	private void UpdateItemWidgetLayout(UYcInventoryItemInstance ItemInstance, UGridItemWidget ItemWidget, FIntPoint Tile)
+	{
+		if (ItemInstance == nullptr || ItemWidget == nullptr)
+		{
+			return;
+		}
+
+		FItemFragment_GridItem GridFragment;
+		if (!TryGetGridFragmentForItem(ItemInstance, GridFragment, "UpdateItemWidgetLayout"))
+		{
+			ItemWidget.SetVisibility(ESlateVisibility::Collapsed);
+			return;
+		}
+
+		auto ItemWidgetSlot = WidgetLayout::SlotAsCanvasSlot(ItemWidget);
+		if (ItemWidgetSlot != nullptr)
+		{
+			ItemWidgetSlot.SetPosition(FVector2D(Tile.X * TileSize, Tile.Y * TileSize - ScrollOffsetY));
+		}
+
+		// 仅显示视口内的物品，避免超出视口的控件露出来。
+		ItemWidget.SetVisibility(IsTileRectVisible(Tile, GridFragment.Dimensions) ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
+
+	UFUNCTION()
 	void OnInventoryChanged(FGameplayTag ActualTag, FYcInventoryItemChangeMessage Data)
 	{
 		DelayUntilNextTickForAs(n"Refresh");
@@ -228,6 +630,10 @@ class UGridInventoryWidget : UUserWidget
 			UpsertPendingPredictedOp(Data.Operation);
 			if (Data.Operation.OpType == n"Inventory.SwapGrid" && IsSwapPredictionLocallyValid(Data.Operation))
 			{
+				if (Data.Operation.TargetInventory == GridInventoryManager && (!Data.Operation.GridRegionId.IsValid() || Data.Operation.GridRegionId == CurrentRegionId) && (Data.Operation.GridPocketIndex < 0 || Data.Operation.GridPocketIndex == CurrentPocketIndex))
+				{
+					ScrollItemIntoView(Data.Operation.ItemInstance, Data.Operation.GridTile);
+				}
 				ApplyPredictedSwap(Data.Operation);
 			}
 			else if ((Data.Operation.OpType == n"Equipment.Unequip" || Data.Operation.OpType == n"QuickBar.Remove") && Data.Operation.ItemInstance != nullptr)
@@ -236,6 +642,7 @@ class UGridInventoryWidget : UUserWidget
 				bool bPredictedRotated;
 				if (TryFindPredictedReturnTile(Data.Operation, PredictedTile, bPredictedRotated))
 				{
+					ScrollItemIntoView(Data.Operation.ItemInstance, PredictedTile);
 					MoveOrAddPredictedItemWidget(Data.Operation.ItemInstance, PredictedTile);
 				}
 			}
@@ -278,10 +685,7 @@ class UGridInventoryWidget : UUserWidget
 			return false;
 		}
 
-		if (Op.TargetInventory == GridInventoryManager
-			&& Op.GridRegionId == CurrentRegionId
-			&& Op.GridPocketIndex == CurrentPocketIndex
-			&& GridInventoryManager.CanPlaceGridItemInst(Op.ItemInstance, Op.GridTile, Op.bRotated, Op.GridRegionId, Op.GridPocketIndex))
+		if (Op.TargetInventory == GridInventoryManager && Op.GridRegionId == CurrentRegionId && Op.GridPocketIndex == CurrentPocketIndex && GridInventoryManager.CanPlaceGridItemInst(Op.ItemInstance, Op.GridTile, Op.bRotated, Op.GridRegionId, Op.GridPocketIndex))
 		{
 			OutTile = Op.GridTile;
 			OutRotated = Op.bRotated;
@@ -416,6 +820,7 @@ class UGridInventoryWidget : UUserWidget
 			ItemWidget.RemoveFromParent();
 		}
 		ItemWidgetMap.Remove(ItemInstance);
+		ItemWidgetTileMap.Remove(ItemInstance);
 	}
 
 	UFUNCTION()
@@ -440,12 +845,8 @@ class UGridInventoryWidget : UUserWidget
 			ItemWidgetSlot.SetAutoSize(true);
 			ItemWidgetMap.Add(ItemInstance, ItemWidget);
 		}
-
-		auto ItemWidgetCanvasSlot = WidgetLayout::SlotAsCanvasSlot(ItemWidget);
-		if (ItemWidgetCanvasSlot != nullptr)
-		{
-			ItemWidgetCanvasSlot.SetPosition(FVector2D(Tile.X * TileSize, Tile.Y * TileSize));
-		}
+		ItemWidgetTileMap.Add(ItemInstance, Tile);
+		UpdateItemWidgetLayout(ItemInstance, ItemWidget, Tile);
 	}
 
 	UFUNCTION()
@@ -557,6 +958,7 @@ class UGridInventoryWidget : UUserWidget
 					ItemWidget.RemoveFromParent();
 				}
 				ItemWidgetMap.Remove(ItemInst);
+				ItemWidgetTileMap.Remove(ItemInst);
 			}
 		}
 
@@ -597,8 +999,8 @@ class UGridInventoryWidget : UUserWidget
 				}
 			}
 
-			auto ItemWidgetSlot = WidgetLayout::SlotAsCanvasSlot(ItemWidget);
-			ItemWidgetSlot.SetPosition(FVector2D(Pos.X * TileSize, Pos.Y * TileSize));
+			ItemWidgetTileMap.Add(ItemInstance, Pos);
+			UpdateItemWidgetLayout(ItemInstance, ItemWidget, Pos);
 		}
 
 		bForceItemVisualRefresh = false;
@@ -635,6 +1037,7 @@ class UGridInventoryWidget : UUserWidget
 	bool OnDrop(FGeometry MyGeometry, FPointerEvent PointerEvent, UDragDropOperation Operation)
 	{
 		bDrawDropLocation = false;
+		bDragHovering = false;
 		auto ItemInst = Cast<UYcInventoryItemInstance>(Operation.Payload);
 		if (ItemInst == nullptr)
 			return true;
@@ -779,18 +1182,23 @@ class UGridInventoryWidget : UUserWidget
 	void OnDragEnter(FGeometry MyGeometry, FPointerEvent PointerEvent, UDragDropOperation Operation)
 	{
 		bDrawDropLocation = true;
+		bDragHovering = true;
+		LastDragLocalMousePos = MyGeometry.AbsoluteToLocal(PointerEvent.GetScreenSpacePosition());
 	}
 
 	UFUNCTION(BlueprintOverride)
 	void OnDragLeave(FPointerEvent PointerEvent, UDragDropOperation Operation)
 	{
 		bDrawDropLocation = false;
+		bDragHovering = false;
 	}
 
 	UFUNCTION(BlueprintOverride)
 	bool OnDragOver(FGeometry MyGeometry, FPointerEvent PointerEvent, UDragDropOperation Operation)
 	{
 		FVector2D MouseLocalPos = MyGeometry.AbsoluteToLocal(PointerEvent.GetScreenSpacePosition());
+		LastDragLocalMousePos = MouseLocalPos;
+		FVector2D ContentLocalPos = MouseLocalPos + FVector2D(0.0f, ScrollOffsetY);
 		auto ItemInst = Cast<UYcInventoryItemInstance>(Operation.Payload);
 		auto Inventory = GetOwningPlayerGridInventory();
 		if (ItemInst == nullptr || Inventory == nullptr || !Inventory.IsItemOperableForCurrentSession(ItemInst))
@@ -804,16 +1212,64 @@ class UGridInventoryWidget : UUserWidget
 			return false;
 		}
 		bool bRight, bDown;
-		MousePositionInTile(ItemInst, MouseLocalPos, bRight, bDown);
+		MousePositionInTile(ItemInst, ContentLocalPos, bRight, bDown);
 		int32 PosX = IF_Grid.Dimensions.X - (bRight ? 0 : 1);
 		PosX = Math::Clamp(PosX, 0, PosX);
 		int32 PosY = IF_Grid.Dimensions.Y - (bDown ? 0 : 1);
 		PosY = Math::Clamp(PosY, 0, PosY);
 		FVector2D PosXY = FVector2D(PosX, PosY) / 2;
-		FVector2D MouseTilePos = MouseLocalPos / TileSize;
+		FVector2D MouseTilePos = ContentLocalPos / TileSize;
 		auto FinalTilePos = MouseTilePos - PosXY;
 		DraggedItemTopLeftTile = FIntPoint(Math::Clamp(FinalTilePos.X, 0, FinalTilePos.X), Math::Clamp(FinalTilePos.Y, 0, FinalTilePos.Y));
 		return true;
+	}
+
+	UFUNCTION(BlueprintOverride)
+	FEventReply OnMouseWheel(FGeometry MyGeometry, FPointerEvent MouseEvent)
+	{
+		if (!IsScrollable())
+		{
+			return Widget::Unhandled();
+		}
+
+		float WheelDelta = MouseEvent.GetWheelDelta();
+		if (Math::Abs(WheelDelta) <= 0.01f)
+		{
+			return Widget::Unhandled();
+		}
+
+		SetScrollOffsetY(ScrollOffsetY - WheelDelta * ScrollRowsPerWheelStep * TileSize);
+		return Widget::Handled();
+	}
+
+	UFUNCTION(BlueprintOverride)
+	FEventReply OnMouseMove(FGeometry MyGeometry, FPointerEvent MouseEvent)
+	{
+		if (bScrollbarDragging)
+		{
+			FVector2D ScrollbarLocalPos;
+			if (GetScrollbarLocalPositionUnbounded(MouseEvent.GetScreenSpacePosition(), ScrollbarLocalPos))
+			{
+				SetScrollOffsetFromScrollbarTrack(ScrollbarLocalPos.Y, true);
+			}
+			return Widget::Handled();
+		}
+
+		return Widget::Unhandled();
+	}
+
+	UFUNCTION(BlueprintOverride)
+	FEventReply OnMouseButtonUp(FGeometry InMyGeometry, FPointerEvent InMouseEvent)
+	{
+		if (bScrollbarDragging)
+		{
+			bScrollbarDragging = false;
+			auto Reply = FEventReply::Handled();
+			Reply.ReleaseMouseCapture();
+			return Reply;
+		}
+
+		return Widget::Unhandled();
 	}
 
 	UFUNCTION(BlueprintOverride)
@@ -823,6 +1279,35 @@ class UGridInventoryWidget : UUserWidget
 		FGameplayTag CloseMenuTag = FGameplayTag::RequestGameplayTag(n"Yc.Inventory.Message.Grid.ContextMenu.Close");
 		FGridItemContextMenuCloseMessage CloseMsg;
 		UGameplayMessageSubsystem::Get().BroadcastMessage(CloseMenuTag, CloseMsg);
+
+		FKey EffectingButton = InMouseEvent.GetEffectingButton();
+		if (EffectingButton.KeyName == n"LeftMouseButton")
+		{
+			FVector2D ScrollbarLocalPos;
+			if (TryGetScrollbarLocalPosition(InMouseEvent.GetScreenSpacePosition(), ScrollbarLocalPos))
+			{
+				float ThumbHeight;
+				float AvailableTravel;
+				float ThumbTop;
+				GetScrollbarThumbMetrics(ThumbHeight, AvailableTravel, ThumbTop);
+				if (IsScreenSpacePositionOverScrollbarThumb(InMouseEvent.GetScreenSpacePosition()))
+				{
+					// 点中滑块时记录抓取偏移，拖动时手感会稳定很多。
+					ScrollbarDragGrabOffsetY = ScrollbarLocalPos.Y - ThumbTop;
+				}
+				else
+				{
+					// 点轨道时先跳到该位置，再进入拖动态。
+					SetScrollOffsetFromScrollbarTrack(ScrollbarLocalPos.Y, false);
+				}
+
+				bScrollbarDragging = true;
+				auto Reply = FEventReply::Handled();
+				Reply.CaptureMouse(this);
+				return Reply;
+			}
+		}
+
 		return Widget::Unhandled();
 	}
 }

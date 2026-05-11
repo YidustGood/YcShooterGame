@@ -18,6 +18,13 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 	UPROPERTY()
 	float TileSize;
 
+	// 玩家背包与容器默认只展示有限行数，超过后改为滚动浏览。
+	UPROPERTY()
+	int32 OwnerViewportRows = 10;
+
+	UPROPERTY()
+	int32 ContainerViewportRows = 10;
+
 	default TileSize = 50;
 	default InputConfig = EYcWidgetInputMode::GameAndMenu;
 
@@ -177,8 +184,9 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 			GridBorderSlot.SetAnchors(FAnchors(1, 0.5));
 			GridBorderSlot.Alignment = FVector2D(1, 0.5);
 			GridBorderSlot.SetPosition(FVector2D(-100, 0));
-			GridBorderSlot.bAutoSize = true;
-			CurrentContainerWidget.Initialize(Data.ContainerInventory, 50);
+			CurrentContainerWidget.Initialize(Data.ContainerInventory, TileSize);
+			CurrentContainerWidget.SetMaxVisibleRows(ContainerViewportRows);
+			ConfigureGridWidgetSlot(CurrentContainerWidget, GridBorderSlot);
 			CurrentContainerWidget.Refresh();
 		}
 		else
@@ -305,12 +313,15 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 		if (States.Num() <= 0)
 		{
 			GridInventory.Initialize(OwnerInventory, TileSize);
+			GridInventory.SetMaxVisibleRows(OwnerViewportRows);
 			GridInventory.Refresh();
 			OwnerRegionWidgets.Add(GridInventory);
+			ConfigureGridWidgetSlot(GridInventory, WidgetLayout::SlotAsCanvasSlot(GridInventory));
 			return;
 		}
 
 		GridInventory.Initialize(OwnerInventory, TileSize, States[0].RegionId, States[0].PocketIndex);
+		GridInventory.SetMaxVisibleRows(OwnerViewportRows);
 		GridInventory.Refresh();
 		OwnerRegionWidgets.Add(GridInventory);
 
@@ -328,6 +339,7 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 				return;
 			}
 		}
+		ConfigureGridWidgetSlot(GridInventory, RootSlot);
 		FAnchors RootAnchors = RootSlot.GetAnchors();
 		FVector2D RootAlignment = RootSlot.Alignment;
 		FVector2D RootPos = RootSlot.GetPosition();
@@ -347,9 +359,10 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 			Slot.Alignment = RootAlignment;
 			FIntPoint RelativeOffset = States[i].LayoutOffset - BaseLayoutOffset;
 			Slot.SetPosition(RootPos + FVector2D(RelativeOffset.X * TileSize, RelativeOffset.Y * TileSize));
-			Slot.bAutoSize = true;
 
 			NewWidget.Initialize(OwnerInventory, TileSize, States[i].RegionId, States[i].PocketIndex);
+			NewWidget.SetMaxVisibleRows(OwnerViewportRows);
+			ConfigureGridWidgetSlot(NewWidget, Slot);
 			NewWidget.Refresh();
 			OwnerRegionWidgets.Add(NewWidget);
 		}
@@ -495,6 +508,19 @@ class UGridInventoryMainWidget : UYcActivatableWidget
 			CurrentContextMenuWidget.RemoveFromParent();
 			CurrentContextMenuWidget = nullptr;
 		}
+	}
+
+	UFUNCTION()
+	private void ConfigureGridWidgetSlot(UGridInventoryWidget GridWidget, UCanvasPanelSlot Slot)
+	{
+		if (GridWidget == nullptr || Slot == nullptr)
+		{
+			return;
+		}
+
+		// 统一由主界面按“视口尺寸”摆放网格控件，内容高度交给控件内部滚动处理。
+		Slot.bAutoSize = false;
+		Slot.SetSize(FVector2D(GridWidget.GetContentPixelWidth(), GridWidget.GetViewportPixelHeight()));
 	}
 
 	void SetMovementBlockedByContainerInteraction(bool bShouldBlock)

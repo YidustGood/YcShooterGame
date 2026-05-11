@@ -1,6 +1,9 @@
 // 地图物资容器基类：内含一个网格库存组件，可按配置启用搜索机制
 class AGridItemContainerBase : AActor
 {
+	private const float ContainerInitRetryDelay = 0.15f;
+	private const int32 MaxContainerInitRetryCount = 20;
+
 	// 是否启用容器搜索玩法。开启后，玩家需要先搜索容器，才能逐步揭示其中的物品。
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Search")
 	bool bEnableContainerSearch = false;
@@ -40,6 +43,9 @@ class AGridItemContainerBase : AActor
 	default bReplicates = true;
 	default NetCullDistanceSquared = 500000;
 
+	private bool bContainerInitialized = false;
+	private int32 ContainerInitRetryCount = 0;
+
 	UFUNCTION(BlueprintOverride)
 	void BeginPlay()
 	{
@@ -48,21 +54,72 @@ class AGridItemContainerBase : AActor
 
 		if (HasAuthority())
 		{
-			InitContainer();
+			auto AsyncReady = AsYcGameCoreAsync::WaitForExperienceReady();
+			AsyncReady.OnReady.AddUFunction(this, n"HandleExperienceReady");
+			AsyncReady.Activate();
 		}
+	}
+
+	UFUNCTION(BlueprintOverride)
+	void EndPlay(EEndPlayReason EndPlayReason)
+	{
+		System::ClearTimer(this, "RetryInitContainer");
 	}
 
 	// 按当前配置的刷新策略向容器中填充初始物品。
 	// 这里只在服务端调用一次，避免重复初始化。
-	void InitContainer()
+	UFUNCTION()
+	void HandleExperienceReady()
 	{
+		TryInitContainer();
+	}
+
+	UFUNCTION()
+	void RetryInitContainer()
+	{
+		TryInitContainer();
+	}
+
+	void TryInitContainer()
+	{
+		if (!HasAuthority() || bContainerInitialized)
+		{
+			return;
+		}
+
 		// 统一从拾取配置中取出旧版静态数据，再交给容器初始化库按策略处理。
 		FYcInventoryPickup PickupInventory = PickupableComp.StaticInventory;
-		YcGridItemContainer::PopulateContainerInventory(
+		const int32 AddedCount = YcGridItemContainer::PopulateContainerInventory(
 			InventoryManager,
 			PickupInventory,
 			ItemSpawnStrategy,
 			LootPoolId,
 			SpawnCountOverride);
+
+		if (ItemSpawnStrategy == EYcContainerItemSpawnStrategy::LegacyStaticInventory || AddedCount > 0)
+		{
+			bContainerInitialized = true;
+			System::ClearTimer(this, "RetryInitContainer");
+			return;
+		}
+
+		FYcContainerLootPoolRow LootPoolRow;
+		if (ItemSpawnStrategy == EYcContainerItemSpawnStrategy::RandomPool
+			&& YcGridItemContainer::GetLootPoolRow(LootPoolId, LootPoolRow))
+		{
+			bContainerInitialized = true;
+			System::ClearTimer(this, "RetryInitContainer");
+			return;
+		}
+
+		ContainerInitRetryCount++;
+		if (ContainerInitRetryCount >= MaxContainerInitRetryCount)
+		{
+			Warning(f"[GridItemContainer] InitContainer gave up after {ContainerInitRetryCount} retries. LootPoolId={LootPoolId.ToString()}");
+			return;
+		}
+
+		System::ClearTimer(this, "RetryInitContainer");
+		System::SetTimer(this, n"RetryInitContainer", ContainerInitRetryDelay, false);
 	}
 }

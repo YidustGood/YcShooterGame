@@ -155,8 +155,6 @@
 					QuickBarComponent.ServerAddItemToSlot(SlotIndex, DropItem);
 				}
 			}
-
-			ApplyItemVisual(DropItem); // 立即反馈预测视觉
 		}
 		else
 		{
@@ -240,6 +238,12 @@
 
 		if ((Data.Operation.OpType == n"QuickBar.Add" || Data.Operation.OpType == n"QuickBar.Remove") && Data.Operation.SlotIndex == SlotIndex)
 		{
+			if (Data.Event == EYcInventoryOperationEvent::Acked || Data.Event == EYcInventoryOperationEvent::Nacked)
+			{
+				RefreshFromSlotState();
+				return;
+			}
+
 			TObjectPtr<UYcInventoryItemInstance> ProjectedItem = nullptr;
 			if (Data.ProjectedState.QuickBarSlots.Find(SlotIndex, ProjectedItem))
 			{

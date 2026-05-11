@@ -204,6 +204,16 @@ public:
 	 * @return 是否成功加载
 	 */
 	static bool LoadDataRegistry(const TSoftObjectPtr<UDataRegistry>& RegistryPath);
+
+	/**
+	 * 在 RegistryType 已可用时，为指定数据项发起一次运行时 Prime。
+	 *
+	 * @param ItemId DataRegistry 中的数据 ID
+	 * @return 如果当前已经可同步读取则返回 true；如果仅发起了异步 Acquire 或依赖尚未就绪则返回 false
+	 *
+	 * @note 本函数不会触发全局 DataRegistry 重初始化，避免冲掉运行时注册的数据源
+	 */
+	static bool PrimeItemForRuntime(const FDataRegistryId& ItemId);
 	
 	//~=============================================================================
 	// 工具方法

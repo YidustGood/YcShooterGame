@@ -4,6 +4,7 @@
 
 #include "DataRegistrySubsystem.h"
 #include "GridInventoryManagerComponent.h"
+#include "System/YcDataRegistrySubsystem.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcGridItemContainerLibrary)
 
@@ -55,7 +56,8 @@ bool UYcGridItemContainerLibrary::GetLootPoolRow(const FDataRegistryId& LootPool
 	const FYcContainerLootPoolRow* LootPoolRow = RegistrySubsystem->GetCachedItem<FYcContainerLootPoolRow>(LootPoolId);
 	if (!LootPoolRow)
 	{
-		UE_LOG(LogYcGridItemContainer, Warning, TEXT("GetLootPoolRow failed: loot pool is not cached or not found. LootPoolId=%s"), *LootPoolId.ToString());
+		UYcDataRegistrySubsystem::PrimeItemForRuntime(LootPoolId);
+		UE_LOG(LogYcGridItemContainer, Warning, TEXT("GetLootPoolRow failed: loot pool is not cached or not found. Requested acquire/recovery. LootPoolId=%s"), *LootPoolId.ToString());
 		return false;
 	}
 

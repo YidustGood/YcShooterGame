@@ -157,6 +157,48 @@ bool UYcDataRegistrySubsystem::LoadDataRegistry(const TSoftObjectPtr<UDataRegist
 	return Subsystem->LoadRegistryPath(RegistryPath.ToSoftObjectPath());
 }
 
+bool UYcDataRegistrySubsystem::PrimeItemForRuntime(const FDataRegistryId& ItemId)
+{
+	if (!ItemId.IsValid())
+	{
+		UE_LOG(LogYcGameCore, Warning, TEXT("PrimeItemForRuntime ignored: ItemId is invalid."));
+		return false;
+	}
+
+	UDataRegistrySubsystem* Subsystem = GetEngineSubsystem();
+	if (!Subsystem)
+	{
+		return false;
+	}
+
+	const uint8* CachedItemMemory = nullptr;
+	const UScriptStruct* CachedItemStruct = nullptr;
+	if (Subsystem->GetCachedItemRaw(CachedItemMemory, CachedItemStruct, ItemId).WasFound() && CachedItemMemory != nullptr)
+	{
+		return true;
+	}
+
+	if (!Subsystem->GetRegistryForType(ItemId.RegistryType))
+	{
+		UE_LOG(LogYcGameCore, Warning, TEXT("PrimeItemForRuntime: registry type %s is not active for %s. Skip global recovery; wait for the owning feature/registry to register it."),
+			*ItemId.RegistryType.ToString(),
+			*ItemId.ToString());
+		return false;
+	}
+
+	const bool bRequested = Subsystem->AcquireItem(ItemId, FDataRegistryItemAcquiredCallback());
+	if (bRequested)
+	{
+		UE_LOG(LogYcGameCore, Log, TEXT("PrimeItemForRuntime: requested async acquire for %s"), *ItemId.ToString());
+	}
+	else
+	{
+		UE_LOG(LogYcGameCore, Warning, TEXT("PrimeItemForRuntime: failed to request async acquire for %s"), *ItemId.ToString());
+	}
+
+	return false;
+}
+
 //~=============================================================================
 // 工具方法
 //~=============================================================================

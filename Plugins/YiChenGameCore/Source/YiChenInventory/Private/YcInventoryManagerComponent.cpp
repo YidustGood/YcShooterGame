@@ -4,6 +4,7 @@
 
 #include "DataRegistrySubsystem.h"
 #include "NativeGameplayTags.h"
+#include "System/YcDataRegistrySubsystem.h"
 #include "YcInventoryItemInstance.h"
 #include "YiChenInventory.h"
 #include "GameFramework/Controller.h"
@@ -115,7 +116,8 @@ UYcInventoryItemInstance* FYcInventoryItemList::AddItem(const FDataRegistryId& I
 	const FYcInventoryItemDefinition* ItemDef = Subsystem->GetCachedItem<FYcInventoryItemDefinition>(ItemRegistryId);
 	if (!ItemDef)
 	{
-		UE_LOG(LogYcInventory, Error, TEXT("FYcInventoryItemList::AddItem - Failed to get ItemDef from DataRegistry: %s. Make sure the item is cached/acquired first."),
+		UYcDataRegistrySubsystem::PrimeItemForRuntime(ItemRegistryId);
+		UE_LOG(LogYcInventory, Error, TEXT("FYcInventoryItemList::AddItem - Failed to get ItemDef from DataRegistry: %s. Requested acquire/recovery; retry after registries are ready."),
 			*ItemRegistryId.ToString());
 		return nullptr;
 	}

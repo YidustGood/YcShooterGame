@@ -7,6 +7,7 @@
 #include "YcInventoryManagerComponent.h"
 #include "YcPickupable.h"
 #include "YiChenInventory.h"
+#include "System/YcDataRegistrySubsystem.h"
 #include "Engine/AssetManager.h"
 #include "Fragments/ItemFragment_DataAsset.h"
 #include "GameFramework/GameplayMessageSubsystem.h"
@@ -170,7 +171,8 @@ bool UYcInventoryLibrary::GetItemDefinition(const FDataRegistryId& ItemDataRegis
 	const FYcInventoryItemDefinition* ItemDef = Subsystem->GetCachedItem<FYcInventoryItemDefinition>(ItemDataRegistryId);
 	if (!ItemDef)
 	{
-		UE_LOG(LogYcInventory, Error, TEXT("UYcInventoryLibrary::GetItemDefinition - Failed to get ItemDef from DataRegistry: %s. Make sure the item is cached/acquired first."),
+		UYcDataRegistrySubsystem::PrimeItemForRuntime(ItemDataRegistryId);
+		UE_LOG(LogYcInventory, Error, TEXT("UYcInventoryLibrary::GetItemDefinition - Failed to get ItemDef from DataRegistry: %s. Requested acquire/recovery; retry after registries are ready."),
 			*ItemDataRegistryId.ToString());
 		return false;
 	}

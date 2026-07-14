@@ -1,8 +1,5 @@
 class UYcGameplayAbility_WeaponReload : UYcGameplayAbility_WeaponBase
 {
-	// 配置音效自动停止
-	default bAutoStopSound = true;
-
 	default AbilityTags.AddTag(GameplayTags::InputTag_Weapon_Reload);
 	default ActivationOwnedTags.AddTag(GameplayTags::InputTag_Weapon_Reload);
 

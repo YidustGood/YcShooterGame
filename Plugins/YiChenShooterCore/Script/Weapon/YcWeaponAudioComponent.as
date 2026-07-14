@@ -46,16 +46,15 @@ class UYcWeaponAudioComponent : UActorComponent
 	/**
 	 * 播放动作音效（自动从 VisualData 获取）
 	 * @param ActionTag 动作标签（如 Asset.Weapon.Action.Reload）
-	 * @param bAutoStop 是否在动作结束时自动停止（用于循环音效）
 	 * @return 是否成功播放
 	 */
 	UFUNCTION()
-	bool PlayActionSound(FGameplayTag ActionTag, bool bAutoStop = false)
+	bool PlayActionSound(FGameplayTag ActionTag)
 	{
 		// 将动作 Tag 转换为音效 Tag
 		// 例如: Asset.Weapon.Action.Reload -> Asset.Weapon.Sound.Reload
 		FGameplayTag SoundTag = ConvertActionTagToSoundTag(ActionTag);
-		return PlaySound(SoundTag, ActionTag, bAutoStop);
+		return PlaySound(SoundTag, ActionTag);
 	}
 
 	/**
@@ -76,11 +75,11 @@ class UYcWeaponAudioComponent : UActorComponent
 	 * 播放指定的音效
 	 * @param SoundTag 音效标签（如 Asset.Weapon.Sound.Fire）
 	 * @param ContextTag 上下文标签（用于停止，通常是动作 Tag）
-	 * @param bAutoStop 是否在音效播放完毕后自动清理
+	 * @param bInterruptExisting 是否中断当前同 Key 的音效；瞬时叠加类音效可设为 false
 	 * @return 是否成功播放
 	 */
 	UFUNCTION()
-	bool PlaySound(FGameplayTag SoundTag, FGameplayTag ContextTag = FGameplayTag(), bool bAutoStop = false)
+	bool PlaySound(FGameplayTag SoundTag, FGameplayTag ContextTag = FGameplayTag(), bool bInterruptExisting = true)
 	{
 		if (!SoundTag.IsValid())
 		{
@@ -90,9 +89,13 @@ class UYcWeaponAudioComponent : UActorComponent
 
 		// 如果没有提供 ContextTag，使用 SoundTag 作为 Key
 		FGameplayTag Key = ContextTag.IsValid() ? ContextTag : SoundTag;
+		const bool bAutoDestroy = !bInterruptExisting;
 
-		// 停止之前的音效（如果存在）
-		StopSound(Key);
+		// 需要单实例管理的音效先停止之前的实例；瞬时叠加类音效跳过这一步
+		if (bInterruptExisting)
+		{
+			StopSound(Key);
+		}
 
 		// 从 VisualData 获取音效资产
 		USoundBase Sound = GetSoundAsset(SoundTag);
@@ -116,7 +119,7 @@ class UYcWeaponAudioComponent : UActorComponent
 			0.0f,
 			nullptr,
 			nullptr,
-			bAutoStop);
+			bAutoDestroy);
 
 		if (!IsValid(AudioComp))
 		{
@@ -124,8 +127,11 @@ class UYcWeaponAudioComponent : UActorComponent
 			return false;
 		}
 
-		// 总是缓存音效组件（即使 bAutoStop = true，也需要能够手动停止）
-		ActiveAudioComponents.Add(Key, AudioComp);
+		// 只有单实例管理的音效才加入缓存；允许叠加的瞬时音效交给音频资源自身并发策略控制
+		if (bInterruptExisting)
+		{
+			ActiveAudioComponents.Add(Key, AudioComp);
+		}
 
 		return true;
 	}

@@ -30,6 +30,10 @@ class UEliminationFeedWidget : UCommonUserWidget
 	private void OnEliminate(FGameplayTag ActualTag, FYcGameVerbMessage Data)
 	{
 		auto PS = Cast<AYcPlayerState>(Data.Instigator);
+		if (PS == nullptr)
+		{
+			return;
+		}
 		bool bFlag1 = GetOwningPlayer() == PS.GetYcPlayerController();
 		bool bFlag2 = Data.Target != PS;
 		if (bFlag1 && bFlag2)

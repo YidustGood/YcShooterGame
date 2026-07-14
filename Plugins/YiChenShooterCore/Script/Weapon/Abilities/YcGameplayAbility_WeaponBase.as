@@ -20,9 +20,9 @@ class UYcGameplayAbility_WeaponBase : UYcGameplayAbility_FromEquipment
 	UPROPERTY(EditDefaultsOnly, Category = "Audio")
 	bool bAutoStopSoundOnEnd = false;
 
-	/** 音效是否自动销毁（false 表示需要手动停止） */
-	UPROPERTY(EditDefaultsOnly, Category = "Audio")
-	bool bAutoStopSound = true;
+	/** 缓存最近一次实际播放音效时使用的武器 Actor，避免切枪后停止逻辑误停到新武器上。 */
+	UPROPERTY(VisibleInstanceOnly)
+	AYcWeaponActorScript CachedAudioWeaponActor;
 
 	UFUNCTION(BlueprintOverride)
 	void OnAbilityAdded()
@@ -53,7 +53,8 @@ class UYcGameplayAbility_WeaponBase : UYcGameplayAbility_FromEquipment
 			return false;
 		}
 
-		return WeaponActor.PlayActionSound(ActionTag, bAutoStopSound);
+		CachedAudioWeaponActor = WeaponActor;
+		return WeaponActor.PlayActionSound(ActionTag);
 	}
 
 	/**
@@ -67,7 +68,7 @@ class UYcGameplayAbility_WeaponBase : UYcGameplayAbility_FromEquipment
 			return;
 		}
 
-		AYcWeaponActorScript WeaponActor = GetWeaponActorFromAvatar();
+		AYcWeaponActorScript WeaponActor = GetAudioWeaponActorForStop();
 		if (!IsValid(WeaponActor))
 		{
 			return;
@@ -88,7 +89,8 @@ class UYcGameplayAbility_WeaponBase : UYcGameplayAbility_FromEquipment
 			return false;
 		}
 
-		return WeaponActor.AudioComponent.PlaySound(SoundTag, ContextTag, bAutoStopSound);
+		CachedAudioWeaponActor = WeaponActor;
+		return WeaponActor.AudioComponent.PlaySound(SoundTag, ContextTag);
 	}
 
 	/**
@@ -97,13 +99,23 @@ class UYcGameplayAbility_WeaponBase : UYcGameplayAbility_FromEquipment
 	UFUNCTION()
 	void StopSound(FGameplayTag ContextTag)
 	{
-		AYcWeaponActorScript WeaponActor = GetWeaponActorFromAvatar();
+		AYcWeaponActorScript WeaponActor = GetAudioWeaponActorForStop();
 		if (!IsValid(WeaponActor) || !IsValid(WeaponActor.AudioComponent))
 		{
 			return;
 		}
 
 		WeaponActor.AudioComponent.StopSound(ContextTag);
+	}
+
+	private AYcWeaponActorScript GetAudioWeaponActorForStop()
+	{
+		if (IsValid(CachedAudioWeaponActor))
+		{
+			return CachedAudioWeaponActor;
+		}
+
+		return GetWeaponActorFromAvatar();
 	}
 
 	/**

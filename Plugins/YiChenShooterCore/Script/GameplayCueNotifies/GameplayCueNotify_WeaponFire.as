@@ -67,7 +67,8 @@ class UGameplayCueNotify_WeaponFire : UGameplayCueNotify_Burst
 			return;
 		}
 
-		FPWeaponActor.AudioComponent.PlaySound(FireSoundTag);
+		// 开火音效允许连发时自然叠加，不在代码侧主动中断上一发，具体并发上限交给音频资源配置。
+		FPWeaponActor.AudioComponent.PlaySound(FireSoundTag, FGameplayTag(), false);
 	}
 
 	private AYcWeaponActorScript GetFirstPersonWeaponActor(AActor Target) const

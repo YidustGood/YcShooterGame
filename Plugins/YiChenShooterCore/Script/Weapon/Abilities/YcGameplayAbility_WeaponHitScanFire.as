@@ -21,6 +21,10 @@ class UYcGameplayAbility_WeaponHitScanFire : UYcGameplayAbility_HitScanWeapon
 	default TriggerData.TriggerSource = EGameplayAbilityTriggerSource::GameplayEvent;
 	default AbilityTriggers.Add(TriggerData);
 
+	// 奔跑时开火延迟 @TODO 后续可以加到武器配置Fragment中
+	UPROPERTY(EditAnywhere, Category = "Weapon")
+	float SprintFireDelay = 0.2f;
+
 	UPROPERTY()
 	TSubclassOf<UGameplayEffect> DamageGE;
 
@@ -88,10 +92,30 @@ class UYcGameplayAbility_WeaponHitScanFire : UYcGameplayAbility_HitScanWeapon
 		auto WaitInputRelease = AngelscriptAbilityTask::WaitInputRelease(this);
 		WaitInputRelease.OnRelease.AddUFunction(this, n"OnInputRelease");
 		WaitInputRelease.ReadyForActivation();
+
 		if (IsLocallyControlled())
 		{
-			StartFiring();
+			// 如果玩家在奔跑状态就应用奔跑扳机延迟机制
+			auto YCASC = Cast<UYcAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
+			if (YCASC.HasMatchingGameplayTag(GameplayTags::Character_State_Movement_Sprint))
+			{
+				FGameplayTagContainer WithTags;
+				WithTags.AddLeafTag(GameplayTags::InputTag_Move_Sprint);
+				FGameplayTagContainer WithoutTags;
+				YCASC.CancelAbilitiesByTag(WithTags, WithoutTags);
+				DelayForAs(n"StartFire", SprintFireDelay);
+			}
+			else
+			{
+				StartFire();
+			}
 		}
+	}
+
+	UFUNCTION()
+	void StartFire()
+	{
+		StartFiring();
 	}
 
 	UFUNCTION(BlueprintOverride)

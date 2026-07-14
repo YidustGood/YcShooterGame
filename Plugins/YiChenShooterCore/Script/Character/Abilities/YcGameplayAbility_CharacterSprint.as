@@ -58,10 +58,16 @@ class UYcGameplayAbility_CharacterSprint : UYcGameplayAbility_HoldToggle
 	/** 停止蒙太奇动画 */
 	void StopMontage()
 	{
+		auto ASC = GetAbilitySystemComponentFromActorInfo();
+		if (IsValid(ASC) && ASC.HasMatchingGameplayTag(GameplayTags::InputTag_Weapon_Reload))
+		{
+			return;
+		}
+
 		USkeletalMeshComponent FPCharacter = GetAvatarActorFromActorInfo().FindComponentByTag(USkeletalMeshComponent, n"FPCharacter");
 		if (IsValid(FPCharacter))
 		{
-			FPCharacter.GetAnimInstance().Montage_Stop(0.01f);
+			FPCharacter.GetAnimInstance().Montage_Stop(0.25f);
 		}
 		else
 		{

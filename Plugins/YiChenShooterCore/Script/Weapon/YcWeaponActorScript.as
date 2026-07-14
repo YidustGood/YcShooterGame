@@ -13,6 +13,13 @@ class AYcWeaponActorScript : AYcWeaponActor
 	UPROPERTY(DefaultComponent)
 	UYcWeaponAudioComponent AudioComponent;
 
+	UFUNCTION(BlueprintOverride)
+	void BeginPlay()
+	{
+		// 武器被卸下后，主动收口仍挂在旧武器上的音效，避免切枪后旧武器尾音继续完整播放。
+		EquipmentActorComponent.OnUnequipped.AddUFunction(this, n"OnWeaponUnequipped");
+	}
+
 	// ========================================
 	// 公共接口 - 特效
 	// ========================================
@@ -46,11 +53,11 @@ class AYcWeaponActorScript : AYcWeaponActor
 
 	/** 播放动作音效 */
 	UFUNCTION()
-	bool PlayActionSound(FGameplayTag ActionTag, bool bAutoStop = false)
+	bool PlayActionSound(FGameplayTag ActionTag)
 	{
 		if (IsValid(AudioComponent))
 		{
-			return AudioComponent.PlayActionSound(ActionTag, bAutoStop);
+			return AudioComponent.PlayActionSound(ActionTag);
 		}
 		return false;
 	}
@@ -73,5 +80,11 @@ class AYcWeaponActorScript : AYcWeaponActor
 		{
 			AudioComponent.StopAllSounds();
 		}
+	}
+
+	UFUNCTION()
+	void OnWeaponUnequipped(UYcEquipmentInstance EquipmentInst)
+	{
+		StopAllSounds();
 	}
 }

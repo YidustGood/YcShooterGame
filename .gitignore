@@ -91,5 +91,8 @@ YcShooter.uproject.DotSettings.user
 Plugins/GameFeatures/YcGridInventory*/Intermediate/
 Plugins/GameFeatures/YcGridInventory*/Binaries/
 Plugins/GameFeatures/GzGameCombat
+Plugins/GameFeatures/GzFpsGameMaps
+Plugins/GameFeatures/YcEnemySystem
+Plugins/GameFeatures/YcGameDialog
 *.lua
 Tools/

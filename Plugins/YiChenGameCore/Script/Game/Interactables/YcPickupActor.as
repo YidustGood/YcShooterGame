@@ -2,12 +2,8 @@
  * 可拾取Actor
  * 通过配置 YcPickupableComp.StaticInventory 指定拾取后添加到玩家背包中的物品。
  */
-class AYcPickupActor : AActor
+class AYcPickupActor : AInteractableActorBase
 {
-	/** 提供可交互能力 */
-	UPROPERTY(DefaultComponent)
-	UYcInteractableComponent YcInteractableComp;
-
 	/** 配置可被拾取的物品数据 */
 	UPROPERTY(DefaultComponent)
 	UYcPickupableComponent YcPickupableComp;
@@ -27,6 +23,8 @@ class AYcPickupActor : AActor
 	UFUNCTION(BlueprintOverride)
 	void BeginPlay()
 	{
+		Super::BeginPlay();
+
 		// 在所有端预加载对应物品资产
 		RequestLoadItemsAssetAsync();
 	}

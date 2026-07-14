@@ -4,12 +4,6 @@
  */
 class AYcDisplayMeshPickupActor : AYcPickupActor
 {
-	UPROPERTY(DefaultComponent, RootComponent)
-	USceneComponent SceneRoot;
-
-	UPROPERTY(DefaultComponent, Attach = SceneRoot)
-	UStaticMeshComponent DisplayMeshComp;
-
 	/** 是否在展示模型应用完成后开启物理模拟。 */
 	UPROPERTY(EditAnywhere, Category = "Pickup|Visual")
 	bool bEnableDisplayMeshPhysics = false;
@@ -37,6 +31,7 @@ class AYcDisplayMeshPickupActor : AYcPickupActor
 	UFUNCTION(BlueprintOverride)
 	void EndPlay(EEndPlayReason Reason)
 	{
+		Super::EndPlay(Reason);
 		PickupVisualAssetLoadedHandle.Unregister();
 	}
 

@@ -148,6 +148,48 @@ void AYcCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	PawnExtComponent->SetupPlayerInputComponent();
 }
 
+void AYcCharacter::HandleMoveInput_Implementation(FVector2D MovementVector)
+{
+	const AController* CurrentController = GetController();
+	if (!CurrentController)
+	{
+		return;
+	}
+
+	// 默认第三人称式移动: 相对控制器的偏航方向计算前后左右
+	const FRotator MovementRotation(0.0f, CurrentController->GetControlRotation().Yaw, 0.0f);
+
+	if (MovementVector.X != 0.0f)
+	{
+		const FVector MovementDirection = MovementRotation.RotateVector(FVector::RightVector);
+		AddMovementInput(MovementDirection, MovementVector.X);
+	}
+
+	if (MovementVector.Y != 0.0f)
+	{
+		const FVector MovementDirection = MovementRotation.RotateVector(FVector::ForwardVector);
+		AddMovementInput(MovementDirection, MovementVector.Y);
+	}
+}
+
+void AYcCharacter::HandleLookInput_Implementation(FVector2D LookDelta)
+{
+	if (LookDelta.X != 0.0f)
+	{
+		AddControllerYawInput(LookDelta.X);
+	}
+
+	if (LookDelta.Y != 0.0f)
+	{
+		AddControllerPitchInput(LookDelta.Y);
+	}
+}
+
+void AYcCharacter::HandleCrouchInput_Implementation(bool bIsPressed)
+{
+	// 默认无行为, 子类根据玩法(切换/长按下蹲)覆写
+}
+
 void AYcCharacter::OnDeathStarted(AActor* OwningActor)
 {
 	DisableMovementAndCollision();

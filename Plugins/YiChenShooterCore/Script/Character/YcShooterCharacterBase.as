@@ -1,7 +1,7 @@
 class AYcShooterCharacterBase : AYcCharacter
 {
 	UPROPERTY(DefaultComponent)
-	UYcShooterHeroComponent YcHeroComp;
+	UYcHeroComponent YcHeroComp;
 
 	UPROPERTY(DefaultComponent)
 	UYcShooterAnimComponent YcShooterAnimComp;
@@ -9,6 +9,18 @@ class AYcShooterCharacterBase : AYcCharacter
 	/** 移动数值设置, 供动画蓝图使用驱动移动动画播放效果 */
 	UPROPERTY()
 	FVector2D MoveActionValue;
+
+	// 武器随视角移动的比例
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon | Anim")
+	float WeaponRotationRatio = 8;
+
+	// 武器随视角移动的插值
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon | Anim")
+	float WeaponRotationInterp = 3.5;
+
+	// 武器Sway摇摆旋转值, 供动画为第一人称武器添加动态旋转偏移
+	UPROPERTY(BlueprintReadOnly, Category = "Weapon | Anim")
+	FRotator CurrentWeaponSawyRotation;
 
 	// 缓存上一帧的移动状态，避免在Tick中重复添加/移除标签
 	private bool bWasMovingForward = true;
@@ -35,6 +47,53 @@ class AYcShooterCharacterBase : AYcCharacter
 		{
 			UpdateMovementStateTags();
 		}
+
+		// 每帧回复一定的武器旋转值, 实现视角停止后武器Sway摇摆的回中
+		UpdateWeaponSawyRotation(true, 0.f);
+		UpdateWeaponSawyRotation(false, 0.f);
+	}
+
+	// 第一人称移动: 相对角色自身朝向计算前后左右, 并缓存输入值供动画使用
+	UFUNCTION(BlueprintOverride)
+	void HandleMoveInput(FVector2D MovementVector)
+	{
+		MoveActionValue = MovementVector;
+		AddMovementInput(GetActorForwardVector(), MovementVector.Y);
+		AddMovementInput(GetActorRightVector(), MovementVector.X);
+	}
+
+	// 第一人称视角: 施加视角增量, 并根据视角输入驱动武器Sway摇摆
+	UFUNCTION(BlueprintOverride)
+	void HandleLookInput(FVector2D LookDelta)
+	{
+		if (LookDelta.X != 0.f)
+		{
+			AddControllerYawInput(LookDelta.X);
+		}
+		if (LookDelta.Y != 0.f)
+		{
+			AddControllerPitchInput(LookDelta.Y);
+		}
+
+		UpdateWeaponSawyRotation(true, LookDelta.X);
+		UpdateWeaponSawyRotation(false, LookDelta.Y);
+	}
+
+	// 根据视角输入更新武器Sway摇摆旋转值
+	void UpdateWeaponSawyRotation(bool bIsYaw, float InValue)
+	{
+		const float Value = Math::Clamp(InValue, -1.f, 1.f);
+		FRotator NewRotation;
+		const float Offset = WeaponRotationRatio * Value;
+		if (bIsYaw)
+		{
+			NewRotation = FRotator(CurrentWeaponSawyRotation.Pitch, Offset, CurrentWeaponSawyRotation.Roll);
+		}
+		else
+		{
+			NewRotation = FRotator(-Offset, CurrentWeaponSawyRotation.Yaw, CurrentWeaponSawyRotation.Roll);
+		}
+		CurrentWeaponSawyRotation = Math::RInterpTo(CurrentWeaponSawyRotation, NewRotation, Gameplay::GetWorldDeltaSeconds(), WeaponRotationInterp);
 	}
 
 	// 更新移动状态标签，让能力系统根据标签自动管理能力状态
@@ -66,6 +125,6 @@ class AYcShooterCharacterBase : AYcCharacter
 	/** 获取武器Sawy摇摆旋转值, 动画蓝图通过这个值为武器添加动态的旋转偏移效果, 提升游戏手感 */
 	FRotator& GetCurrentWeaponSwayRotation()
 	{
-		return YcHeroComp.CurrentWeaponSawyRotation;
+		return CurrentWeaponSawyRotation;
 	}
 }

@@ -8,6 +8,7 @@
 #include "InputMappingContext.h"
 #include "YcAbilitySystemComponent.h"
 #include "YcGameplayTags.h"
+#include "Character/YcCharacter.h"
 #include "Character/YcPawnData.h"
 #include "Character/YcPawnExtensionComponent.h"
 #include "Components/GameFrameworkComponentManager.h"
@@ -592,79 +593,44 @@ void UYcHeroComponent::Input_AbilityInputTagReleased(const FGameplayTag InputTag
 
 void UYcHeroComponent::Input_Move(const FInputActionValue& InputActionValue)
 {
-	const AController* Controller = OwnerPawn ? OwnerPawn->GetController() : nullptr;
-	
-	if (!Controller) return;
-	
-	const FVector2D Value = InputActionValue.Get<FVector2D>();
-	if(bFirstPersonMode)
-	{
-		OwnerPawn->AddMovementInput(OwnerPawn->GetActorForwardVector(), Value.Y);
-		OwnerPawn->AddMovementInput(OwnerPawn->GetActorRightVector(), Value.X);
-	}
-	else
-	{
-		const FRotator MovementRotation(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
+	AYcCharacter* Character = Cast<AYcCharacter>(OwnerPawn);
+	if (!Character) return;
 
-		if (Value.X != 0.0f)
-		{
-			const FVector MovementDirection = MovementRotation.RotateVector(FVector::RightVector);
-			OwnerPawn->AddMovementInput(MovementDirection, Value.X);
-		}
-
-		if (Value.Y != 0.0f)
-		{
-			const FVector MovementDirection = MovementRotation.RotateVector(FVector::ForwardVector);
-			OwnerPawn->AddMovementInput(MovementDirection, Value.Y);
-		}
-	}
-	
-	// 调用蓝图实现, 以便有让蓝图子类有机会根据输入做一些特殊效果, 例如移动时根据输入值做武器的摆动效果
-	K2_OnMove(InputActionValue);
+	Character->HandleMoveInput(InputActionValue.Get<FVector2D>());
 }
 
 void UYcHeroComponent::Input_LookMouse(const FInputActionValue& InputActionValue)
 {
-	if (!OwnerPawn) return;
-	
-	const FVector2D Value = InputActionValue.Get<FVector2D>();
+	AYcCharacter* Character = Cast<AYcCharacter>(OwnerPawn);
+	if (!Character) return;
 
-	if (Value.X != 0.0f)
-	{
-		OwnerPawn->AddControllerYawInput(Value.X);
-	}
-
-	if (Value.Y != 0.0f)
-	{
-		OwnerPawn->AddControllerPitchInput(Value.Y);
-	}
-	
-	// 调用蓝图实现, 以便有让蓝图子类有机会根据输入做一些特殊效果, 例如移动视角时根据输入值做武器的摆动效果
-	K2_OnLookMouse(InputActionValue);
+	// 鼠标输入本身就是帧增量, 直接转发
+	Character->HandleLookInput(InputActionValue.Get<FVector2D>());
 }
 
 void UYcHeroComponent::Input_LookStick(const FInputActionValue& InputActionValue)
 {
-	if (!OwnerPawn) return;
-	const FVector2D Value = InputActionValue.Get<FVector2D>();
+	AYcCharacter* Character = Cast<AYcCharacter>(OwnerPawn);
+	if (!Character) return;
 
 	const UWorld* World = GetWorld();
 	check(World);
 
-	if (Value.X != 0.0f)
-	{
-		OwnerPawn->AddControllerYawInput(Value.X * YcInput::LookYawRate * World->GetDeltaSeconds());
-	}
+	// 摇杆是持续的轴向量, 需按速率*DeltaTime换算成与鼠标一致的帧增量, 屏蔽输入设备差异
+	const FVector2D Value = InputActionValue.Get<FVector2D>();
+	const FVector2D LookDelta(
+		Value.X * YcInput::LookYawRate * World->GetDeltaSeconds(),
+		Value.Y * YcInput::LookPitchRate * World->GetDeltaSeconds());
 
-	if (Value.Y != 0.0f)
-	{
-		OwnerPawn->AddControllerPitchInput(Value.Y * YcInput::LookPitchRate * World->GetDeltaSeconds());
-	}
+	Character->HandleLookInput(LookDelta);
 }
 
 void UYcHeroComponent::Input_Crouch(const FInputActionValue& InputActionValue)
 {
-	// @TODO 下蹲输入
+	AYcCharacter* Character = Cast<AYcCharacter>(OwnerPawn);
+	if (!Character) return;
+
+	Character->HandleCrouchInput(InputActionValue.Get<bool>());
 }
 
 UE_ENABLE_OPTIMIZATION

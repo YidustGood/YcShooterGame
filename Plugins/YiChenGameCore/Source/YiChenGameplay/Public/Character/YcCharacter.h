@@ -105,6 +105,39 @@ protected:
 	// 设置玩家输入组件
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	
+public:
+	//// 输入响应 ////
+	// UYcHeroComponent 仅负责读取输入并做设备归一化, 然后把"移动/视角/下蹲的意图"转发到这里,
+	// 由具体的角色决定如何响应(第一人称/第三人称/横板等), 从而让输入框架与玩法解耦。
+	// 这些是 BlueprintNativeEvent, AngelScript 或蓝图子类可直接 BlueprintOverride 覆写来定制玩法。
+
+	/**
+	 * 处理移动输入。默认按控制器朝向做第三人称式移动。
+	 * @param MovementVector 移动输入值, X=右, Y=前, 范围约[-1,1]
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "YcGameCore|Input")
+	void HandleMoveInput(FVector2D MovementVector);
+	virtual void HandleMoveInput_Implementation(FVector2D MovementVector);
+
+	/**
+	 * 处理视角输入。输入层已完成设备归一化(鼠标为帧增量, 摇杆按速率*DeltaTime换算成帧增量),
+	 * 因此这里拿到的是"本帧应施加的偏航/俯仰增量", 无需再关心输入设备差异。
+	 * @param LookDelta 本帧视角增量, X=偏航(Yaw), Y=俯仰(Pitch)
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "YcGameCore|Input")
+	void HandleLookInput(FVector2D LookDelta);
+	virtual void HandleLookInput_Implementation(FVector2D LookDelta);
+
+	/**
+	 * 处理下蹲输入。默认无行为, 由子类根据玩法(切换/长按下蹲)覆写。
+	 * @param bIsPressed 下蹲输入是否触发
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "YcGameCore|Input")
+	void HandleCrouchInput(bool bIsPressed);
+	virtual void HandleCrouchInput_Implementation(bool bIsPressed);
+	//// ~输入响应 ////
+
+protected:
 	//// 处理玩家生命周期相关的 ////
 	
 	// 开始角色死亡序列（禁用碰撞、禁用移动等）

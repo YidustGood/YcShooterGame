@@ -180,36 +180,33 @@ protected:
 	 */
 	void Input_AbilityInputTagReleased(FGameplayTag InputTag);
 	
+	// 以下 Input_* 仅负责: 读取输入值 -> 做输入设备层面的归一化 -> 转发给 OwnerPawn(AYcCharacter) 的对应响应事件。
+	// 具体如何响应(第一人称/第三人称/横板等)由角色自己在 HandleMoveInput/HandleLookInput/HandleCrouchInput 中定制,
+	// 本组件不含任何玩法相关的移动/视角语义, 从而可跨玩法复用。
+
 	/**
-	 * 处理角色移动输入。
-	 * 内部会根据第一人称/第三人称模式标记计算移动方向。
+	 * 处理角色移动输入, 转发到角色的 HandleMoveInput。
 	 * @param InputActionValue 输入动作值
 	 */
 	void Input_Move(const FInputActionValue& InputActionValue);
 	
 	/**
-	 * 处理鼠标视角输入。
+	 * 处理鼠标视角输入, 鼠标增量直接转发到角色的 HandleLookInput。
 	 * @param InputActionValue 输入动作值
 	 */
 	void Input_LookMouse(const FInputActionValue& InputActionValue);
 	
 	/**
-	 * 处理摇杆视角输入。
+	 * 处理摇杆视角输入, 按速率*DeltaTime换算成帧增量后转发到角色的 HandleLookInput。
 	 * @param InputActionValue 输入动作值
 	 */
 	void Input_LookStick(const FInputActionValue& InputActionValue);
 	
 	/**
-	 * 处理下蹲输入。
+	 * 处理下蹲输入, 转发到角色的 HandleCrouchInput。
 	 * @param InputActionValue 输入动作值
 	 */
 	void Input_Crouch(const FInputActionValue& InputActionValue);
-	
-	UFUNCTION(BlueprintImplementableEvent, Category="YcGameCore|Input")
-	void K2_OnMove(const FInputActionValue& InputActionValue);
-	
-	UFUNCTION(BlueprintImplementableEvent, Category="YcGameCore|Input")
-	void K2_OnLookMouse(const FInputActionValue& InputActionValue);
 	///////////////// ~输入相关 /////////////////
 
 private:
@@ -226,10 +223,6 @@ private:
 	void ClearAdditionalInputs();
 	
 private:
-	/** 是否为第一人称模式，因为第一人称和第三人称的输入处理有所不同 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(AllowPrivateAccess = "true"))
-	bool bFirstPersonMode;
-	
 	/** 玩家输入绑定是否已应用，仅对真实玩家控制的Pawn为true */
 	bool bReadyToBindInputs;
 	

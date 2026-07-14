@@ -6,6 +6,7 @@
 #include "YcTeamPublicInfo.generated.h"
 
 class UYcTeamAsset;
+class UYcTeamCreationComponent;
 
 /**
  * 队伍的公开信息，所有人可以访问
@@ -15,7 +16,7 @@ class YICHENTEAMS_API AYcTeamPublicInfo : public AYcTeamInfoBase
 {
 	GENERATED_BODY()
 
-	friend UYcTeamCreationComponent;
+	friend class UYcTeamCreationComponent;
 
 public:
 	AYcTeamPublicInfo(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());

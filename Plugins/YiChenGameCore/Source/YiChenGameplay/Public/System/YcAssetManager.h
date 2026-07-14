@@ -91,6 +91,8 @@ public:
 	/** 获取 DataRegistry 资产解析器 */
 	TSharedPtr<IYcDataRegistryAssetResolver> GetDataRegistryResolver() const;
 
+	using UAssetManager::PreloadPrimaryAssets;
+
 	/**
 	 * 预加载一组主资产, 自动过滤已加载的
 	 * @param AssetIds 要加载的主资产ID列表

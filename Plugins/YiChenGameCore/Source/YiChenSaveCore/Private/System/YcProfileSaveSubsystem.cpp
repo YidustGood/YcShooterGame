@@ -699,7 +699,7 @@ void UYcProfileSaveSubsystem::GatherDomainProviders(TArray<const UYcSaveDomainPr
 {
     OutProviders.Empty();
     const TArray<TSubclassOf<UYcSaveDomainProvider>> ProviderClasses = YcSaveDomainRegistry::GetRegisteredProviderClasses();
-    for (const TSubclassOf<UYcSaveDomainProvider> ProviderClass : ProviderClasses)
+    for (const TSubclassOf<UYcSaveDomainProvider>& ProviderClass : ProviderClasses)
     {
         if (!ProviderClass)
         {

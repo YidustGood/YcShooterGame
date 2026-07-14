@@ -922,7 +922,7 @@ void UYcMetaInventorySubsystem::GatherPersistenceExtensionProviders(TArray<const
 
 	// 从全局注册表取出所有 Provider 类型，并转为 CDO 供只读调用。
 	const TArray<TSubclassOf<UYcInventoryPersistenceExtensionProvider>> ProviderClasses = YcInventoryPersistenceExtensionRegistry::GetRegisteredProviderClasses();
-	for (const TSubclassOf<UYcInventoryPersistenceExtensionProvider> ProviderClass : ProviderClasses)
+	for (const TSubclassOf<UYcInventoryPersistenceExtensionProvider>& ProviderClass : ProviderClasses)
 	{
 		if (!ProviderClass)
 		{

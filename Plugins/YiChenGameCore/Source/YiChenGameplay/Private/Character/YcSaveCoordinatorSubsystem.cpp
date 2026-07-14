@@ -35,18 +35,7 @@ void UYcSaveCoordinatorSubsystem::Initialize(FSubsystemCollectionBase& Collectio
 	Super::Initialize(Collection);
 
 	UE_LOG(LogYcSaveCoordinator, Verbose, TEXT("Initialize world=%s"), *GetNameSafe(GetWorld()));
-
-	UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(GetWorld());
-	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcInventoryItemChangeMessage>(TAG_Yc_Inventory_Message_StackChanged, this, &ThisClass::HandleInventoryStackChanged));
-	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcEquipmentSlotChangedMessage>(TAG_Yc_EquipmentSlot_Message_SlotChanged, this, &ThisClass::HandleEquipmentSlotChanged));
-	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcQuickBarSlotsChangedMessage>(TAG_Yc_QuickBar_Message_SlotsChanged, this, &ThisClass::HandleQuickBarSlotsChanged));
-	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcInventoryProjectedStateChangedMessage>(TAG_Yc_Inventory_Message_ProjectedState_Changed, this, &ThisClass::HandleProjectedStateChanged));
-	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcPersistenceRequestMessage>(YcPersistenceTags::Persistence_MarkDirty, this, &ThisClass::HandlePersistenceRequest));
-	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcPersistenceRequestMessage>(YcPersistenceTags::Persistence_RequestAutosave, this, &ThisClass::HandlePersistenceRequest));
-	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcPersistenceRequestMessage>(YcPersistenceTags::Persistence_RequestFlushSave, this, &ThisClass::HandlePersistenceRequest));
-	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcPersistenceRequestMessage>(YcPersistenceTags::Persistence_RequestCommitMatchResult, this, &ThisClass::HandlePersistenceRequest));
-	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcPersistenceProfileMessage>(YcPersistenceTags::Persistence_ProfileHydrated, this, &ThisClass::HandleProfileHydrated));
-	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcPersistenceProfileMessage>(YcPersistenceTags::Persistence_ProfileChanged, this, &ThisClass::HandleProfileChanged));
+	EnsureMessageListenersRegistered();
 }
 
 void UYcSaveCoordinatorSubsystem::Deinitialize()
@@ -62,6 +51,7 @@ void UYcSaveCoordinatorSubsystem::Deinitialize()
 		}
 	}
 	ListenerHandles.Reset();
+	bMessageListenersRegistered = false;
 	PlayerStates.Reset();
 
 	Super::Deinitialize();
@@ -75,6 +65,8 @@ bool UYcSaveCoordinatorSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 void UYcSaveCoordinatorSubsystem::Tick(float DeltaTime)
 {
 	(void)DeltaTime;
+	// @TODO 这里Tick可以优化为事件驱动, 或者Timer驱动, Tick的话频率太高了没必要
+	EnsureMessageListenersRegistered();
 
 	const double NowSeconds = GetNowSeconds();
 	for (TPair<TWeakObjectPtr<APlayerController>, FYcSaveCoordinatorPlayerState>& Pair : PlayerStates)
@@ -186,6 +178,35 @@ void UYcSaveCoordinatorSubsystem::MarkPlayerDirty(APlayerController* PlayerContr
 bool UYcSaveCoordinatorSubsystem::DoesSupportWorldType(const EWorldType::Type WorldType) const
 {
 	return WorldType == EWorldType::Game || WorldType == EWorldType::PIE;
+}
+
+bool UYcSaveCoordinatorSubsystem::EnsureMessageListenersRegistered()
+{
+	if (bMessageListenersRegistered)
+	{
+		return true;
+	}
+
+	UWorld* World = GetWorld();
+	if (!IsValid(World) || !UGameplayMessageSubsystem::HasInstance(World))
+	{
+		return false;
+	}
+
+	UGameplayMessageSubsystem& MessageSubsystem = UGameplayMessageSubsystem::Get(World);
+	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcInventoryItemChangeMessage>(TAG_Yc_Inventory_Message_StackChanged, this, &ThisClass::HandleInventoryStackChanged));
+	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcEquipmentSlotChangedMessage>(TAG_Yc_EquipmentSlot_Message_SlotChanged, this, &ThisClass::HandleEquipmentSlotChanged));
+	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcQuickBarSlotsChangedMessage>(TAG_Yc_QuickBar_Message_SlotsChanged, this, &ThisClass::HandleQuickBarSlotsChanged));
+	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcInventoryProjectedStateChangedMessage>(TAG_Yc_Inventory_Message_ProjectedState_Changed, this, &ThisClass::HandleProjectedStateChanged));
+	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcPersistenceRequestMessage>(YcPersistenceTags::Persistence_MarkDirty, this, &ThisClass::HandlePersistenceRequest));
+	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcPersistenceRequestMessage>(YcPersistenceTags::Persistence_RequestAutosave, this, &ThisClass::HandlePersistenceRequest));
+	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcPersistenceRequestMessage>(YcPersistenceTags::Persistence_RequestFlushSave, this, &ThisClass::HandlePersistenceRequest));
+	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcPersistenceRequestMessage>(YcPersistenceTags::Persistence_RequestCommitMatchResult, this, &ThisClass::HandlePersistenceRequest));
+	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcPersistenceProfileMessage>(YcPersistenceTags::Persistence_ProfileHydrated, this, &ThisClass::HandleProfileHydrated));
+	ListenerHandles.Add(MessageSubsystem.RegisterListener<FYcPersistenceProfileMessage>(YcPersistenceTags::Persistence_ProfileChanged, this, &ThisClass::HandleProfileChanged));
+	bMessageListenersRegistered = true;
+	UE_LOG(LogYcSaveCoordinator, Verbose, TEXT("Gameplay message listeners registered for world=%s"), *GetNameSafe(World));
+	return true;
 }
 
 void UYcSaveCoordinatorSubsystem::HandleInventoryStackChanged(FGameplayTag Channel, const FYcInventoryItemChangeMessage& Message)

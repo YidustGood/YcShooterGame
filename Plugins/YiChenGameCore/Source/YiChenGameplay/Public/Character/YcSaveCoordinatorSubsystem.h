@@ -81,6 +81,7 @@ protected:
 	virtual bool DoesSupportWorldType(EWorldType::Type WorldType) const override;
 
 private:
+	bool EnsureMessageListenersRegistered();
 	void HandleInventoryStackChanged(FGameplayTag Channel, const FYcInventoryItemChangeMessage& Message);
 	void HandleEquipmentSlotChanged(FGameplayTag Channel, const FYcEquipmentSlotChangedMessage& Message);
 	void HandleQuickBarSlotsChanged(FGameplayTag Channel, const FYcQuickBarSlotsChangedMessage& Message);
@@ -106,6 +107,8 @@ private:
 
 	/** 当前注册到 GameplayMessageSubsystem 的全部监听句柄。 */
 	TArray<FGameplayMessageListenerHandle> ListenerHandles;
+	/** GameplayMessageSubsystem 可用后再延迟注册监听，避免世界初始化早于 GameInstance 子系统时崩溃。 */
+	bool bMessageListenersRegistered = false;
 	/** 当前世界里所有被跟踪玩家的保存状态。 */
 	TMap<TWeakObjectPtr<APlayerController>, FYcSaveCoordinatorPlayerState> PlayerStates;
 };

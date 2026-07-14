@@ -3,7 +3,9 @@
 
 #include "Character/YcHeroComponent.h"
 
+#include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "InputMappingContext.h"
 #include "YcAbilitySystemComponent.h"
 #include "YcGameplayTags.h"
 #include "Character/YcPawnData.h"
@@ -158,33 +160,84 @@ UYcHeroComponent::UYcHeroComponent(const FObjectInitializer& ObjectInitializer)
 
 void UYcHeroComponent::AddAdditionalInputConfig(const UYcInputConfig* InputConfig)
 {
-	TArray<uint32> BindHandles;
-	
-	const APawn* Pawn = GetPawn<APawn>();
-	if (!Pawn) return;
-	
-	const APlayerController* PC = GetController<APlayerController>();
-	check(PC);
-	
-	const ULocalPlayer* LP = PC->GetLocalPlayer();
-	check(LP);
-
-	const UEnhancedInputLocalPlayerSubsystem* Subsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
-	check(Subsystem);
-	
-	if (const UYcPawnExtensionComponent* PawnExtComp = UYcPawnExtensionComponent::FindPawnExtensionComponent(Pawn))
+	if (!InputConfig)
 	{
-		UYcInputComponent* YcIC = Pawn->FindComponentByClass<UYcInputComponent>();
-		if (ensureMsgf(YcIC, TEXT("Unexpected Input Component class! The Gameplay Abilities will not be bound to their inputs. Change the input component to UYcInputComponent or a subclass of it.")))
-		{
-			YcIC->BindAbilityActions(InputConfig, this, &ThisClass::Input_AbilityInputTagPressed, &ThisClass::Input_AbilityInputTagReleased, /*out*/ BindHandles);
-		}
+		return;
+	}
+
+	FYcAdditionalInputConfigBindingData& BindingData = FindOrAddAdditionalInputConfigData(InputConfig);
+	BindingData.RefCount++;
+
+	if (bReadyToBindInputs)
+	{
+		ApplyAdditionalInputConfig(BindingData);
 	}
 }
 
 void UYcHeroComponent::RemoveAdditionalInputConfig(const UYcInputConfig* InputConfig)
 {
-	//@TODO: 待实现移除InputConfig功能
+	if (!InputConfig)
+	{
+		return;
+	}
+
+	for (int32 Index = 0; Index < AdditionalInputConfigs.Num(); ++Index)
+	{
+		FYcAdditionalInputConfigBindingData& BindingData = AdditionalInputConfigs[Index];
+		if (BindingData.InputConfig != InputConfig)
+		{
+			continue;
+		}
+
+		BindingData.RefCount = FMath::Max(0, BindingData.RefCount - 1);
+		if (BindingData.RefCount == 0)
+		{
+			UnapplyAdditionalInputConfig(BindingData);
+			AdditionalInputConfigs.RemoveAt(Index);
+		}
+		return;
+	}
+}
+
+void UYcHeroComponent::AddAdditionalInputMapping(const UInputMappingContext* InputMapping, int32 Priority)
+{
+	if (!InputMapping)
+	{
+		return;
+	}
+
+	FYcAdditionalInputMappingData& MappingData = FindOrAddAdditionalInputMappingData(InputMapping, Priority);
+	MappingData.RefCount++;
+
+	if (bReadyToBindInputs)
+	{
+		ApplyAdditionalInputMapping(MappingData);
+	}
+}
+
+void UYcHeroComponent::RemoveAdditionalInputMapping(const UInputMappingContext* InputMapping)
+{
+	if (!InputMapping)
+	{
+		return;
+	}
+
+	for (int32 Index = 0; Index < AdditionalInputMappings.Num(); ++Index)
+	{
+		FYcAdditionalInputMappingData& MappingData = AdditionalInputMappings[Index];
+		if (MappingData.InputMapping != InputMapping)
+		{
+			continue;
+		}
+
+		MappingData.RefCount = FMath::Max(0, MappingData.RefCount - 1);
+		if (MappingData.RefCount == 0)
+		{
+			UnapplyAdditionalInputMapping(MappingData);
+			AdditionalInputMappings.RemoveAt(Index);
+		}
+		return;
+	}
 }
 
 bool UYcHeroComponent::IsReadyToBindInputs() const
@@ -239,6 +292,7 @@ void UYcHeroComponent::BeginPlay()
 
 void UYcHeroComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ClearAdditionalInputs();
 	UnregisterInitStateFeature();
 	Super::EndPlay(EndPlayReason);
 }
@@ -291,10 +345,211 @@ void UYcHeroComponent::InitializePlayerInput(UInputComponent* PlayerInputCompone
 	{
 		bReadyToBindInputs = true;
 	}
+
+	ApplyPendingAdditionalInputs();
 	
 	// 发送输入现在可绑定的扩展事件, GameFeatureAction可用监听此事件然后做出响应, 例如通过GameFeatureAction响应添加更多的输入绑定
 	UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(const_cast<APlayerController*>(PC), NAME_BindInputsNow);
 	UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(const_cast<APawn*>(Pawn), NAME_BindInputsNow);
+}
+
+bool UYcHeroComponent::TryGetLocalInputBindingContext(UYcInputComponent*& OutInputComponent, UEnhancedInputLocalPlayerSubsystem*& OutSubsystem) const
+{
+	OutInputComponent = nullptr;
+	OutSubsystem = nullptr;
+
+	const APawn* Pawn = GetPawn<APawn>();
+	if (!Pawn || !Pawn->IsLocallyControlled() || Pawn->IsBotControlled())
+	{
+		return false;
+	}
+
+	const APlayerController* PC = GetController<APlayerController>();
+	if (!PC)
+	{
+		return false;
+	}
+
+	const ULocalPlayer* LP = PC->GetLocalPlayer();
+	if (!LP)
+	{
+		return false;
+	}
+
+	UYcInputComponent* InputComponent = Cast<UYcInputComponent>(Pawn->InputComponent);
+	if (!InputComponent)
+	{
+		return false;
+	}
+
+	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
+	if (!InputSubsystem)
+	{
+		return false;
+	}
+
+	OutInputComponent = InputComponent;
+	OutSubsystem = InputSubsystem;
+	return true;
+}
+
+FYcAdditionalInputConfigBindingData* UYcHeroComponent::FindAdditionalInputConfigData(const UYcInputConfig* InputConfig)
+{
+	for (FYcAdditionalInputConfigBindingData& BindingData : AdditionalInputConfigs)
+	{
+		if (BindingData.InputConfig == InputConfig)
+		{
+			return &BindingData;
+		}
+	}
+	return nullptr;
+}
+
+FYcAdditionalInputConfigBindingData& UYcHeroComponent::FindOrAddAdditionalInputConfigData(const UYcInputConfig* InputConfig)
+{
+	if (FYcAdditionalInputConfigBindingData* ExistingData = FindAdditionalInputConfigData(InputConfig))
+	{
+		return *ExistingData;
+	}
+
+	FYcAdditionalInputConfigBindingData& NewData = AdditionalInputConfigs.AddDefaulted_GetRef();
+	NewData.InputConfig = InputConfig;
+	return NewData;
+}
+
+FYcAdditionalInputMappingData* UYcHeroComponent::FindAdditionalInputMappingData(const UInputMappingContext* InputMapping)
+{
+	for (FYcAdditionalInputMappingData& MappingData : AdditionalInputMappings)
+	{
+		if (MappingData.InputMapping == InputMapping)
+		{
+			return &MappingData;
+		}
+	}
+	return nullptr;
+}
+
+FYcAdditionalInputMappingData& UYcHeroComponent::FindOrAddAdditionalInputMappingData(const UInputMappingContext* InputMapping, int32 Priority)
+{
+	if (FYcAdditionalInputMappingData* ExistingData = FindAdditionalInputMappingData(InputMapping))
+	{
+		if (ExistingData->Priority != Priority)
+		{
+			UE_LOG(LogYcInput, Warning, TEXT("Input mapping '%s' is being requested with different priorities (%d -> %d). Keeping the first priority."),
+				*GetNameSafe(InputMapping), ExistingData->Priority, Priority);
+		}
+		return *ExistingData;
+	}
+
+	FYcAdditionalInputMappingData& NewData = AdditionalInputMappings.AddDefaulted_GetRef();
+	NewData.InputMapping = InputMapping;
+	NewData.Priority = Priority;
+	return NewData;
+}
+
+void UYcHeroComponent::ApplyAdditionalInputConfig(FYcAdditionalInputConfigBindingData& BindingData)
+{
+	if (BindingData.bBindingsApplied || BindingData.RefCount <= 0 || !BindingData.InputConfig)
+	{
+		return;
+	}
+
+	UYcInputComponent* InputComponent = nullptr;
+	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = nullptr;
+	if (!TryGetLocalInputBindingContext(InputComponent, InputSubsystem))
+	{
+		return;
+	}
+
+	InputComponent->AddInputMappings(BindingData.InputConfig, InputSubsystem);
+	InputComponent->BindAbilityActions(BindingData.InputConfig, this, &ThisClass::Input_AbilityInputTagPressed, &ThisClass::Input_AbilityInputTagReleased, BindingData.BindHandles);
+	BindingData.bBindingsApplied = true;
+}
+
+void UYcHeroComponent::UnapplyAdditionalInputConfig(FYcAdditionalInputConfigBindingData& BindingData)
+{
+	if (!BindingData.bBindingsApplied || !BindingData.InputConfig)
+	{
+		return;
+	}
+
+	UYcInputComponent* InputComponent = nullptr;
+	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = nullptr;
+	if (TryGetLocalInputBindingContext(InputComponent, InputSubsystem))
+	{
+		InputComponent->RemoveBinds(BindingData.BindHandles);
+		InputComponent->RemoveInputMappings(BindingData.InputConfig, InputSubsystem);
+	}
+	else
+	{
+		BindingData.BindHandles.Reset();
+	}
+
+	BindingData.bBindingsApplied = false;
+}
+
+void UYcHeroComponent::ApplyAdditionalInputMapping(FYcAdditionalInputMappingData& MappingData)
+{
+	if (MappingData.bApplied || MappingData.RefCount <= 0 || !MappingData.InputMapping)
+	{
+		return;
+	}
+
+	UYcInputComponent* InputComponent = nullptr;
+	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = nullptr;
+	if (!TryGetLocalInputBindingContext(InputComponent, InputSubsystem))
+	{
+		return;
+	}
+
+	InputSubsystem->AddMappingContext(const_cast<UInputMappingContext*>(MappingData.InputMapping.Get()), MappingData.Priority);
+	MappingData.bApplied = true;
+}
+
+void UYcHeroComponent::UnapplyAdditionalInputMapping(FYcAdditionalInputMappingData& MappingData)
+{
+	if (!MappingData.bApplied || !MappingData.InputMapping)
+	{
+		return;
+	}
+
+	UYcInputComponent* InputComponent = nullptr;
+	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = nullptr;
+	if (TryGetLocalInputBindingContext(InputComponent, InputSubsystem))
+	{
+		InputSubsystem->RemoveMappingContext(const_cast<UInputMappingContext*>(MappingData.InputMapping.Get()));
+	}
+
+	MappingData.bApplied = false;
+}
+
+void UYcHeroComponent::ApplyPendingAdditionalInputs()
+{
+	for (FYcAdditionalInputMappingData& MappingData : AdditionalInputMappings)
+	{
+		ApplyAdditionalInputMapping(MappingData);
+	}
+
+	for (FYcAdditionalInputConfigBindingData& BindingData : AdditionalInputConfigs)
+	{
+		ApplyAdditionalInputConfig(BindingData);
+	}
+}
+
+void UYcHeroComponent::ClearAdditionalInputs()
+{
+	for (FYcAdditionalInputConfigBindingData& BindingData : AdditionalInputConfigs)
+	{
+		UnapplyAdditionalInputConfig(BindingData);
+	}
+
+	for (FYcAdditionalInputMappingData& MappingData : AdditionalInputMappings)
+	{
+		UnapplyAdditionalInputMapping(MappingData);
+	}
+
+	AdditionalInputConfigs.Reset();
+	AdditionalInputMappings.Reset();
 }
 
 void UYcHeroComponent::Input_AbilityInputTagPressed(const FGameplayTag InputTag)

@@ -9,7 +9,7 @@ class UInputMappingContext;
 struct FComponentRequestHandle;
 
 /** 输入映射上下文及其优先级的配置结构体 */
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FYcInputMappingContextAndPriority
 {
 	GENERATED_BODY()

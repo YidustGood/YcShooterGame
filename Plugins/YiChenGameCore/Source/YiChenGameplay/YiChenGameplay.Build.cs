@@ -11,6 +11,7 @@ public class YiChenGameplay : ModuleRules
             {
                 "Core",
                 "CommonGame",
+                "EnhancedInput",
                 "GameplayAbilities",
                 "CommonLoadingScreen",
                 "ModularGameplayActors",

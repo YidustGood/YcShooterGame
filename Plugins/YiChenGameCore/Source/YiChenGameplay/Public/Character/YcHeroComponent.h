@@ -3,17 +3,57 @@
 #pragma once
 
 #include "GameplayTagContainer.h"
+#include "InputMappingContext.h"
 #include "Components/GameFrameworkInitStateInterface.h"
 #include "Components/PawnComponent.h"
 #include "YcHeroComponent.generated.h"
 
 class UYcInputConfig;
+// class UInputMappingContext;
+class UYcInputComponent;
+class UEnhancedInputLocalPlayerSubsystem;
 struct FInputActionValue;
 
 namespace YcInput
 {
 	static const float LookYawRate = 300.0f;
 	static const float LookPitchRate = 165.0f;
+};
+
+USTRUCT()
+struct FYcAdditionalInputConfigBindingData
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TObjectPtr<const UYcInputConfig> InputConfig = nullptr;
+
+	UPROPERTY()
+	TArray<uint32> BindHandles;
+
+	UPROPERTY()
+	int32 RefCount = 0;
+
+	UPROPERTY()
+	bool bBindingsApplied = false;
+};
+
+USTRUCT()
+struct FYcAdditionalInputMappingData
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TObjectPtr<const UInputMappingContext> InputMapping = nullptr;
+
+	UPROPERTY()
+	int32 Priority = 0;
+
+	UPROPERTY()
+	int32 RefCount = 0;
+
+	UPROPERTY()
+	bool bApplied = false;
 };
 
 /**
@@ -95,6 +135,20 @@ public:
 	 * @param InputConfig 要移除的输入配置
 	 */
 	void RemoveAdditionalInputConfig(const UYcInputConfig* InputConfig);
+
+	/**
+	 * 添加额外的输入映射上下文到此Pawn的增强输入系统。
+	 * 主要用于装备、载具等运行时功能模块动态附加 IMC。
+	 * @param InputMapping 要添加的输入映射上下文
+	 * @param Priority IMC 优先级
+	 */
+	void AddAdditionalInputMapping(const UInputMappingContext* InputMapping, int32 Priority);
+
+	/**
+	 * 移除之前添加的输入映射上下文。
+	 * @param InputMapping 要移除的输入映射上下文
+	 */
+	void RemoveAdditionalInputMapping(const UInputMappingContext* InputMapping);
 	
 	/**
 	 * 检查输入是否已准备好可绑定。
@@ -157,6 +211,19 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category="YcGameCore|Input")
 	void K2_OnLookMouse(const FInputActionValue& InputActionValue);
 	///////////////// ~输入相关 /////////////////
+
+private:
+	bool TryGetLocalInputBindingContext(UYcInputComponent*& OutInputComponent, UEnhancedInputLocalPlayerSubsystem*& OutSubsystem) const;
+	FYcAdditionalInputConfigBindingData* FindAdditionalInputConfigData(const UYcInputConfig* InputConfig);
+	FYcAdditionalInputConfigBindingData& FindOrAddAdditionalInputConfigData(const UYcInputConfig* InputConfig);
+	FYcAdditionalInputMappingData* FindAdditionalInputMappingData(const UInputMappingContext* InputMapping);
+	FYcAdditionalInputMappingData& FindOrAddAdditionalInputMappingData(const UInputMappingContext* InputMapping, int32 Priority);
+	void ApplyAdditionalInputConfig(FYcAdditionalInputConfigBindingData& BindingData);
+	void UnapplyAdditionalInputConfig(FYcAdditionalInputConfigBindingData& BindingData);
+	void ApplyAdditionalInputMapping(FYcAdditionalInputMappingData& MappingData);
+	void UnapplyAdditionalInputMapping(FYcAdditionalInputMappingData& MappingData);
+	void ApplyPendingAdditionalInputs();
+	void ClearAdditionalInputs();
 	
 private:
 	/** 是否为第一人称模式，因为第一人称和第三人称的输入处理有所不同 */
@@ -169,4 +236,12 @@ private:
 	/** 缓存的所有者Pawn指针 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta=(AllowPrivateAccess = "true"))
 	TObjectPtr<APawn> OwnerPawn;
+
+	/** 当前已登记的额外输入配置及其绑定句柄 */
+	UPROPERTY(Transient)
+	TArray<FYcAdditionalInputConfigBindingData> AdditionalInputConfigs;
+
+	/** 当前已登记的额外输入映射上下文 */
+	UPROPERTY(Transient)
+	TArray<FYcAdditionalInputMappingData> AdditionalInputMappings;
 };

@@ -532,6 +532,14 @@ bool UYcAbilitySystemComponent::TryCancelAbilityByClass(const TSubclassOf<UGamep
 	return bSuccess;
 }
 
+void UYcAbilitySystemComponent::CancelAbilitiesByTag(const FGameplayTagContainer& WithTags,
+	const FGameplayTagContainer& WithoutTags, UGameplayAbility* IgnoreAbility)
+{
+	const FGameplayTagContainer* WithTagsPtr = WithTags.Num() > 0 ? &WithTags : nullptr;
+	const FGameplayTagContainer* WithoutTagsPtr = WithoutTags.Num() > 0 ? &WithoutTags : nullptr;
+	CancelAbilities(WithTagsPtr, WithoutTagsPtr, IgnoreAbility);
+}
+
 int32 UYcAbilitySystemComponent::K2_GetTagCount(const FGameplayTag TagToCheck) const
 {
 	return GetTagCount(TagToCheck);

@@ -380,6 +380,16 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="AbilitySystem")
 	bool TryCancelAbilityByClass(TSubclassOf<UGameplayAbility> InAbilityToCancel);
+
+	/**
+	 * 按标签取消技能（蓝图/脚本接口）
+	 * 包装原生ASC的CancelAbilities，便于蓝图和AngelScript主动按标签取消当前激活的技能。
+	 * @param WithTags 需要匹配的技能标签；为空则表示不过滤
+	 * @param WithoutTags 需要排除的技能标签；命中这些标签的技能不会被取消
+	 * @param IgnoreAbility 可选的忽略技能，不会被取消
+	 */
+	UFUNCTION(BlueprintCallable, Category="AbilitySystem", Meta = (AutoCreateRefTerm = "WithTags,WithoutTags"))
+	void CancelAbilitiesByTag(const FGameplayTagContainer& WithTags, const FGameplayTagContainer& WithoutTags, UGameplayAbility* IgnoreAbility = nullptr);
 	
 	/**
 	 * 获取指定GameplayTag的计数（蓝图接口）

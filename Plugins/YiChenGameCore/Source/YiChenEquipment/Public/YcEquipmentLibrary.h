@@ -33,7 +33,7 @@ public:
 	
 	/* 从FYcInventoryItemDefinition->Fragments中获取特定类型的Fragment */
 	UFUNCTION(BlueprintCallable)
-	static TInstancedStruct<FYcEquipmentFragment> FindEquipmentFragment(const FYcEquipmentDefinition& EquipmentDef, const UScriptStruct* FragmentStructType);
+	static FInstancedStruct FindEquipmentFragment(const FYcEquipmentDefinition& EquipmentDef, const UScriptStruct* FragmentStructType);
 
 	/**
 	 * 从装备实例获取指定类型的 Fragment（高效方式 - CustomThunk）

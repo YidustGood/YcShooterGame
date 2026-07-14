@@ -19,18 +19,19 @@ UYcEquipmentInstance* UYcEquipmentLibrary::GetCurrentEquipmentInst(AActor* Owner
 	return QuickBar->GetActiveEquipmentInstance();
 }
 
-TInstancedStruct<FYcEquipmentFragment> UYcEquipmentLibrary::FindEquipmentFragment(
+FInstancedStruct UYcEquipmentLibrary::FindEquipmentFragment(
 	const FYcEquipmentDefinition& EquipmentDef, const UScriptStruct* FragmentStructType)
 {
-	TInstancedStruct<FYcEquipmentFragment> NullStruct;
+	FInstancedStruct Result;
 	for (auto& Frag : EquipmentDef.Fragments)
 	{	
 		if (FragmentStructType == Frag.GetScriptStruct())
 		{
-			return Frag;
+			Result.InitializeAs(Frag.GetScriptStruct(), Frag.GetMemory());
+			return Result;
 		}
 	}
-	return NullStruct;
+	return Result;
 }
 
 void UYcEquipmentLibrary::GetEquipmentFragment(EYcEquipmentFragmentResult& ExecResult, const UYcEquipmentInstance* Equipment, const UScriptStruct* FragmentStructType, int32& OutFragment)
@@ -73,7 +74,7 @@ DEFINE_FUNCTION(UYcEquipmentLibrary::execGetEquipmentFragment)
 	else
 	{
 		P_NATIVE_BEGIN;
-		TInstancedStruct<FYcEquipmentFragment> TempFragment = Equipment->FindEquipmentFragment(FragmentStructType);
+		FInstancedStruct TempFragment = Equipment->FindEquipmentFragment(FragmentStructType);
 		if (TempFragment.IsValid() && 
 			TempFragment.GetScriptStruct()->IsChildOf(OutFragmentProp->Struct))
 		{

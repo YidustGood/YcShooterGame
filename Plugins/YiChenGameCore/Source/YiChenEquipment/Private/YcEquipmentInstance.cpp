@@ -98,22 +98,24 @@ bool UYcEquipmentInstance::K2_GetEquipmentDef(FYcEquipmentDefinition& OutEquipme
 	return true;
 }
 
-TInstancedStruct<FYcEquipmentFragment> UYcEquipmentInstance::FindEquipmentFragment(const UScriptStruct* FragmentStructType)
+FInstancedStruct UYcEquipmentInstance::FindEquipmentFragment(const UScriptStruct* FragmentStructType)
 {
+	FInstancedStruct Result;
 	if (!GetEquipmentDef() || !FragmentStructType)
 	{
-		return TInstancedStruct<FYcEquipmentFragment>();
+		return Result;
 	}
 	
 	for (const auto& Fragment : EquipmentDef->Fragments)
 	{
 		if (Fragment.GetScriptStruct() == FragmentStructType)
 		{
-			return Fragment;
+			Result.InitializeAs(Fragment.GetScriptStruct(), Fragment.GetMemory());
+			return Result;
 		}
 	}
 	
-	return TInstancedStruct<FYcEquipmentFragment>();
+	return Result;
 }
 
 void UYcEquipmentInstance::OnEquipmentInstanceCreated(const FYcEquipmentDefinition& Definition)

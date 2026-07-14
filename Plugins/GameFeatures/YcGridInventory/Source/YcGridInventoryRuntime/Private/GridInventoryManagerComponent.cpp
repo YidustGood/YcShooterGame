@@ -739,7 +739,7 @@ bool UGridInventoryManagerComponent::GetContextMenuActionsForItem(UYcInventoryIt
 		return false;
 	}
 
-	TInstancedStruct<FYcInventoryItemFragment> Result = ItemInst->FindItemFragment(FItemFragment_ContextMenu::StaticStruct());
+	FInstancedStruct Result = ItemInst->FindItemFragment(FItemFragment_ContextMenu::StaticStruct());
 	const FItemFragment_ContextMenu* MenuFragment = Result.GetPtr<FItemFragment_ContextMenu>();
 	if (!MenuFragment || MenuFragment->Actions.IsEmpty())
 	{
@@ -1223,7 +1223,7 @@ bool UGridInventoryManagerComponent::TryFindContextMenuActionDef(UYcInventoryIte
 		return false;
 	}
 
-	TInstancedStruct<FYcInventoryItemFragment> Result = ItemInst->FindItemFragment(FItemFragment_ContextMenu::StaticStruct());
+	FInstancedStruct Result = ItemInst->FindItemFragment(FItemFragment_ContextMenu::StaticStruct());
 	const FItemFragment_ContextMenu* MenuFragment = Result.GetPtr<FItemFragment_ContextMenu>();
 	if (!MenuFragment)
 	{
@@ -1748,7 +1748,7 @@ bool UGridInventoryManagerComponent::CanPlaceGridItemInst(UYcInventoryItemInstan
 
 FItemFragment_GridItem UGridInventoryManagerComponent::GetItemFragmentGrid(const FDataRegistryId ItemDefId) const
 {
-	TInstancedStruct<FYcInventoryItemFragment> Result = UYcInventoryLibrary::FindItemFragmentById(ItemDefId, FItemFragment_GridItem::StaticStruct());
+	FInstancedStruct Result = UYcInventoryLibrary::FindItemFragmentById(ItemDefId, FItemFragment_GridItem::StaticStruct());
 	if (const FItemFragment_GridItem* GridFragment = Result.GetPtr<FItemFragment_GridItem>())
 	{
 		return *GridFragment;
@@ -2154,7 +2154,7 @@ void UGridInventoryManagerComponent::BuildRegionsFromCurrentLoadout()
 				continue;
 			}
 
-			TInstancedStruct<FYcInventoryItemFragment> RegionFragmentResult = EquippedSlot.ItemInstance->FindItemFragment(FItemFragment_GridRegions::StaticStruct());
+			FInstancedStruct RegionFragmentResult = EquippedSlot.ItemInstance->FindItemFragment(FItemFragment_GridRegions::StaticStruct());
 			const FItemFragment_GridRegions* RegionFragment = RegionFragmentResult.GetPtr<FItemFragment_GridRegions>();
 			if (!RegionFragment)
 			{
@@ -2362,7 +2362,7 @@ bool UGridInventoryManagerComponent::GetProvidedRegionIdsFromItem(UYcInventoryIt
 		return false;
 	}
 
-	const TInstancedStruct<FYcInventoryItemFragment> RegionFragmentResult = ItemInst->FindItemFragment(FItemFragment_GridRegions::StaticStruct());
+	const FInstancedStruct RegionFragmentResult = ItemInst->FindItemFragment(FItemFragment_GridRegions::StaticStruct());
 	const FItemFragment_GridRegions* RegionFragment = RegionFragmentResult.GetPtr<FItemFragment_GridRegions>();
 	if (!RegionFragment)
 	{

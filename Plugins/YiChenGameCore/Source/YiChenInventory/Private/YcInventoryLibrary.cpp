@@ -15,21 +15,22 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(YcInventoryLibrary)
 
-TInstancedStruct<FYcInventoryItemFragment> UYcInventoryLibrary::FindItemFragment(const FYcInventoryItemDefinition& ItemDef,
-                                                                                 const UScriptStruct* FragmentStructType)
+FInstancedStruct UYcInventoryLibrary::FindItemFragment(const FYcInventoryItemDefinition& ItemDef,
+                                                       const UScriptStruct* FragmentStructType)
 {
-	TInstancedStruct<FYcInventoryItemFragment> NullStruct;
+	FInstancedStruct Result;
 	for (auto& Frag : ItemDef.Fragments)
 	{	
 		if (FragmentStructType == Frag.GetScriptStruct())
 		{
-			return Frag;
+			Result.InitializeAs(Frag.GetScriptStruct(), Frag.GetMemory());
+			return Result;
 		}
 	}
-	return NullStruct;
+	return Result;
 }
 
-TInstancedStruct<FYcInventoryItemFragment> UYcInventoryLibrary::FindItemFragmentById(const FDataRegistryId ItemDefId,
+FInstancedStruct UYcInventoryLibrary::FindItemFragmentById(const FDataRegistryId ItemDefId,
 	const UScriptStruct* FragmentStructType)
 {
 	FYcInventoryItemDefinition ItemDef;

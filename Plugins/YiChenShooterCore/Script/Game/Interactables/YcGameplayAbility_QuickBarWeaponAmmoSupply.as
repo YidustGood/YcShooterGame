@@ -39,6 +39,17 @@ class UYcGameplayAbility_QuickBarWeaponAmmoSupply : UYcGameplayAbility
 	UFUNCTION(BlueprintOverride)
 	void ActivateAbility()
 	{
+		ActivateSupplyAbility(FGameplayEventData());
+	}
+
+	UFUNCTION(BlueprintOverride)
+	void ActivateAbilityFromEvent(FGameplayEventData EventData)
+	{
+		ActivateSupplyAbility(EventData);
+	}
+
+	private void ActivateSupplyAbility(FGameplayEventData EventData)
+	{
 		if (!HasAuthority())
 		{
 			EndAbility();
@@ -63,12 +74,12 @@ class UYcGameplayAbility_QuickBarWeaponAmmoSupply : UYcGameplayAbility
 
 		if (bSuppliedAnyItem && bDestroySourceActorOnSuccess)
 		{
-			DestroyCurrentSourceActor();
+			DestroyCurrentSourceActor(EventData);
 		}
 
 		if (bSuppliedAnyItem)
 		{
-			NotifySourceActorSupplyUsed(AvatarActor);
+			NotifySourceActorSupplyUsed(AvatarActor, EventData);
 		}
 
 		EndAbility();
@@ -159,11 +170,37 @@ class UYcGameplayAbility_QuickBarWeaponAmmoSupply : UYcGameplayAbility
 		return true;
 	}
 
-	void DestroyCurrentSourceActor()
+	void DestroyCurrentSourceActor(FGameplayEventData EventData)
 	{
+		AActor SourceActor = ResolveSourceActor(EventData);
+
+		if (SourceActor != nullptr)
+		{
+			SourceActor.SetLifeSpan(Math::Max(0.0f, SourceActorDestroyDelay));
+		}
+	}
+
+	void NotifySourceActorSupplyUsed(AActor Interactor, FGameplayEventData EventData)
+	{
+		auto AmmoSupplyActor = Cast<AYcAmmoSupplyActor>(ResolveSourceActor(EventData));
+
+		if (AmmoSupplyActor != nullptr)
+		{
+			AmmoSupplyActor.HandleAmmoSupplyInteracted(Interactor);
+		}
+	}
+
+	AActor ResolveSourceActor(FGameplayEventData EventData) const
+	{
+		auto EventTargetActor = EventData.GetMutableTargetActor();
+		if (EventTargetActor != nullptr)
+		{
+			return EventTargetActor;
+		}
+
 		if (CurrentSourceObject == nullptr)
 		{
-			return;
+			return nullptr;
 		}
 
 		AActor SourceActor = Cast<AActor>(CurrentSourceObject.GetOuter());
@@ -172,28 +209,6 @@ class UYcGameplayAbility_QuickBarWeaponAmmoSupply : UYcGameplayAbility
 			SourceActor = Cast<AActor>(CurrentSourceObject);
 		}
 
-		if (SourceActor != nullptr)
-		{
-			SourceActor.SetLifeSpan(Math::Max(0.0f, SourceActorDestroyDelay));
-		}
-	}
-
-	void NotifySourceActorSupplyUsed(AActor Interactor)
-	{
-		if (CurrentSourceObject == nullptr)
-		{
-			return;
-		}
-
-		auto AmmoSupplyActor = Cast<AYcAmmoSupplyActor>(CurrentSourceObject.GetOuter());
-		if (AmmoSupplyActor == nullptr)
-		{
-			AmmoSupplyActor = Cast<AYcAmmoSupplyActor>(CurrentSourceObject);
-		}
-
-		if (AmmoSupplyActor != nullptr)
-		{
-			AmmoSupplyActor.HandleAmmoSupplyInteracted(Interactor);
-		}
+		return SourceActor;
 	}
 }

@@ -93,7 +93,7 @@ public:
 	 * @return 查找到的Fragment结构体数据，如果不存在则返回空结构体
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "Inventory")
-	TInstancedStruct<FYcInventoryItemFragment> FindItemFragment(const UScriptStruct* FragmentStructType);
+	FInstancedStruct FindItemFragment(const UScriptStruct* FragmentStructType);
 	
 	/**
 	 * C++版本：获取特定类型的Fragment

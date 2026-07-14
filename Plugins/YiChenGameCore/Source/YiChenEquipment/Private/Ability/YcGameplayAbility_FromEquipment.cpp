@@ -34,10 +34,10 @@ UYcInventoryItemInstance* UYcGameplayAbility_FromEquipment::GetAssociatedItem() 
 	return nullptr;
 }
 
-TInstancedStruct<FYcInventoryItemFragment> UYcGameplayAbility_FromEquipment::FindItemFragment(
+FInstancedStruct UYcGameplayAbility_FromEquipment::FindItemFragment(
 	const UScriptStruct* FragmentStructType) const
 {
-	TInstancedStruct<FYcInventoryItemFragment> NullStruct;
+	FInstancedStruct NullStruct;
 	
 	 UYcInventoryItemInstance* ItemInst = GetAssociatedItem();
 	if (!ItemInst) return NullStruct;
@@ -45,10 +45,10 @@ TInstancedStruct<FYcInventoryItemFragment> UYcGameplayAbility_FromEquipment::Fin
 	return ItemInst->FindItemFragment(FragmentStructType);
 }
 
-TInstancedStruct<FYcEquipmentFragment> UYcGameplayAbility_FromEquipment::FindEquipmentFragment(
+FInstancedStruct UYcGameplayAbility_FromEquipment::FindEquipmentFragment(
 	const UScriptStruct* FragmentStructType) const
 {
-	TInstancedStruct<FYcEquipmentFragment> NullStruct;
+	FInstancedStruct NullStruct;
 	
 	UYcEquipmentInstance* EquipmentInst = GetAssociatedEquipment();
 	if (!EquipmentInst) return NullStruct;

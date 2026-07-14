@@ -32,7 +32,7 @@ public:
 	 * @return 找到的Fragment实例，未找到时返回空实例
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	static TInstancedStruct<FYcInventoryItemFragment> FindItemFragment(const FYcInventoryItemDefinition& ItemDef, const UScriptStruct* FragmentStructType);
+	static FInstancedStruct FindItemFragment(const FYcInventoryItemDefinition& ItemDef, const UScriptStruct* FragmentStructType);
 	
 	/**
 	 * 从物品定义中查找特定类型的Fragment
@@ -41,7 +41,7 @@ public:
 	 * @return 找到的Fragment实例，未找到时返回空实例
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	static TInstancedStruct<FYcInventoryItemFragment> FindItemFragmentById(const FDataRegistryId ItemDefId, const UScriptStruct* FragmentStructType);
+	static FInstancedStruct FindItemFragmentById(const FDataRegistryId ItemDefId, const UScriptStruct* FragmentStructType);
 	
 	/**
 	 * 从库存归属Actor上获取库存管理组件

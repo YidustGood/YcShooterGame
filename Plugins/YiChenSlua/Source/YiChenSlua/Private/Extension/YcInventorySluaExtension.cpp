@@ -109,7 +109,7 @@ namespace NS_SLUA
             }
 
             // 调用原始函数
-            TInstancedStruct<FYcInventoryItemFragment> Fragment = UYcInventoryLibrary::FindItemFragment(*ItemDef, FragmentStructType);
+            FInstancedStruct Fragment = UYcInventoryLibrary::FindItemFragment(*ItemDef, FragmentStructType);
 
             // 检查是否有效
             if (!Fragment.IsValid())
@@ -155,7 +155,7 @@ namespace NS_SLUA
             }
 
             // 调用原始函数
-            TInstancedStruct<FYcInventoryItemFragment> Fragment = UYcInventoryLibrary::FindItemFragmentById(*ItemDefId, FragmentStructType);
+            FInstancedStruct Fragment = UYcInventoryLibrary::FindItemFragmentById(*ItemDefId, FragmentStructType);
 
             // 检查是否有效
             if (!Fragment.IsValid())
@@ -201,7 +201,7 @@ namespace NS_SLUA
             }
 
             // 调用 ItemInstance 的 FindItemFragment 方法
-            TInstancedStruct<FYcInventoryItemFragment> Fragment = ItemInstance->FindItemFragment(FragmentStructType);
+            FInstancedStruct Fragment = ItemInstance->FindItemFragment(FragmentStructType);
 
             // 检查是否有效
             if (!Fragment.IsValid())

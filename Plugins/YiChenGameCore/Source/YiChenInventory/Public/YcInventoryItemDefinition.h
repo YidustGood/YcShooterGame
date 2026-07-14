@@ -56,11 +56,9 @@ struct YICHENINVENTORY_API FYcInventoryItemDefinition : public FTableRowBase
 	template <typename FragmentType>
 	const FragmentType* GetTypedFragment() const
 	{
-		for (const auto& Fragment : Fragments)
-		{
-			const FragmentType* TypedFragment = Fragment.GetPtr<FragmentType>();
-			if (TypedFragment != nullptr) return TypedFragment;
-		}
-		return nullptr;
+		return reinterpret_cast<const FragmentType*>(FindTypedFragmentByStruct(FragmentType::StaticStruct()));
 	}
+
+private:
+	const void* FindTypedFragmentByStruct(const UScriptStruct* FragmentStructType) const;
 };

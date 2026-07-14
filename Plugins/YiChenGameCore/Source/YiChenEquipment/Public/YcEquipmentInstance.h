@@ -292,7 +292,7 @@ public:
 	 * @return 查找到的Fragment结构体数据
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "Equipment")
-	TInstancedStruct<FYcEquipmentFragment> FindEquipmentFragment(const UScriptStruct* FragmentStructType);
+	FInstancedStruct FindEquipmentFragment(const UScriptStruct* FragmentStructType);
 	
 	/**
 	 * 装备实例创建完成时的回调

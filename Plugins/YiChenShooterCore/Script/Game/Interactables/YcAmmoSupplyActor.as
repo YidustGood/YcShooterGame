@@ -7,9 +7,9 @@ enum EYcAmmoSupplyPromptState
 
 class AYcAmmoSupplyActor : AInteractableActorBase
 {
-	default InteractableComp.Option.InteractionAbilityToGrant = UYcGameplayAbility_QuickBarWeaponAmmoSupply;
-	default InteractableComp.Option.Text = FText::FromString("补充弹药");
-	default InteractableComp.Option.SubText = FText::FromString("补满快捷栏武器子弹");
+	default YcInteractableComp.Option.InteractionAbilityToGrant = UYcGameplayAbility_QuickBarWeaponAmmoSupply;
+	default YcInteractableComp.Option.Text = FText::FromString("补充弹药");
+	default YcInteractableComp.Option.SubText = FText::FromString("补满快捷栏武器子弹");
 
 	UPROPERTY(EditAnywhere, Category = "Supply")
 	bool bDestroyOnSupplySuccess = false;
@@ -128,7 +128,7 @@ class AYcAmmoSupplyActor : AInteractableActorBase
 		PromptState = NewPromptState;
 		RemainingCooldownSeconds = CooldownRemainingSeconds;
 
-		FYcInteractionOption& NewOption = InteractableComp.GetInteractionOption();
+		FYcInteractionOption& NewOption = YcInteractableComp.GetInteractionOption();
 		NewOption.InteractionAbilityToGrant = UYcGameplayAbility_QuickBarWeaponAmmoSupply;
 		NewOption.Text = PromptText_Available;
 		NewOption.SubText = PromptSubText_Available;
@@ -150,6 +150,6 @@ class AYcAmmoSupplyActor : AInteractableActorBase
 			NewOption.DisabledSubText = PromptSubText_Exhausted;
 		}
 
-		InteractableComp.SetInteractionOption(NewOption);
+		YcInteractableComp.SetInteractionOption(NewOption);
 	}
 }

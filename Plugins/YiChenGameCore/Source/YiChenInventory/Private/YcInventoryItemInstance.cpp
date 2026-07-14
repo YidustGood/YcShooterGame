@@ -91,19 +91,20 @@ bool UYcInventoryItemInstance::K2_GetItemDef(FYcInventoryItemDefinition& OutItem
 	return true;
 }
 
-TInstancedStruct<FYcInventoryItemFragment> UYcInventoryItemInstance::FindItemFragment(const UScriptStruct* FragmentStructType)
+FInstancedStruct UYcInventoryItemInstance::FindItemFragment(const UScriptStruct* FragmentStructType)
 {
-	TInstancedStruct<FYcInventoryItemFragment> NullStruct;
-	if (!GetItemDef()) return NullStruct;
+	FInstancedStruct Result;
+	if (!GetItemDef()) return Result;
 	
 	for (const auto& Frag : ItemDef->Fragments)
 	{	
 		if (FragmentStructType == Frag.GetScriptStruct())
 		{
-			return Frag;
+			Result.InitializeAs(Frag.GetScriptStruct(), Frag.GetMemory());
+			return Result;
 		}
 	}
-	return NullStruct;
+	return Result;
 }
 
 void UYcInventoryItemInstance::AddStatTagStack(const FGameplayTag Tag, const int32 StackCount)

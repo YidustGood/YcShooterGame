@@ -42,7 +42,7 @@ public:
 	 * 注意：此函数会产生两次 Fragment 的深拷贝。如果频繁调用，建议缓存结果。或者使用蓝图函数库。
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure=false)
-	TInstancedStruct<FYcInventoryItemFragment> FindItemFragment(const UScriptStruct* FragmentStructType) const;
+	FInstancedStruct FindItemFragment(const UScriptStruct* FragmentStructType) const;
 	
 	/**
 	 * 蓝图版本：查询装备定义中的 Fragment
@@ -52,7 +52,7 @@ public:
 	 * 注意：此函数会产生两次 Fragment 的深拷贝。如果频繁调用，建议缓存结果。或者使用蓝图函数库。
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure=false, Category = "Equipment")
-	TInstancedStruct<FYcEquipmentFragment> FindEquipmentFragment(const UScriptStruct* FragmentStructType) const;
+	FInstancedStruct FindEquipmentFragment(const UScriptStruct* FragmentStructType) const;
 
 #if WITH_EDITOR	// 编辑器模式下
 	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;

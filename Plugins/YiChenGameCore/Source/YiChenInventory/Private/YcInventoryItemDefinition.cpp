@@ -10,3 +10,22 @@ void FYcInventoryItemFragment::OnInstanceCreated(UYcInventoryItemInstance* Insta
 {
 	//@TODO 当物品实例对象创建后Fragment可对此做出响应
 }
+
+const void* FYcInventoryItemDefinition::FindTypedFragmentByStruct(const UScriptStruct* FragmentStructType) const
+{
+	if (!FragmentStructType)
+	{
+		return nullptr;
+	}
+
+	for (const TInstancedStruct<FYcInventoryItemFragment>& Fragment : Fragments)
+	{
+		const UScriptStruct* ScriptStruct = Fragment.GetScriptStruct();
+		if (ScriptStruct && ScriptStruct->IsChildOf(FragmentStructType))
+		{
+			return Fragment.GetMemory();
+		}
+	}
+
+	return nullptr;
+}
